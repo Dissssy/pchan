@@ -1,0 +1,8 @@
+target
+.cargo
+.vscode
+depricated
+frontend/dist
+frontend/res
+frontend/index.html
+Cargo.lock
