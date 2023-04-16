@@ -1,5 +1,4 @@
 use crate::filters::Bearer;
-use crate::schema::thread_post_number;
 use crate::schema::CreateBoard;
 use crate::schema::CreatePost;
 use crate::schema::CreateThread;

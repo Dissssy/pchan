@@ -12,6 +12,10 @@ mod endpoints;
 mod filters;
 pub mod schema;
 mod statics;
+mod unclaimedfiles;
+use unclaimedfiles::UnclaimedFiles;
+
+use std::collections::HashMap;
 
 use crate::database::Users;
 use profanity::Profanity;
@@ -20,6 +24,7 @@ lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
     pub static ref DATA: Arc<Mutex<Users>> = Arc::new(Mutex::new(Users::new().unwrap()));
     pub static ref PROFANITY: Arc<Profanity> = Arc::new(Profanity::load_csv("./profanity_en.csv").expect("Failed to load profanity list"));
+    pub static ref UNCLAIMED_FILES: Arc<Mutex<UnclaimedFiles>> = Arc::new(Mutex::new(UnclaimedFiles::new(HashMap::new())));
 }
 
 #[tokio::main]

@@ -4,7 +4,6 @@ use diesel::query_dsl::methods::FilterDsl;
 use diesel::query_dsl::methods::LimitDsl;
 use diesel::query_dsl::methods::OrderDsl;
 use diesel::ExpressionMethods;
-use diesel::PgArrayExpressionMethods;
 use diesel::Queryable;
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
