@@ -24,7 +24,7 @@ lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
     pub static ref DATA: Arc<Mutex<Users>> = Arc::new(Mutex::new(Users::new().unwrap()));
     pub static ref PROFANITY: Arc<Profanity> = Arc::new(Profanity::load_csv("./profanity_en.csv").expect("Failed to load profanity list"));
-    pub static ref UNCLAIMED_FILES: Arc<Mutex<UnclaimedFiles>> = Arc::new(Mutex::new(UnclaimedFiles::new(HashMap::new())));
+    pub static ref UNCLAIMED_FILES: Arc<Mutex<UnclaimedFiles>> = Arc::new(Mutex::new(UnclaimedFiles::new(HashMap::new(), HashMap::new())));
 }
 
 #[tokio::main]
@@ -40,64 +40,42 @@ async fn main() {
         }
     }
 
-    let root = warp::get().and(
-        warp::fs::dir("/git/pchan/frontend/tempdist")
-            .or(warp::fs::file("/git/pchan/frontend/tempdist/index.html")),
-    );
+    let root = warp::get().and(warp::fs::dir("/git/pchan/frontend/tempdist").or(warp::fs::file("/git/pchan/frontend/tempdist/index.html")));
 
-    let unauthorized = warp::path!("unauthorized")
-        .and(warp::get())
-        .and(warp::fs::file(
-            "/git/pchan/frontend/tempdist/unauthorized.html",
-        ));
+    let unauthorized = warp::path!("unauthorized").and(warp::get()).and(warp::fs::file("/git/pchan/frontend/tempdist/unauthorized.html"));
 
     let routes = endpoints::api::priveleged_api_endpoints().or(filters::valid_token()
         .and(endpoints::api::api_endpoints().or(root))
         .or(endpoints::other_endpoints())
         .or(unauthorized)
-        .or(warp::any()
-            .and(warp::cookie::optional::<String>("token"))
-            .then(|token: Option<String>| async move {
-                match token {
-                    None => Ok(warp::http::Response::builder()
-                        .status(401)
-                        .body("Invalid token, navigate to /login to login again.".to_owned())
-                        .unwrap()),
-                    Some(_) => Ok(warp::http::Response::builder()
-                        .header("Location", "/unauthorized")
-                        .status(302)
-                        .body("".to_owned())
-                        .unwrap()),
-                }
-            })));
+        .or(warp::any().and(warp::cookie::optional::<String>("token")).then(|token: Option<String>| async move {
+            match token {
+                None => Ok(warp::http::Response::builder()
+                    .status(401)
+                    .body("Invalid token, or if this was an api endpoint the data you passed was invalid, either way you can feck off".to_owned())
+                    .unwrap()),
+                Some(_) => Ok(warp::http::Response::builder().header("Location", "/unauthorized").status(302).body("".to_owned()).unwrap()),
+            }
+        })));
     let (sendkill, kill) = tokio::sync::oneshot::channel::<()>();
     let (killreply, killrecv) = tokio::sync::oneshot::channel::<()>();
-    let (_, server) =
-        warp::serve(routes).bind_with_graceful_shutdown(([0, 0, 0, 0], 16835), async {
-            let _ = kill.await;
-            let _ = killreply.send(());
-            println!("Shutting down Warp server");
-        });
+    let (_, server) = warp::serve(routes).bind_with_graceful_shutdown(([0, 0, 0, 0], 16835), async {
+        let _ = kill.await;
+        let _ = killreply.send(());
+        println!("Shutting down Warp server");
+    });
     tokio::spawn(server);
+
+    let mut trim_files = tokio::time::interval(std::time::Duration::from_secs(*statics::TRIM_TIME));
 
     loop {
         tokio::select! {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            _ = trim_files.tick() => {
+                println!("Trimming files");
+                if let Err(e) = UNCLAIMED_FILES.lock().await.trim_files().await {
+                    println!("Error trimming files: {e}");
+                }
+            }
             _ = tokio::signal::ctrl_c() => {
                 println!("Received SIGINT");
                 break;
