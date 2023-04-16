@@ -24,7 +24,7 @@ pub struct StringsMemory {
 impl StringsMemory {
     async fn save(&mut self) -> Result<()> {
         let mut file = tokio::fs::File::create("data.bin.gz").await?;
-        // file.write_all(serde_json::to_string(&self)?.as_bytes())
+
         let mut e = GzEncoder::new(Vec::new(), flate2::Compression::default());
         e.write_all(&postcard::to_allocvec(&self)?)?;
         file.write_all(e.finish()?.as_slice()).await?;
@@ -33,9 +33,7 @@ impl StringsMemory {
 
     async fn load(&mut self) -> Result<()> {
         let mut file = tokio::fs::File::open("data.bin.gz").await?;
-        // let mut data = String::new();
-        // file.read_to_string(&mut data).await?;
-        // *self = serde_json::from_str(&data)?;
+
         let mut buf = Vec::new();
         file.read_to_end(&mut buf).await?;
         let mut gz = GzDecoder::new(buf.as_slice());
@@ -49,12 +47,10 @@ impl StringsMemory {
 #[async_trait::async_trait]
 impl Strings for StringsMemory {
     async fn close(&mut self) -> Result<()> {
-        // serialize the data to a file
         self.save().await
     }
 
     async fn open(&mut self) -> Result<()> {
-        // deserialize the data from a file
         self.load().await
     }
 
@@ -64,9 +60,9 @@ impl Strings for StringsMemory {
             .strings
             .entry(rawstring.clone())
             .or_insert_with(Vec::new);
-        // push the time to the string vector
+
         data.push(string.time);
-        // push the time to the total vector
+
         self.total.push(string.time);
         Ok(())
     }
@@ -102,16 +98,15 @@ impl Strings for StringsMemory {
                 data.len() as f64,
             )
         };
-        // get the amount of shares CURRENTLY owned by all users
+
         let owned_shares = if let Some(s) = self.shares.get(&string) {
             s.values().sum()
         } else {
             0
         };
         let shares = if shares < owned_shares {
-            // figure out the percentage difference between where the shares should be and where they are (EX: 50 shares, 100 owned, = 2.0)
             let percent = shares as f64 / owned_shares as f64;
-            // multiply the value by the percentage
+
             value *= percent;
             0
         } else {
@@ -126,7 +121,6 @@ impl Strings for StringsMemory {
         Ok(StringData {
             string,
             available_shares: ((shares as f64 / self.total.len() as f64)
-                // * *statics::TOTAL_SHARES as f64)
                 * (self.strings.len() as f64 * 10.))
                 .floor() as u64,
             value,
@@ -139,7 +133,6 @@ impl Strings for StringsMemory {
     }
 
     async fn trim(&mut self) -> Result<()> {
-        // remove all strings outside of the largest time window
         let now = std::time::SystemTime::now()
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
@@ -159,7 +152,7 @@ impl Strings for StringsMemory {
         for rm in remove {
             self.strings.remove(&rm);
         }
-        // remove all times outside of the largest time window
+
         self.total.retain(|t| *t + *statics::SHARE_TIME > now);
         Ok(())
     }
@@ -169,15 +162,14 @@ impl Strings for StringsMemory {
             .duration_since(std::time::UNIX_EPOCH)
             .unwrap()
             .as_secs();
-        // self.trim().await?;
+
         let mut history = self.history.clone();
         for (string, _data) in self.strings.iter() {
             let data = self.get(string.clone()).await?;
             let h = history.entry(string.clone()).or_insert_with(Vec::new);
-            // get the last value in the history (one with the highest time)
+
             let last = data.history.iter().max_by_key(|t| t.time).map(|t| t.thing);
             if let Some(last) = last {
-                // if the last value is the same as the current value, dont add it to the history
                 if last == data.value {
                     continue;
                 }
@@ -193,7 +185,6 @@ impl Strings for StringsMemory {
     }
 
     async fn add_dirty(&mut self, string: Timed<String>) -> Result<()> {
-        // replace all characters that arent abcdefghijklmnopqrstuvwxyz' with spaces
         let (string, t) = string.split();
         let strings = string
             .to_lowercase()
@@ -225,7 +216,7 @@ impl Strings for StringsMemory {
         } else {
             return Err(anyhow!("User not found"));
         };
-        // search through all the shares and get the amount of shares owned by the user for each string
+
         let shares = self
             .shares
             .iter()
@@ -233,7 +224,7 @@ impl Strings for StringsMemory {
                 users.get(&user_id).map(|amount| (string.clone(), *amount))
             })
             .collect::<HashMap<String, u64>>();
-        // get the value of all the shares owned by the user
+
         let mut share_data = HashMap::new();
         for (string, amount) in shares.iter() {
             let data = self.get(string.clone()).await?;
@@ -303,7 +294,6 @@ impl Strings for StringsMemory {
     }
 
     async fn whitelist(&mut self, user_id: String) -> Result<()> {
-        // if the user is already whitelisted, return Ok(())
         if !self.whitelist.contains(&user_id) {
             self.whitelist.push(user_id);
         }
@@ -311,7 +301,6 @@ impl Strings for StringsMemory {
     }
 
     async fn unwhitelist(&mut self, user_id: String) -> Result<()> {
-        // if the user is not whitelisted, return Ok(())
         if let Some(i) = self.whitelist.iter().position(|u| *u == user_id) {
             self.whitelist.remove(i);
         }

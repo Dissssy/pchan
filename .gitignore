@@ -6,3 +6,6 @@ frontend/dist
 frontend/res
 frontend/index.html
 Cargo.lock
+backend/migrations
+backend/auth.bin.gz
+backend/profanity_en.csv

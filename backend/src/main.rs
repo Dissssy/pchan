@@ -1,35 +1,33 @@
-#![allow(clippy::box_default)]
 use std::sync::Arc;
+
+use diesel_async::pooled_connection::deadpool::Pool;
+use diesel_async::pooled_connection::AsyncDieselConnectionManager;
+use diesel_async::AsyncPgConnection;
 
 use tokio::sync::Mutex;
 use warp::Filter;
 
-// pub mod datahandlers;
 mod database;
 mod endpoints;
 mod filters;
+pub mod schema;
 mod statics;
-// pub mod structs;
-// pub mod traits;
 
-use common::format_seconds;
-
-// use crate::endpoints::{api::private_endpoints, other_endpoints, priveleged::priveleged_endpoints};
+use crate::database::Users;
+use profanity::Profanity;
 
 lazy_static::lazy_static! {
-    pub static ref DATA: Arc<Mutex<database::DBConnection>> = Arc::new(Mutex::new(database::DBConnection::new("localhost".to_owned(), 5432, "pchan".to_owned(), "pchan".to_owned(), "pchan".to_owned())));
+    pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
+    pub static ref DATA: Arc<Mutex<Users>> = Arc::new(Mutex::new(Users::new().unwrap()));
+    pub static ref PROFANITY: Arc<Profanity> = Arc::new(Profanity::load_csv("./profanity_en.csv").expect("Failed to load profanity list"));
 }
 
 #[tokio::main]
 async fn main() {
     env_logger::init();
     println!("Starting backend with:");
-    // println!("SHARE_TIME: {}", format_seconds(*statics::SHARE_TIME));
-    // println!("VALUE_TIME: {}", format_seconds(*statics::VALUE_TIME));
-    // println!("TRIM_TIME: {}", format_seconds(*statics::TRIM_TIME));
-    // println!("HISTORY_TIME: {}", format_seconds(*statics::HISTORY_TIME));
-    // // println!("TOTAL_SHARES: {}", *statics::TOTAL_SHARES);
-    // println!("STARTING_CASH: {}", *statics::STARTING_CASH);
+
+    println!("PROFANITY CHECK: {:?}", PROFANITY.check_profanity("FUCK"));
 
     {
         if let Err(e) = DATA.lock().await.open().await {
@@ -37,53 +35,63 @@ async fn main() {
         }
     }
 
-    let root = warp::get()
-        .and(warp::fs::dir("../frontend/dist").or(warp::fs::file("../frontend/dist/index.html")));
+    let root = warp::get().and(
+        warp::fs::dir("/git/pchan/frontend/dist")
+            .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
+    );
 
-    // let routes = priveleged_endpoints()
-    //     .or(private_endpoints())
-    //     .or(other_endpoints())
-    //     .or(root);
+    let unauthorized = warp::path!("unauthorized")
+        .and(warp::get())
+        .and(warp::fs::file("/git/pchan/frontend/dist/unauthorized.html"));
+
+    let routes = endpoints::api::priveleged_api_endpoints().or(filters::valid_token()
+        .and(endpoints::api::api_endpoints().or(root))
+        .or(endpoints::other_endpoints())
+        .or(unauthorized)
+        .or(warp::any()
+            .and(warp::cookie::optional::<String>("token"))
+            .then(|token: Option<String>| async move {
+                match token {
+                    None => Ok(warp::http::Response::builder()
+                        .header("Location", "/login")
+                        .status(302)
+                        .body("".to_owned())
+                        .unwrap()),
+                    Some(_) => Ok(warp::http::Response::builder()
+                        .header("Location", "/unauthorized")
+                        .status(302)
+                        .body("".to_owned())
+                        .unwrap()),
+                }
+            })));
     let (sendkill, kill) = tokio::sync::oneshot::channel::<()>();
     let (killreply, killrecv) = tokio::sync::oneshot::channel::<()>();
-    let (_, server) = warp::serve(
-        filters::valid_token()
-            .and(endpoints::api::api_endpoints().or(root))
-            .or(endpoints::other_endpoints())
-            .or(warp::any().then(|| async move {
-                Ok(warp::http::Response::builder()
-                    .header("Location", "/login")
-                    .status(302)
-                    .body("".to_owned())
-                    .unwrap())
-            })),
-    )
-    .bind_with_graceful_shutdown(([0, 0, 0, 0], 16835), async {
-        let _ = kill.await;
-        let _ = killreply.send(());
-        println!("Shutting down Warp server");
-    });
+    let (_, server) =
+        warp::serve(routes).bind_with_graceful_shutdown(([0, 0, 0, 0], 16835), async {
+            let _ = kill.await;
+            let _ = killreply.send(());
+            println!("Shutting down Warp server");
+        });
     tokio::spawn(server);
 
-    let mut trim = tokio::time::interval(std::time::Duration::from_secs(*statics::TRIM_TIME));
     loop {
         tokio::select! {
-            _ = trim.tick() => {
-                {
-                    let mut data = DATA.lock().await;
-                    if let Err(e) = data.trim().await {
-                        println!("Error: {e}");
-                    }
-                }
-            }
-            // _ = history.tick() => {
-            //     {
-            //         let mut data = DATA.lock().await;
-            //         if let Err(e) = data.make_history().await {
-            //             println!("Error: {e}");
-            //         }
-            //     }
-            // }
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
             _ = tokio::signal::ctrl_c() => {
                 println!("Received SIGINT");
                 break;
