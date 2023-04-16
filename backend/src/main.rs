@@ -36,13 +36,15 @@ async fn main() {
     }
 
     let root = warp::get().and(
-        warp::fs::dir("/git/pchan/frontend/dist")
-            .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
+        warp::fs::dir("/git/pchan/frontend/tempdist")
+            .or(warp::fs::file("/git/pchan/frontend/tempdist/index.html")),
     );
 
     let unauthorized = warp::path!("unauthorized")
         .and(warp::get())
-        .and(warp::fs::file("/git/pchan/frontend/dist/unauthorized.html"));
+        .and(warp::fs::file(
+            "/git/pchan/frontend/tempdist/unauthorized.html",
+        ));
 
     let routes = endpoints::api::priveleged_api_endpoints().or(filters::valid_token()
         .and(endpoints::api::api_endpoints().or(root))
@@ -53,9 +55,8 @@ async fn main() {
             .then(|token: Option<String>| async move {
                 match token {
                     None => Ok(warp::http::Response::builder()
-                        .header("Location", "/login")
-                        .status(302)
-                        .body("".to_owned())
+                        .status(401)
+                        .body("Invalid token, navigate to /login to login again.".to_owned())
                         .unwrap()),
                     Some(_) => Ok(warp::http::Response::builder()
                         .header("Location", "/unauthorized")
