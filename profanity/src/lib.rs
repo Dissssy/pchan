@@ -11,19 +11,24 @@ impl Profanity {
         let mut rdr = csv::Reader::from_path(path)?;
         let mut list = Vec::new();
         for result in rdr.deserialize() {
-            let record: ProfanityWord = result?;
+            let mut record: ProfanityWord = result?;
+            record.word = record.word.to_lowercase();
             list.push(record);
         }
         Ok(Profanity { list })
     }
-    pub fn check_profanity(&self, text: &str) -> Option<ProfanityWord> {
+    pub fn check_profanity(&self, text: &str) -> Vec<ProfanityWord> {
         let text = text.to_lowercase();
-        for word in self.list.iter() {
-            if text.contains(&word.word) {
-                return Some(word.clone());
-            }
-        }
-        None
+        self.list
+            .iter()
+            .flat_map(|x| {
+                if text.contains(&x.word) {
+                    Some(x.clone())
+                } else {
+                    None
+                }
+            })
+            .collect()
     }
     pub fn get_all(&self, category: Category) -> Vec<ProfanityWord> {
         self.list

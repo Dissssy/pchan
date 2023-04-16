@@ -16,7 +16,9 @@ pub struct Users {
 
 impl Users {
     pub fn new() -> Result<Self> {
-        Ok(Self { valid_users: vec![] })
+        Ok(Self {
+            valid_users: vec![],
+        })
     }
     pub async fn open(&mut self) -> Result<()> {
         if let Ok(auth) = tokio::fs::read("./auth.bin.gz").await {
@@ -58,35 +60,65 @@ impl Users {
 pub struct Database;
 
 impl Database {
-    pub async fn create_board(conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, new_discriminator: String, new_name: String) -> Result<()> {
+    pub async fn create_board(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        new_discriminator: String,
+        new_name: String,
+    ) -> Result<()> {
         use crate::schema::boards::dsl::*;
 
-        insert_into(boards).values((discriminator.eq(new_discriminator), name.eq(new_name))).execute(conn).await?;
+        insert_into(boards)
+            .values((discriminator.eq(new_discriminator), name.eq(new_name)))
+            .execute(conn)
+            .await?;
         Ok(())
     }
-    pub async fn get_boards(conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>) -> Result<Vec<crate::schema::Board>> {
+    pub async fn get_boards(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    ) -> Result<Vec<crate::schema::Board>> {
         use crate::schema::boards::dsl::*;
 
-        let results = boards.order(name.desc()).load::<crate::schema::Board>(&mut *conn).await?;
+        let results = boards
+            .order(name.desc())
+            .load::<crate::schema::Board>(&mut *conn)
+            .await?;
         Ok(results)
     }
 
-    pub async fn get_board(conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, discim: String) -> Result<crate::schema::Board> {
+    pub async fn get_board(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        discim: String,
+    ) -> Result<crate::schema::Board> {
         use crate::schema::boards::dsl::*;
 
-        let results = boards.filter(discriminator.eq(discim)).first::<crate::schema::Board>(&mut *conn).await?;
+        let results = boards
+            .filter(discriminator.eq(discim))
+            .first::<crate::schema::Board>(&mut *conn)
+            .await?;
         Ok(results)
     }
 
-    pub async fn get_post(conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, discrim: String, number: i64) -> Result<crate::schema::SafePost> {
+    pub async fn get_post(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        discrim: String,
+        number: i64,
+    ) -> Result<crate::schema::SafePost> {
         use crate::schema::posts::dsl::*;
 
         let this_board = Self::get_board(conn, discrim).await?;
-        let results = posts.filter(board.eq(this_board.id)).filter(post_number.eq(number)).first::<crate::schema::Post>(&mut *conn).await?;
+        let results = posts
+            .filter(board.eq(this_board.id))
+            .filter(post_number.eq(number))
+            .first::<crate::schema::Post>(&mut *conn)
+            .await?;
         results.safe(conn).await
     }
 
-    pub async fn get_thread(conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, discrim: String, number: i64) -> Result<crate::schema::ThreadWithPosts> {
+    pub async fn get_thread(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        discrim: String,
+        number: i64,
+    ) -> Result<crate::schema::ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
         let this_board = Self::get_board(conn, discrim.clone()).await?;
         let this_post = Self::get_post(conn, discrim, number).await?;
@@ -98,16 +130,32 @@ impl Database {
         results.with_posts(conn).await
     }
 
-    pub async fn get_thread_from_post_number(conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, bboard: i64, number: i64) -> Result<crate::schema::ThreadWithPosts> {
+    pub async fn get_thread_from_post_number(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        bboard: i64,
+        number: i64,
+    ) -> Result<crate::schema::ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
         let this_post = Self::get_post_from_post_number(conn, bboard, number).await?;
-        let results = threads.filter(board.eq(bboard)).filter(post_id.eq(this_post.id)).first::<crate::schema::Thread>(&mut *conn).await?;
+        let results = threads
+            .filter(board.eq(bboard))
+            .filter(post_id.eq(this_post.id))
+            .first::<crate::schema::Thread>(&mut *conn)
+            .await?;
         results.with_posts(conn).await
     }
 
-    pub async fn get_post_from_post_number(conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, bboard: i64, number: i64) -> Result<crate::schema::SafePost> {
+    pub async fn get_post_from_post_number(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        bboard: i64,
+        number: i64,
+    ) -> Result<crate::schema::SafePost> {
         use crate::schema::posts::dsl::*;
-        let results = posts.filter(board.eq(bboard)).filter(post_number.eq(number)).first::<crate::schema::Post>(&mut *conn).await?;
+        let results = posts
+            .filter(board.eq(bboard))
+            .filter(post_number.eq(number))
+            .first::<crate::schema::Post>(&mut *conn)
+            .await?;
         results.safe(conn).await
     }
 
@@ -125,7 +173,15 @@ impl Database {
             .get_result::<crate::schema::Thread>(conn)
             .await?;
 
-        let p = Self::create_post(conn, this_board.id, tboard, t.id, threadinfo.post, actual_author).await?;
+        let p = Self::create_post(
+            conn,
+            this_board.id,
+            tboard,
+            t.id,
+            threadinfo.post,
+            actual_author,
+        )
+        .await?;
         t.post_id = p.id;
         t.with_posts(conn).await
     }
@@ -185,7 +241,13 @@ impl Database {
         }
 
         let img = match post.image {
-            Some(img) => Some(crate::UNCLAIMED_FILES.lock().await.claim_file(&img).await?),
+            Some(img) => Some(
+                crate::UNCLAIMED_FILES
+                    .lock()
+                    .await
+                    .claim_file(&img, tactual_author.clone())
+                    .await?,
+            ),
             None => None,
         };
 
@@ -200,10 +262,19 @@ impl Database {
             timestamp.eq(now),
             actual_author.eq(tactual_author),
         ));
-        println!("{:?}", diesel::debug_query(&t));
+        // println!("{:?}", diesel::debug_query(&t));
         let t = t.get_result::<crate::schema::Post>(conn).await?;
 
         t.safe(conn).await
+    }
+
+    pub async fn get_all_files(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    ) -> Result<Vec<Option<String>>> {
+        use crate::schema::posts::dsl::*;
+        use diesel::query_dsl::methods::SelectDsl;
+        let results = posts.select(image).load::<Option<String>>(conn).await?;
+        Ok(results)
     }
 }
 
