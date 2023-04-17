@@ -163,6 +163,11 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::header::<Bearer>("authorization"))
         .and_then({
             |disc: String, thread: CreateThread, auth: Bearer| async move {
+                if thread.post.image.is_none() {
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"No image provided".to_owned(),
+                    ));
+                }
                 match crate::database::Database::create_thread(
                     &mut crate::POOL.get().await.unwrap(),
                     disc,
@@ -344,6 +349,17 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // GET / - returns the user's token
+
+    let gettoken = warp::path!("api" / "v1")
+        .and(warp::get())
+        .and(warp::cookie("token"))
+        .and_then({
+            |token: String| async move {
+                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&token))
+            }
+        });
+
     getpost
         .or(postinthread)
         .or(getthread)
@@ -351,6 +367,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .or(getboard)
         .or(getboards)
         .or(uploadfile)
+        .or(gettoken)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

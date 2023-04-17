@@ -43,8 +43,8 @@ async fn main() {
 
     let root = warp::get().and(
         warp::fs::dir(env!("FILE_STORAGE_PATH"))
-            .or(warp::fs::dir("/git/pchan/frontend/tempdist"))
-            .or(warp::fs::file("/git/pchan/frontend/tempdist/index.html")),
+            .or(warp::fs::dir("/git/pchan/frontend/dist"))
+            .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
     );
 
     let unauthorized = warp::path!("unauthorized")
@@ -117,7 +117,7 @@ async fn main() {
                             println!("Error getting files from database: {e}");
                             continue;
                         }
-                    }.iter().flatten().cloned().collect::<Vec<String>>();
+                    }.iter().flatten().flat_map(|x| vec![x.replace("/full/", "/thumb/"), x.clone()]).collect::<Vec<String>>();
 
                     // get a list of all files that are not in the database.
                     let files_to_delete = files.iter().filter(|x| !files_in_db.contains(x)).cloned().collect::<Vec<String>>().iter().map(|x| format!("{dir}{x}")).collect::<Vec<String>>();

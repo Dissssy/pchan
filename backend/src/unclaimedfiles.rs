@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
+use thumbnailer::{create_thumbnails, ThumbnailSize};
 
 pub struct UnclaimedFiles {
     pub files: HashMap<String, (String, File, tokio::time::Instant)>,
@@ -36,21 +37,47 @@ impl UnclaimedFiles {
                 if tid != id {
                     return Err(anyhow!("Invalid id"));
                 }
-                let folder_path =
-                    format!("{}/files/{}s/", env!("FILE_STORAGE_PATH"), file.extension);
+                let folder_path = format!(
+                    "{}/files/full/{}s/",
+                    env!("FILE_STORAGE_PATH"),
+                    file.extension
+                );
                 tokio::fs::create_dir_all(folder_path).await?;
                 let mut universalpath =
-                    format!("/files/{}s/{}.{}", file.extension, id, file.extension);
+                    format!("/files/full/{}s/{}.{}", file.extension, id, file.extension);
                 let mut filepath =
                     format!("{}{}", env!("FILE_STORAGE_PATH"), universalpath.clone());
                 let mut num = 0;
                 while tokio::fs::metadata(filepath.clone()).await.is_ok() {
                     num += 1;
-                    universalpath =
-                        format!("/files/{}s/{}{num}.{}", file.extension, id, file.extension);
+                    universalpath = format!(
+                        "/files/full/{}s/{}{num}.{}",
+                        file.extension, id, file.extension
+                    );
                     filepath = format!("{}{}", env!("FILE_STORAGE_PATH"), universalpath.clone());
                 }
-                tokio::fs::write(filepath, file.data).await?;
+                tokio::fs::write(filepath.clone(), file.data).await?;
+
+                // tokio spawn blocking thread to create thumbnails
+                let umm = file.extension.clone();
+                let nid = id.to_owned();
+                let handle = tokio::task::spawn_blocking(move || {
+                    let file = std::fs::File::open(filepath.clone())?;
+                    let reader = std::io::BufReader::new(file);
+                    let mut thumbnails =
+                        create_thumbnails(reader, mime::IMAGE_PNG, [ThumbnailSize::Small])?;
+                    let thumb = thumbnails
+                        .pop()
+                        .ok_or(anyhow!("Failed to create thumbnail for file {}", filepath))?;
+                    let mut buf = std::io::Cursor::new(Vec::new());
+                    thumb.write_png(&mut buf)?;
+                    let newpath = filepath.replace("full", "thumb");
+                    std::fs::create_dir_all(newpath.replace(&format!("/{nid}.{umm}"), ""))?;
+                    Ok::<(String, Vec<u8>), anyhow::Error>((newpath, buf.into_inner()))
+                });
+                let (location, data) = handle.await??;
+                tokio::fs::write(location, data).await?;
+
                 Ok(universalpath)
             }
             None => Err(anyhow!("File not found")),

@@ -17,3 +17,7 @@ yew-router = "0.17.0"
 common = { path = "../common" }
 gloo = "0.8.0"
 stylist = { version = "0.12.0", features = ["yew", "yew_integration"] }
+wasm-bindgen = "0.2.84"
+wasm-cookies = "0.2.1"
+gloo-file = "0.2.3"
+js-sys = "0.3.61"
