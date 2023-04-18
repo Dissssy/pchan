@@ -178,7 +178,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 {
                     Ok(thread) => {
                         *crate::MANUAL_FILE_TRIM.lock().await = true;
-                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&thread))
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                            &thread.thread_post,
+                        ))
                     }
                     Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
@@ -272,7 +274,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let uploadfile = warp::path!("api" / "v1" / "file")
         .and(warp::post())
-        .and(warp::multipart::form())
+        .and(warp::multipart::form().max_length(1024 * 1024 * 100))
         .and(warp::header::<Bearer>("authorization"))
         .and_then({
             |mut form: warp::multipart::FormData, auth: Bearer| async move {
@@ -287,34 +289,32 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 while let Ok(Some(p)) = form.try_next().await {
                     if p.name() == "file" {
                         use bytes::BufMut;
-                        let content_type = p.content_type();
                         let file_ending;
-                        match content_type {
-                            Some(ct) => match ct {
-                                "image/png" => {
-                                    file_ending = "png";
+                        {
+                            let content_type = p.content_type().map(|s| s.to_string());
+                            match content_type {
+                                Some(ct) => {
+                                    // match ct.split('.').map(|s| s.to_string()).last() {
+                                    // Some(ending) => {
+                                    //     file_ending = ending;
+                                    // }
+                                    // None => {
+                                    //     return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                    //         warp::reply::json(&format!("Invalid file type: {ct}")),
+                                    //     );
+                                    // }
+                                    // }
+                                    file_ending = ct;
                                 }
-                                "image/jpeg" => {
-                                    file_ending = "jpg";
-                                }
-                                "image/gif" => {
-                                    file_ending = "gif";
-                                }
-                                _ => {
+                                None => {
                                     return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                        warp::reply::json(&format!("Invalid file type: {ct}")),
+                                        warp::reply::json(&"File has no content type"),
                                     );
                                 }
-                            },
-                            None => {
-                                return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                    warp::reply::json(&"File has no content type"),
-                                );
                             }
                         }
-
-                        let value = match p
-                            .stream()
+                        let pstream = p.stream();
+                        let value = match pstream
                             .try_fold(Vec::new(), |mut acc, data| {
                                 acc.put(data);
                                 async move { Ok(acc) }

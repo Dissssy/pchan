@@ -117,13 +117,16 @@ async fn main() {
                             println!("Error getting files from database: {e}");
                             continue;
                         }
-                    }.iter().flatten().flat_map(|x| vec![x.replace("/full/", "/thumb/"), x.clone()]).collect::<Vec<String>>();
+                    }.iter().flatten().flat_map(|x| vec![format!("{x}-thumb.jpg"), x.clone()]).collect::<Vec<String>>();
 
                     // get a list of all files that are not in the database.
                     let files_to_delete = files.iter().filter(|x| !files_in_db.contains(x)).cloned().collect::<Vec<String>>().iter().map(|x| format!("{dir}{x}")).collect::<Vec<String>>();
 
+                    println!("{:?}", files);
+                    println!("{:?}", files_in_db);
                     // delete all files that are not in the database.
                     for file in files_to_delete {
+                        // println!("Deleting file {file}");
                         if let Err(e) = tokio::fs::remove_file(file.clone()).await {
                             println!("Error deleting file {file}: {e}");
                         }

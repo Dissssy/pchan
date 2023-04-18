@@ -37,48 +37,70 @@ impl UnclaimedFiles {
                 if tid != id {
                     return Err(anyhow!("Invalid id"));
                 }
-                let folder_path = format!(
-                    "{}/files/full/{}s/",
-                    env!("FILE_STORAGE_PATH"),
-                    file.extension
-                );
-                tokio::fs::create_dir_all(folder_path).await?;
-                let mut universalpath =
-                    format!("/files/full/{}s/{}.{}", file.extension, id, file.extension);
-                let mut filepath =
-                    format!("{}{}", env!("FILE_STORAGE_PATH"), universalpath.clone());
-                let mut num = 0;
-                while tokio::fs::metadata(filepath.clone()).await.is_ok() {
-                    num += 1;
-                    universalpath = format!(
-                        "/files/full/{}s/{}{num}.{}",
-                        file.extension, id, file.extension
-                    );
-                    filepath = format!("{}{}", env!("FILE_STORAGE_PATH"), universalpath.clone());
+                let filetype = file
+                    .extension
+                    .split('/')
+                    .last()
+                    .ok_or(anyhow!("Invalid file type, mimetype is effed"))?;
+                let universalfolderpath = format!("/files/{}/", file.extension);
+                let mut universalfilepath = format!("{}{}.{}", universalfolderpath, id, filetype);
+
+                let mut diskfilepath =
+                    format!("{}{}", env!("FILE_STORAGE_PATH"), universalfilepath.clone());
+
+                println!("{}", diskfilepath);
+                println!("{}", universalfilepath);
+                println!("{}", universalfolderpath);
+                {
+                    // disc actions
+                    let folders = format!("{}{}", env!("FILE_STORAGE_PATH"), universalfolderpath);
+                    tokio::fs::create_dir_all(folders).await?;
+
+                    let mut num = 0;
+                    while tokio::fs::metadata(diskfilepath.clone()).await.is_ok() {
+                        num += 1;
+                        universalfilepath =
+                            format!("/files/{}/{}{num}.{}", file.extension, id, file.extension);
+                        diskfilepath =
+                            format!("{}{}", env!("FILE_STORAGE_PATH"), universalfilepath.clone());
+                    }
+                    tokio::fs::write(diskfilepath.clone(), file.data).await?;
                 }
-                tokio::fs::write(filepath.clone(), file.data).await?;
-
                 // tokio spawn blocking thread to create thumbnails
-                let umm = file.extension.clone();
-                let nid = id.to_owned();
-                let handle = tokio::task::spawn_blocking(move || {
-                    let file = std::fs::File::open(filepath.clone())?;
-                    let reader = std::io::BufReader::new(file);
-                    let mut thumbnails =
-                        create_thumbnails(reader, mime::IMAGE_PNG, [ThumbnailSize::Small])?;
-                    let thumb = thumbnails
-                        .pop()
-                        .ok_or(anyhow!("Failed to create thumbnail for file {}", filepath))?;
-                    let mut buf = std::io::Cursor::new(Vec::new());
-                    thumb.write_png(&mut buf)?;
-                    let newpath = filepath.replace("full", "thumb");
-                    std::fs::create_dir_all(newpath.replace(&format!("/{nid}.{umm}"), ""))?;
-                    Ok::<(String, Vec<u8>), anyhow::Error>((newpath, buf.into_inner()))
-                });
-                let (location, data) = handle.await??;
-                tokio::fs::write(location, data).await?;
+                let handle = tokio::task::spawn(async move {
+                    let thumbpath = format!("{diskfilepath}-thumb.jpg");
+                    // use the ffmpeg command `ffmpeg -i {file} -r 1 -vf scale=80:-2 -frames:v 1 {id}.jpg -y` to create a thumbnail for the file. return a result of the filepath OR an error if it is not created. so we can delete the file and reject the post with an invalid file error
+                    let output = tokio::process::Command::new("ffmpeg")
+                        .args(["-i", &diskfilepath])
+                        .args(["-r", "1"])
+                        .args(["-vf", "scale=80:-2"])
+                        .args(["-frames:v", "1"])
+                        .arg(&thumbpath)
+                        .arg("-y")
+                        .output()
+                        .await;
 
-                Ok(universalpath)
+                    if output.is_ok() {
+                        // check if the file was created
+                        if tokio::fs::metadata(thumbpath.clone()).await.is_ok() {
+                            Ok(thumbpath)
+                        } else {
+                            Err(diskfilepath)
+                        }
+                    } else {
+                        Err(diskfilepath)
+                    }
+                });
+                let path = match handle.await? {
+                    Ok(path) => path,
+                    Err(f) => {
+                        // remove the file
+                        tokio::fs::remove_file(f).await?;
+                        return Err(anyhow!("Invalid file"));
+                    }
+                };
+                println!("Thumbnail created at {path}");
+                Ok(universalfilepath)
             }
             None => Err(anyhow!("File not found")),
         }

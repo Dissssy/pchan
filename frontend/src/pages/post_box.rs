@@ -1,4 +1,3 @@
-use gloo_storage::Storage;
 use serde::{Deserialize, Serialize};
 
 use yew::prelude::*;
@@ -66,10 +65,10 @@ pub fn PostBox(props: &Props) -> Html {
 
     let pending = use_state(|| false);
 
-    let mvpost_text = post_text.clone();
-    let mvname = name.clone();
-    let mvfile = file.clone();
-    let mvtoken = token.clone();
+    let mvpost_text = post_text;
+    let mvname = name;
+    let mvfile = file;
+    let mvtoken = token;
     let mvprops = props.clone();
     let submit_post = Callback::from(move |_| {
         let mvtoken = mvtoken.clone();
@@ -92,13 +91,23 @@ pub fn PostBox(props: &Props) -> Html {
                     let form_data = web_sys::FormData::new().unwrap();
                     form_data.append_with_blob("file", f).unwrap();
 
-                    let res = gloo_net::http::Request::post("/api/v1/file")
+                    let res = match gloo_net::http::Request::post("/api/v1/file")
                         .header("authorization", &format!("Bearer {token}"))
                         .body(&form_data)
                         .send()
                         .await
-                        .unwrap();
-                    let file_id = res.json::<String>().await.unwrap();
+                    {
+                        Ok(res) => res,
+                        Err(e) => {
+                            gloo::console::log!(format!("{e:?}"));
+                            pclone.set(false);
+                            return;
+                        }
+                    };
+                    let file_id = res
+                        .json::<String>()
+                        .await
+                        .unwrap_or_else(|_| " UUUHJHHH MY PSUSSY".to_owned());
                     if file_id.contains(' ') {
                         gloo::console::log!("file upload failed");
                         pclone.set(false);
@@ -118,7 +127,8 @@ pub fn PostBox(props: &Props) -> Html {
                     author: name_to_post.clone(),
                 };
                 let board_discriminator = mvprops.board_discriminator.clone();
-                if let Some(thread_id) = mvprops.thread_id {
+                let thread_id = mvprops.thread_id.clone();
+                let res = if let Some(thread_id) = mvprops.thread_id {
                     // we are replying to a thread, post to /api/v1/board/{board_discriminator}/{thread_id}
                     let url = format!("/api/v1/board/{board_discriminator}/{thread_id}");
 
@@ -126,11 +136,9 @@ pub fn PostBox(props: &Props) -> Html {
                         .header("authorization", &format!("Bearer {token}"))
                         .json(&data_to_send)
                         .unwrap();
-                    gloo::console::log!(format!("posting to {:?}", res));
                     let res = res.send().await.unwrap();
 
-                    let respons = res.text().await.unwrap();
-                    gloo::console::log!("response: {:?}", respons);
+                    res
                 } else {
                     // we are creating a new thread, post to /api/v1/board/{board_discriminator}
                     let data_to_send = PostThread { post: data_to_send };
@@ -144,9 +152,46 @@ pub fn PostBox(props: &Props) -> Html {
                         .await
                         .unwrap();
 
-                    let respons = res.text().await.unwrap();
-                    gloo::console::log!("response: {:?}", respons);
+                    res
+                };
+
+                let respons = match res.json::<Posted>().await {
+                    Ok(res) => res,
+                    Err(e) => {
+                        gloo::console::log!(format!("{e:?}"));
+                        pclone.set(false);
+                        return;
+                    }
+                };
+                // if we are creating a new thread, we need to redirect to the new thread. otherwise we just need to refresh the page.
+                match thread_id {
+                    Some(_) => match web_sys::window() {
+                        Some(w) => match w.location().reload() {
+                            Ok(_) => {}
+                            Err(e) => {
+                                gloo::console::log!(format!("{e:?}"));
+                            }
+                        },
+                        None => {
+                            gloo::console::log!("no window");
+                        }
+                    },
+                    None => {
+                        let url = format!("/{}/{}", board_discriminator, respons.post_number);
+                        match web_sys::window() {
+                            Some(w) => match w.location().set_href(&url) {
+                                Ok(_) => {}
+                                Err(e) => {
+                                    gloo::console::log!(format!("{e:?}"));
+                                }
+                            },
+                            None => {
+                                gloo::console::log!("no window");
+                            }
+                        }
+                    }
                 }
+
                 pclone.set(false);
             });
         }
@@ -155,10 +200,11 @@ pub fn PostBox(props: &Props) -> Html {
     html! {
         <div class="submission-box">
             <div class="submission-box-header">
-                <h1>{ match props.thread_id {
-                    Some(_) => "Reply",
-                    None => "New Thread",
-                }}</h1>
+                <p>{ match props.thread_id {
+                    // Some(ref t) => format!("Reply >>{t}"),
+                    Some(_) => "Reply".to_owned(),
+                    None => "New Thread".to_owned(),
+                }}</p>
             </div>
             <div class="submission-box-text-inputs">
                 <div class="submission-box-name-input">
@@ -208,4 +254,9 @@ pub struct PostReply {
 #[derive(Serialize, Debug)]
 pub struct PostThread {
     pub post: PostReply,
+}
+
+#[derive(Deserialize, Debug)]
+pub struct Posted {
+    pub post_number: i64,
 }
