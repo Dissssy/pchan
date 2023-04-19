@@ -1,6 +1,5 @@
 use anyhow::{anyhow, Result};
 use std::collections::HashMap;
-use thumbnailer::{create_thumbnails, ThumbnailSize};
 
 pub struct UnclaimedFiles {
     pub files: HashMap<String, (String, File, tokio::time::Instant)>,
@@ -12,13 +11,7 @@ impl UnclaimedFiles {
         Self { files }
     }
 
-    pub async fn add_file(
-        &mut self,
-        extension: String,
-        data: Vec<u8>,
-        token: String,
-    ) -> Result<String> {
-        let file = File::new(extension, data);
+    pub async fn add_file(&mut self, file: File, token: String) -> Result<String> {
         for _ in 0..3 {
             let id = nanoid::nanoid!(16);
             if !self.files.contains_key(&id) {
@@ -37,20 +30,21 @@ impl UnclaimedFiles {
                 if tid != id {
                     return Err(anyhow!("Invalid id"));
                 }
-                let filetype = file
-                    .extension
-                    .split('/')
-                    .last()
-                    .ok_or(anyhow!("Invalid file type, mimetype is effed"))?;
-                let universalfolderpath = format!("/files/{}/", file.extension);
-                let mut universalfilepath = format!("{}{}.{}", universalfolderpath, id, filetype);
+
+                let universalfolderpath = format!("/files/{}/", file.mimetype);
+                let mut universalfilepath = format!("{universalfolderpath}{id}.{}", file.extension);
 
                 let mut diskfilepath =
                     format!("{}{}", env!("FILE_STORAGE_PATH"), universalfilepath.clone());
 
-                println!("{}", diskfilepath);
-                println!("{}", universalfilepath);
-                println!("{}", universalfolderpath);
+                // replace the file extension with the .tmp.{ext}
+                // let mut tempfilepath = diskfilepath.clone().replace(
+                //     &format!(".{}", file.extension),
+                //     &format!(".tmp.{}", file.extension),
+                // );
+                // println!("{}", diskfilepath);
+                // println!("{}", universalfilepath);
+                // println!("{}", universalfolderpath);
                 {
                     // disc actions
                     let folders = format!("{}{}", env!("FILE_STORAGE_PATH"), universalfolderpath);
@@ -60,12 +54,19 @@ impl UnclaimedFiles {
                     while tokio::fs::metadata(diskfilepath.clone()).await.is_ok() {
                         num += 1;
                         universalfilepath =
-                            format!("/files/{}/{}{num}.{}", file.extension, id, file.extension);
+                            format!("/files/{}/{}{}.{}", file.mimetype, id, num, file.extension);
                         diskfilepath =
                             format!("{}{}", env!("FILE_STORAGE_PATH"), universalfilepath.clone());
+                        // tempfilepath = diskfilepath.clone().replace(
+                        //     &format!(".{}", file.extension),
+                        //     &format!(".tmp.{}", file.extension),
+                        // );
                     }
                     tokio::fs::write(diskfilepath.clone(), file.data).await?;
                 }
+
+                // if i can figure it out i want to attempt to reencode the files (to their original file type) to fix any potential issues with the file. this is a very low priority task as it's not my fault if the user uploads a broken file
+
                 // tokio spawn blocking thread to create thumbnails
                 let handle = tokio::task::spawn(async move {
                     let thumbpath = format!("{diskfilepath}-thumb.jpg");
@@ -126,11 +127,59 @@ impl UnclaimedFiles {
 
 pub struct File {
     pub extension: String,
+    pub mimetype: String,
     pub data: Vec<u8>,
 }
 
 impl File {
-    pub fn new(extension: String, data: Vec<u8>) -> Self {
-        Self { extension, data }
+    pub fn new(extension: String, mimetype: String, data: Vec<u8>) -> Self {
+        Self {
+            extension,
+            data,
+            mimetype,
+        }
+    }
+
+    pub fn builder() -> FileBuilder {
+        FileBuilder::new()
+    }
+}
+
+pub struct FileBuilder {
+    extension: Option<String>,
+    mimetype: Option<String>,
+    data: Option<Vec<u8>>,
+}
+
+impl FileBuilder {
+    pub fn new() -> Self {
+        Self {
+            extension: None,
+            mimetype: None,
+            data: None,
+        }
+    }
+
+    pub fn extension(mut self, extension: String) -> Self {
+        self.extension = Some(extension);
+        self
+    }
+
+    pub fn mimetype(mut self, mimetype: String) -> Self {
+        self.mimetype = Some(mimetype);
+        self
+    }
+
+    pub fn data(mut self, data: Vec<u8>) -> Self {
+        self.data = Some(data);
+        self
+    }
+
+    pub fn build(self) -> Result<File> {
+        Ok(File::new(
+            self.extension.ok_or(anyhow!("Missing extension"))?,
+            self.mimetype.ok_or(anyhow!("Missing mimetype"))?,
+            self.data.ok_or(anyhow!("Missing data"))?,
+        ))
     }
 }

@@ -122,8 +122,8 @@ async fn main() {
                     // get a list of all files that are not in the database.
                     let files_to_delete = files.iter().filter(|x| !files_in_db.contains(x)).cloned().collect::<Vec<String>>().iter().map(|x| format!("{dir}{x}")).collect::<Vec<String>>();
 
-                    println!("{:?}", files);
-                    println!("{:?}", files_in_db);
+                    // println!("{:?}", files);
+                    // println!("{:?}", files_in_db);
                     // delete all files that are not in the database.
                     for file in files_to_delete {
                         // println!("Deleting file {file}");

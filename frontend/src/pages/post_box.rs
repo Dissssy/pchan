@@ -26,6 +26,7 @@ pub fn PostBox(props: &Props) -> Html {
     }
 
     let post_text = use_state(|| "".to_string());
+    let post_error = use_state(|| None);
 
     let mvpost_text = post_text.clone();
     let onchange_post = Callback::from(move |e: Event| {
@@ -70,6 +71,7 @@ pub fn PostBox(props: &Props) -> Html {
     let mvfile = file;
     let mvtoken = token;
     let mvprops = props.clone();
+    let amvpost_error = post_error.clone();
     let submit_post = Callback::from(move |_| {
         let mvtoken = mvtoken.clone();
         if !*pending {
@@ -84,6 +86,7 @@ pub fn PostBox(props: &Props) -> Html {
             let mvvname = mvname.clone();
             let mvvfile = mvfile.clone();
             let pclone = pending.clone();
+            let mvpost_error = amvpost_error.clone();
             let mvprops = mvprops.clone();
             wasm_bindgen_futures::spawn_local(async move {
                 let file_to_post = if let Some(f) = &*mvvfile {
@@ -154,12 +157,28 @@ pub fn PostBox(props: &Props) -> Html {
 
                     res
                 };
-
-                let respons = match res.json::<Posted>().await {
-                    Ok(res) => res,
+                let text = match res.text().await {
+                    Ok(text) => text,
                     Err(e) => {
                         gloo::console::log!(format!("{e:?}"));
                         pclone.set(false);
+                        return;
+                    }
+                };
+
+                let respons = match serde_json::from_str::<Posted>(&text) {
+                    Ok(res) => res,
+                    Err(e) => {
+                        gloo::console::log!(format!("{e:?}"));
+                        let err = match serde_json::from_str::<String>(&text) {
+                            Ok(err) => err,
+                            Err(e) => {
+                                gloo::console::log!(format!("{e:?}"));
+                                "unknown error".to_owned()
+                            }
+                        };
+                        pclone.set(false);
+                        mvpost_error.set(Some(err));
                         return;
                     }
                 };
@@ -226,6 +245,14 @@ pub fn PostBox(props: &Props) -> Html {
                     Some(_) => "Reply",
                     None => "New Thread",
                 }}</button>
+                {
+                    match *post_error {
+                        Some(ref e) => html! {
+                            <p class="submission-box-post-error">{e}</p>
+                        },
+                        None => html! {}
+                    }
+                }
             </div>
         </div>
     }

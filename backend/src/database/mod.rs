@@ -167,6 +167,10 @@ impl Database {
     ) -> Result<crate::schema::ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
 
+        if threadinfo.post.image.is_none() {
+            return Err(anyhow::anyhow!("No image provided"));
+        }
+
         let this_board = Self::get_board(conn, tboard.clone()).await?;
         let mut t = insert_into(threads)
             .values((board.eq(this_board.id), post_id.eq(0), latest_post.eq(0)))
@@ -191,11 +195,19 @@ impl Database {
         tboard: i64,
         discrim: String,
         tthread: i64,
-        post: crate::schema::CreatePost,
+        mut post: crate::schema::CreatePost,
         tactual_author: String,
     ) -> Result<crate::schema::SafePost> {
         use crate::schema::posts::dsl::*;
         // attempt to parse replies from the post, these are in the form of ">>{post_number}" or ">>/{board}/{post_number}"
+
+        post.content = post.content.trim().to_owned();
+        if post.content.is_empty() && post.image.is_none() {
+            return Err(anyhow::anyhow!(
+                "Either content or an image must be provided for any post"
+            ));
+        }
+
         let replies = post
             .content
             .split_whitespace()

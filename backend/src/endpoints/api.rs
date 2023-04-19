@@ -2,6 +2,7 @@ use crate::filters::Bearer;
 use crate::schema::CreateBoard;
 use crate::schema::CreatePost;
 use crate::schema::CreateThread;
+use crate::unclaimedfiles::File;
 use common::hash_with_salt;
 use serde::{Deserialize, Serialize};
 use warp::Filter;
@@ -289,26 +290,28 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 while let Ok(Some(p)) = form.try_next().await {
                     if p.name() == "file" {
                         use bytes::BufMut;
-                        let file_ending;
+                        let fct;
+                        let fext;
                         {
                             let content_type = p.content_type().map(|s| s.to_string());
                             match content_type {
                                 Some(ct) => {
-                                    // match ct.split('.').map(|s| s.to_string()).last() {
-                                    // Some(ending) => {
-                                    //     file_ending = ending;
-                                    // }
-                                    // None => {
-                                    //     return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                    //         warp::reply::json(&format!("Invalid file type: {ct}")),
-                                    //     );
-                                    // }
-                                    // }
-                                    file_ending = ct;
+                                    fct = ct;
                                 }
                                 None => {
                                     return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                         warp::reply::json(&"File has no content type"),
+                                    );
+                                }
+                            }
+                            let extension = p.filename().and_then(|s| s.split('.').last());
+                            match extension {
+                                Some(ext) => {
+                                    fext = ext.to_string();
+                                }
+                                None => {
+                                    return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                        warp::reply::json(&"File has no extension"),
                                     );
                                 }
                             }
@@ -332,7 +335,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         return match crate::UNCLAIMED_FILES
                             .lock()
                             .await
-                            .add_file(file_ending.to_string(), value, auth.token)
+                            .add_file(
+                                File::builder()
+                                    .extension(fext)
+                                    .mimetype(fct)
+                                    .data(value)
+                                    .build()
+                                    .unwrap(),
+                                auth.token,
+                            )
                             .await
                         {
                             Ok(id) => Ok::<warp::reply::Json, warp::reject::Rejection>(

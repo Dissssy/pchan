@@ -128,7 +128,7 @@ impl Thread {
         let tposts: Vec<Post> = posts
             .filter(thread.eq(self.id))
             .filter(id.ne(self.post_id))
-            .order(post_number.asc())
+            .order(post_number.desc())
             .limit(5)
             .load::<Post>(conn)
             .await?;
@@ -136,6 +136,7 @@ impl Thread {
         for post in tposts.iter() {
             safeposts.push(post.safe(conn).await?);
         }
+        safeposts.reverse();
         let tpost = posts
             .filter(id.eq(self.post_id))
             .first::<Post>(conn)
