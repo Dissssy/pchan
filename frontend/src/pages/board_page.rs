@@ -108,7 +108,7 @@ pub fn BoardPage(props: &Props) -> Html {
                         html! {
                             <div class="board-thread">
                                 <div class="board-thread-post">
-                                    <PostView post={t.thread_post.clone()} />
+                                    <PostView post={t.thread_post.clone()} hyperlink={Some(())} />
                                 </div>
                                 <div class="board-thread-reply">
                                     {
@@ -186,7 +186,24 @@ pub fn PostView(props: &PostViewProps) -> Html {
                         }
                     </div>
                     <div class="post-header-number">
-                        {format!("No. {}", post.post_number)}
+                        {
+                            match props.hyperlink {
+                                Some(_) => {
+                                    html! {
+                                        <a href={format!("./{}", post.post_number)}>
+                                            {format!("No. {}", post.post_number)}
+                                        </a>
+                                    }
+                                }
+                                None => {
+                                    html! {
+                                        <>
+                                            {format!("No. {}", post.post_number)}
+                                        </>
+                                    }
+                                }
+                            }
+                        }
                     </div>
                     <div class="post-header-timestamp">
                         {post.timestamp.clone()}
@@ -337,4 +354,5 @@ pub fn PostView(props: &PostViewProps) -> Html {
 #[derive(Properties, Clone, PartialEq)]
 pub struct PostViewProps {
     pub post: SafePost,
+    pub hyperlink: Option<()>,
 }

@@ -1,7 +1,7 @@
 Frontend:
     - Exponendial backoff retry @done
     - Error handling, show error message to user
-    - Thread links from board view
+    - Thread links from board view @done
     - Embed post when clicking on the reply link for said post
     - Button to load full thread on board view
 
