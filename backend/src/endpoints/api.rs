@@ -383,7 +383,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     }
                 }
 
-                Err::<warp::reply::Json, warp::reject::Rejection>(warp::reject::reject())
+                Ok(warp::reply::json(&"No file found"))
             }
         });
 
