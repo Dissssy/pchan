@@ -7,3 +7,4 @@ Frontend:
 
 Backend:
     - Prevent spam (possibly by ratelimiting post and thread endpoints)
+    - Rejection of posts with images if the thread contains 100 images already @done

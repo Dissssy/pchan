@@ -221,18 +221,45 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::header::<Bearer>("authorization"))
         .and_then(
             |disc: String, thread: i64, post: CreatePost, auth: Bearer| async move {
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-                let board = crate::database::Database::get_board(&mut conn, disc.clone())
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-                let thread = crate::database::Database::get_thread_from_post_number(
+                let mut conn = match crate::POOL.get().await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&e.to_string()),
+                        );
+                    }
+                };
+                let board =
+                    match crate::database::Database::get_board(&mut conn, disc.clone()).await {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&e.to_string()),
+                            );
+                        }
+                    };
+                let thread = match crate::database::Database::get_thread_from_post_number(
                     &mut conn, board.id, thread,
                 )
                 .await
-                .map_err(|_| warp::reject::reject())?;
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&e.to_string()),
+                        );
+                    }
+                };
+                let imagecount = thread
+                    .posts
+                    .iter()
+                    .map(|p| p.image.is_some() as i32)
+                    .sum::<i32>();
+                if post.image.is_some() && imagecount >= 99 {
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"Thread already has 100 images".to_owned(),
+                    ));
+                }
                 match crate::database::Database::create_post(
                     &mut conn, board.id, disc, thread.id, post, auth.token,
                 )
