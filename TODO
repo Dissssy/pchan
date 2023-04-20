@@ -4,7 +4,7 @@ Frontend:
     - Thread links from board view @done
     - Embed post when clicking on the reply link for said post
     - Button to load full thread on board view
-    - BlueText™️
+    - BlueText™️ @done
 
 Backend:
     - Prevent spam (possibly by ratelimiting post and thread endpoints)

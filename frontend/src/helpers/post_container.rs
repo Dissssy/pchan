@@ -1,6 +1,6 @@
 use yew::prelude::*;
 
-use crate::pages::board_page::SafePost;
+use crate::{helpers::startswith_class::StartsWithClass, pages::board_page::SafePost};
 
 #[function_component]
 pub fn PostView(props: &PostViewProps) -> Html {
@@ -170,22 +170,16 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                 html! {
                                     <>
                                         {
-                                            if first {
-                                                first = false;
+                                            if !first {
                                                 html! {
-                                                    <>
-                                                        {l}
-                                                    </>
+                                                    <br />
                                                 }
                                             } else {
-                                                html! {
-                                                    <>
-                                                        <br />
-                                                        {l}
-                                                    </>
-                                                }
+                                                first = false;
+                                                html! {}
                                             }
                                         }
+                                        <StartsWithClass text={l.to_owned()} map={crate::CLASSMAP.clone()} />
                                     </>
                                 }
                             }

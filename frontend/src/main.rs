@@ -1,6 +1,13 @@
 use yew::prelude::*;
 use yew_router::prelude::*;
 
+lazy_static::lazy_static! {
+    pub static ref CLASSMAP: Vec<(String, String)> = vec![
+        (">".to_owned(), "bluetext".to_owned()),
+        ("<".to_owned(), "peetext".to_owned())
+    ];
+}
+
 #[derive(Clone, Routable, PartialEq)]
 pub enum BaseRoute {
     #[at("/")]
