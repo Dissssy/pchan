@@ -1,6 +1,6 @@
 use crate::BaseRoute;
 use yew::prelude::*;
-use yew_router::{navigator, prelude::*};
+use yew_router::prelude::*;
 
 #[function_component]
 pub fn Home() -> Html {
