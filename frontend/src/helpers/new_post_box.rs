@@ -132,6 +132,7 @@ pub fn PostBox(props: &Props) -> Html {
                             // initiate a manual post reload using the post thingy!!!
                             callback.emit(());
                             post_text.set(String::new());
+                            file.set(None);
                             expanded.set(false);
                             // nevermind i cant figure out how to clear the text inputs, reload the page :(
 
