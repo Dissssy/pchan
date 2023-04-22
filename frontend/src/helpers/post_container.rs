@@ -14,12 +14,18 @@ pub fn PostView(props: &PostViewProps) -> Html {
     });
 
     // TODO: make clicking the post number put you in the thread with ?reply=>>{post_number}
-
+    let invert = props.invert.unwrap_or(false);
     let mut last_empty = false;
     let mut first = true;
     let post = &props.post;
     html! {
-            <div class="post-content">
+            <div class={
+                    if invert {
+                        "post-content-invert"
+                    } else {
+                        "post-content"
+                    }
+                }>
                 <div class="post-header">
                     // contains author name, post number, timestamp, and any replies
                     <div class="post-header-author">
@@ -62,10 +68,21 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                             <>{"Replies: "}</>
                                             {
                                                 for post.replies.iter().map(|r| {
-                                                    html! {
-                                                        <div class="post-header-reply-text">
-                                                            {format!(">>{r}")}
-                                                        </div>
+                                                    match Reply::from_str(&format!(">>{}", r), &props.board_discrim.clone()) {
+                                                        Ok(r) => {
+                                                            html! {
+                                                                <div class="post-header-reply-text">
+                                                                    <LazyPost reply={r} this_board={props.board_discrim.clone()} invert={invert} />
+                                                                </div>
+                                                            }
+                                                        }
+                                                        Err(_) => {
+                                                            html! {
+                                                                //<div class="post-header-reply-text">
+                                                                //    {format!(">>{r}")}
+                                                                //</div>
+                                                            }
+                                                        }
                                                     }
                                                 })
                                             }
@@ -96,7 +113,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                     </span>
                                 </div>
                                 <div class="post-file">
-                                    <a href="#" onclick={onclick}>
+                                    <a href={img.path.clone()} onclick={onclick}>
                                     {
                                         if *file_expanded {
                                             // turn "/files/video/webm/gfj51HYQyWHB_wAh.webm-thumb.jpg" into "video/webm" by replacing "/files/" with "" and then splitting on "/" then taking the first two elements and joining them with "/"
@@ -192,7 +209,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                         {
                                             if let Ok(r) = Reply::from_str(l, &props.board_discrim) {
                                                 html! {
-                                                    <LazyPost reply={r} />
+                                                    <LazyPost reply={r} this_board={props.board_discrim.clone()} invert={invert} />
                                                 }
                                             } else {
                                                 html! {
@@ -214,5 +231,6 @@ pub fn PostView(props: &PostViewProps) -> Html {
 pub struct PostViewProps {
     pub post: SafePost,
     pub hyperlink: Option<String>,
+    pub invert: Option<bool>,
     pub board_discrim: String,
 }

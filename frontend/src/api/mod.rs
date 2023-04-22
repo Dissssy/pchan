@@ -3,6 +3,8 @@ use common::structs::{BoardWithThreads, CreatePost, SafePost};
 use web_sys::File;
 use yew::UseStateHandle;
 
+use crate::helpers::Reply;
+
 #[derive(Default)]
 pub struct Api {
     pub token: Option<String>,
@@ -110,6 +112,26 @@ impl Api {
         let res = gloo_net::http::Request::post(&url)
             .header("authorization", &format!("Bearer {token}"))
             .json(&post)?
+            .send()
+            .await?
+            .text()
+            .await?;
+        serde_json::from_str::<SafePost>(&res).map_err(|e| {
+            anyhow!(serde_json::from_str::<String>(&res)
+                .unwrap_or(format!("could not parse error: {e:?}\nfrom body: {res:?}")))
+        })
+    }
+    pub async fn get_post(&mut self, context: &Reply) -> Result<SafePost> {
+        let token = self.get_token().await?;
+
+        // we are replying to a thread, post to /api/v1/board/{board_discriminator}/{thread_id}
+        let url = format!(
+            "/api/v1/board/{}/post/{}",
+            context.board_discrim, context.post_number
+        );
+        // gloo::console::log!(format!("{url}"));
+        let res = gloo_net::http::Request::get(&url)
+            .header("authorization", &format!("Bearer {token}"))
             .send()
             .await?
             .text()

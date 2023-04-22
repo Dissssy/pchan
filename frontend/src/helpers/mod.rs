@@ -52,4 +52,14 @@ impl Reply {
             }
         }
     }
+    pub fn link(&self) -> String {
+        format!(
+            "/{board_discrim}/thread/{post_number}",
+            board_discrim = self.board_discrim,
+            post_number = self.post_number
+        )
+    }
+    pub fn text(&self) -> String {
+        format!(">>{post_number}", post_number = self.post_number)
+    }
 }

@@ -2,8 +2,8 @@ Frontend:
     - Exponendial backoff retry @done
     - Error handling, show error message to user
     - Thread links from board view @done
-    - Embed post when clicking on the reply link for said post
-        - LazyPost is ready to be made clickable
+    - Embed post when clicking on the reply link for said post @done
+        - LazyPost is ready to be made clickable @done
     - Button to load full thread on board view
     - BlueText™️ @done
     - Seperate out API calls @done
