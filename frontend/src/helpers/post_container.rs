@@ -1,7 +1,7 @@
 use common::structs::SafePost;
 use yew::prelude::*;
 
-use crate::helpers::startswith_class::StartsWithClass;
+use crate::helpers::{lazy_post::LazyPost, startswith_class::StartsWithClass, Reply};
 
 #[function_component]
 pub fn PostView(props: &PostViewProps) -> Html {
@@ -36,7 +36,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                             match props.hyperlink {
                                 Some(ref board_discrim) => {
                                     html! {
-                                        <a href={format!("/{}/{}", board_discrim, post.post_number)}>
+                                        <a href={format!("/{}/thread/{}", board_discrim, post.post_number)}>
                                             {format!("No. {}", post.post_number)}
                                         </a>
                                     }
@@ -54,28 +54,28 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     <div class="post-header-timestamp">
                         {post.timestamp.clone()}
                     </div>
-                    <div class="post-header-replies">
                         {
                             if !post.replies.is_empty() {
                                 html! {
-                                    <div class="post-header-reply-list">
-                                        <>{"Replies: "}</>
-                                        {
-                                            for post.replies.iter().map(|r| {
-                                                html! {
-                                                    <div class="post-header-reply-text">
-                                                        {format!(">>{r}")}
-                                                    </div>
-                                                }
-                                            })
-                                        }
+                                    <div class="post-header-replies">
+                                        <div class="post-header-reply-list">
+                                            <>{"Replies: "}</>
+                                            {
+                                                for post.replies.iter().map(|r| {
+                                                    html! {
+                                                        <div class="post-header-reply-text">
+                                                            {format!(">>{r}")}
+                                                        </div>
+                                                    }
+                                                })
+                                            }
+                                        </div>
                                     </div>
                                 }
                             } else {
                                 html! {}
                             }
                         }
-                    </div>
                 </div>
                 {
                     if let Some(ref img) = post.file {
@@ -189,7 +189,17 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                                 html! {}
                                             }
                                         }
-                                        <StartsWithClass text={l.to_owned()} map={crate::CLASSMAP.clone()} />
+                                        {
+                                            if let Ok(r) = Reply::from_str(l, &props.board_discrim) {
+                                                html! {
+                                                    <LazyPost reply={r} />
+                                                }
+                                            } else {
+                                                html! {
+                                                    <StartsWithClass text={l.to_owned()} map={crate::CLASSMAP.clone()} />
+                                                }
+                                            }
+                                        }
                                     </>
                                 }
                             }
@@ -204,4 +214,5 @@ pub fn PostView(props: &PostViewProps) -> Html {
 pub struct PostViewProps {
     pub post: SafePost,
     pub hyperlink: Option<String>,
+    pub board_discrim: String,
 }

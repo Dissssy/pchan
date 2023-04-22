@@ -63,8 +63,12 @@ async fn main() {
             .then(|token: Option<String>| async move {
                 match token {
                     None => Ok(warp::http::Response::builder()
-                        .status(401)
-                        .body("Invalid token. navigate to /login to log in.".to_owned())
+                        // .status(401)
+                        // .body("Invalid token. navigate to /login to log in.".to_owned())
+                        // .unwrap()),
+                        .header("Location", "/login")
+                        .status(302)
+                        .body("".to_owned())
                         .unwrap()),
                     Some(_) => Ok(warp::http::Response::builder()
                         .header("Location", "/unauthorized")
@@ -95,7 +99,7 @@ async fn main() {
                 if *MANUAL_FILE_TRIM.lock().await || auto_delete.elapsed() >= std::time::Duration::from_secs(*statics::DELETE_TIME) {
 
                     let lock = FS_LOCK.lock().await;
-                    println!("acquired lock");
+                    // println!("acquired lock");
 
                     // println!("Trimming files, last trim was {last_trim}s ago", last_trim = last_trim.elapsed().as_secs());
                     // last_trim = tokio::time::Instant::now();

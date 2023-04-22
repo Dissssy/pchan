@@ -23,7 +23,7 @@ pub enum BaseRoute {
     #[at("/:board_discriminator/")]
     BoardPage { board_discriminator: String },
     // /{board_discriminator}/{thread_id}
-    #[at("/:board_discriminator/:thread_id")]
+    #[at("/:board_discriminator/thread/:thread_id")]
     ThreadPage {
         board_discriminator: String,
         thread_id: String,

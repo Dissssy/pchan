@@ -202,7 +202,7 @@ pub fn PostBox(props: &Props) -> Html {
                             <div class="submission-box-text-inputs">
                                 <div class="submission-box-name-input">
                                     <label for="name-input">{"Name"}</label>
-                                    <input type="text" id="name-input" name="name-input" oninput={oninput_name} value={
+                                    <input type="text" id="name-input" class="custom-select" name="name-input" oninput={oninput_name} value={
                                         match &*name {
                                             Some(n) => n.clone(),
                                             None => "".to_owned(),
@@ -211,7 +211,7 @@ pub fn PostBox(props: &Props) -> Html {
                                 </div>
                                 <div class="submission-box-post-input">
                                     <label for="post-input">{"Post"}</label>
-                                    <textarea id="post-input" name="post-input" oninput={oninput_post} value={
+                                    <textarea id="post-input" class="custom-select" name="post-input" oninput={oninput_post} value={
                                         (*post_text).clone()
                                     }>
                                     </textarea>
@@ -222,14 +222,14 @@ pub fn PostBox(props: &Props) -> Html {
                                 <input type="file" id="file-input" name="file-input" onchange={onchange_file}/>
                             </div>
                             <div class="submission-box-submit">
-                                <button onclick={submit_post}>{ match props.thread_id {
+                                <button class="custom-select" onclick={submit_post}>{ match props.thread_id {
                                     Some(_) => "Reply",
                                     None => "New Thread",
                                 }}</button>
                                 {
                                     match *post_error {
                                         Some(ref e) => html! {
-                                            <p class="submission-box-post-error">{e}</p>
+                                            <span class="submission-box-post-error">{e}</span>
                                         },
                                         None => html! {}
                                     }

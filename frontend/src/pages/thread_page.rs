@@ -123,49 +123,51 @@ pub fn ThreadPage(props: &Props) -> Html {
     });
 
     html! {
-        <div class="threadposts">
-            <div class="board-title">
+        <div class="thread">
+            <div class="meta-shiz">
                 <BoardTitle board_discriminator={props.board_discriminator.clone()}/>
+                <div class="postbox">
+                    <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={(props.thread_id.clone(), tloadposts)} />
+                </div>
             </div>
-            <div class="postbox">
-                <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={(props.thread_id.clone(), tloadposts)} />
-            </div>
-                {
-                    match *thread {
-                        Some(ref t) => {
-                            html! {
-                                <div class="threadposts-list">
-                                    <div class="threadposts-post">
-                                        <PostView post={t.thread_post.clone()} />
+            <div class="threadposts">
+                    {
+                        match *thread {
+                            Some(ref t) => {
+                                html! {
+                                    <div class="threadposts-list">
+                                        <div class="threadposts-post">
+                                            <PostView post={t.thread_post.clone()} board_discrim={props.board_discriminator.clone()} />
+                                        </div>
+                                            <div class="threadposts-replies">
+                                            {
+                                                for t.posts.iter().map(|p| {
+                                                    html! {
+                                                        <div class="threadposts-post">
+                                                            <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} />
+                                                        </div>
+                                                    }
+                                                })
+                                            }
+                                        </div>
+                                        <div class="reload-button">
+                                            <a href="#" onclick={manually_load_posts}>
+                                                {"Checking for new posts in "}{*read_backoff_max - *read_backoff}{" seconds"}
+                                            </a>
+                                        </div>
                                     </div>
-                                        <div class="threadposts-replies">
-                                        {
-                                            for t.posts.iter().map(|p| {
-                                                html! {
-                                                    <div class="threadposts-post">
-                                                        <PostView post={p.clone()} />
-                                                    </div>
-                                                }
-                                            })
-                                        }
-                                    </div>
-                                    <div class="reload-button">
-                                        <a href="#" onclick={manually_load_posts}>
-                                            {"Checking for new posts in "}{*read_backoff_max - *read_backoff}{" seconds"}
-                                        </a>
-                                    </div>
-                                </div>
+                                }
                             }
-                        }
-                        None => {
-                            html! {
-                                <div class="threadposts-post">
-                                    <p>{"Loading..."}</p>
-                                </div>
+                            None => {
+                                html! {
+                                    <div class="threadposts-post">
+                                        <p>{"Loading..."}</p>
+                                    </div>
+                                }
                             }
                         }
                     }
-                }
+            </div>
         </div>
     }
 }

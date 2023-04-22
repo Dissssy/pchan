@@ -53,54 +53,52 @@ pub fn BoardPage(props: &Props) -> Html {
 
     // manually trigger the load threads callback on mount, then an exponential backoff if no new threads are found
 
-    let backoff_max = use_state(|| 5);
-    let last_thread_count = use_state(|| 0);
-    let backoff = use_state(|| 0);
-    let bthreads = threads.clone();
+    // let backoff_max = use_state(|| 5);
+    // let last_thread_count = use_state(|| 0);
+    // let backoff = use_state(|| 0);
+    // let bthreads = threads.clone();
     let firstrun = use_state(|| true);
     if *firstrun {
         load_threads.emit(());
         firstrun.set(false);
     }
-    use_effect({
-        // let bindings
-        let load_threads = load_threads;
-        move || {
-            let interval = Interval::new(1000, move || {
-                // gloo::console::log!(format!("{}/{}", *backoff, *backoff_max));
-                backoff.set(*backoff + 1);
-                if !*loadingthreads {
-                    if !*handledlastthreadcount {
-                        handledlastthreadcount.set(true);
-                        if bthreads.len() == *last_thread_count {
-                            backoff_max.set(*backoff_max * 2);
-                            backoff.set(0);
-                        } else {
-                            backoff_max.set(5);
-                            backoff.set(0);
-                        }
-                        last_thread_count.set(bthreads.len());
-                    } else if *backoff >= *backoff_max {
-                        load_threads.emit(());
-                    }
-                } else {
-                    gloo::console::log!("threads still loading");
-                }
-            });
+    // use_effect({
+    //     // let bindings
+    //     let load_threads = load_threads;
+    //     move || {
+    //         let interval = Interval::new(1000, move || {
+    //             // gloo::console::log!(format!("{}/{}", *backoff, *backoff_max));
+    //             backoff.set(*backoff + 1);
+    //             if !*loadingthreads {
+    //                 if !*handledlastthreadcount {
+    //                     handledlastthreadcount.set(true);
+    //                     if bthreads.len() == *last_thread_count {
+    //                         backoff_max.set(*backoff_max * 2);
+    //                         backoff.set(0);
+    //                     } else {
+    //                         backoff_max.set(5);
+    //                         backoff.set(0);
+    //                     }
+    //                     last_thread_count.set(bthreads.len());
+    //                 } else if *backoff >= *backoff_max {
+    //                     load_threads.emit(());
+    //                 }
+    //             } else {
+    //                 gloo::console::log!("threads still loading");
+    //             }
+    //         });
 
-            move || drop(interval)
-        }
-    });
+    //         move || drop(interval)
+    //     }
+    // });
 
     html! {
         <div class="board">
-            <div class="board-title">
-                <div class="board-title">
-                    <BoardTitle board_discriminator={props.board_discriminator.clone()}/>
+            <div class="meta-shiz">
+                <BoardTitle board_discriminator={props.board_discriminator.clone()}/>
+                <div class="postbox">
+                    <PostBox board_discriminator={props.board_discriminator.clone()} />
                 </div>
-            </div>
-            <div class="postbox">
-                <PostBox board_discriminator={props.board_discriminator.clone()} />
             </div>
             <div class="board-threads">
                 {
@@ -108,14 +106,14 @@ pub fn BoardPage(props: &Props) -> Html {
                         html! {
                             <div class="board-thread">
                                 <div class="board-thread-post">
-                                    <PostView post={t.thread_post.clone()} hyperlink={Some(props.board_discriminator.clone())} />
+                                    <PostView post={t.thread_post.clone()} hyperlink={Some(props.board_discriminator.clone())} board_discrim={props.board_discriminator.clone()} />
                                 </div>
                                 <div class="board-thread-reply">
                                     {
                                         for t.posts.iter().map(|p| {
                                             html! {
                                                 <div class="board-thread-reply-post">
-                                                    <PostView post={p.clone()} />
+                                                    <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} />
                                                 </div>
                                             }
                                         })
