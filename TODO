@@ -4,12 +4,13 @@ Frontend:
     - Thread links from board view @done
     - Embed post when clicking on the reply link for said post @done
         - LazyPost is ready to be made clickable @done
-    - Button to load full thread on board view
+    - Button to load full thread on board view @done
     - BlueText™️ @done
     - Seperate out API calls @done
     - Retain name between loads @done
     - Add a way to delete posts THREADS CAN NOT BE DELETED
-    - Keep track of whether a reply to a post is on the same board, if not change the link to >>>/board/post instead of >>post !IMPORTANT (MOVE REPLY STRUCT TO BACKEND)
+    - Mouse over files! @done
+    - Keep track of whether a reply to a post is on the same board, if not change the link to >>>/board/post instead of >>post !IMPORTANT (MOVE REPLY STRUCT TO BACKEND) @done
 
 Backend:
     - Prevent spam (possibly by ratelimiting post and thread endpoints):

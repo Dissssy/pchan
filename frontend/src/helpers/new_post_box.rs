@@ -151,7 +151,8 @@ pub fn PostBox(props: &Props) -> Html {
                             // }
                         }
                         None => {
-                            let url = format!("/{}/{}", props.board_discriminator, p.post_number);
+                            let url =
+                                format!("/{}/thread/{}", props.board_discriminator, p.post_number);
                             match web_sys::window() {
                                 Some(w) => match w.location().set_href(&url) {
                                     Ok(_) => {}

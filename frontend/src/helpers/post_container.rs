@@ -1,16 +1,52 @@
 use common::structs::SafePost;
 use yew::prelude::*;
 
-use crate::helpers::{lazy_post::LazyPost, startswith_class::StartsWithClass, Reply};
+use crate::helpers::{
+    lazy_post::LazyPost, startswith_class::StartsWithClass, HoveredOrExpandedState,
+};
+use common::structs::Reply;
 
 #[function_component]
 pub fn PostView(props: &PostViewProps) -> Html {
-    let file_expanded = use_state(|| false);
-    let glfile_glexpanded = file_expanded.clone();
-    let onclick = Callback::from(move |e: MouseEvent| {
+    // let file_expanded = use_state(|| false);
+    // let glfile_glexpanded = file_expanded.clone();
+    // let onclick = Callback::from(move |e: MouseEvent| {
+    //     e.prevent_default();
+    //     gloo::console::log!("clicked");
+    //     glfile_glexpanded.set(!*glfile_glexpanded);
+    // });
+    let _prevent_click = Callback::from(|e: MouseEvent| e.prevent_default());
+
+    let file_state = use_state(|| HoveredOrExpandedState::None);
+
+    let tfile_state = file_state.clone();
+    let on_click = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
-        gloo::console::log!("clicked");
-        glfile_glexpanded.set(!*glfile_glexpanded);
+        tfile_state.set(match *tfile_state {
+            HoveredOrExpandedState::None => HoveredOrExpandedState::Expanded,
+            HoveredOrExpandedState::Hovered => HoveredOrExpandedState::Expanded,
+            HoveredOrExpandedState::Expanded => HoveredOrExpandedState::None,
+        });
+    });
+
+    let tfile_state = file_state.clone();
+    let on_mouseon = Callback::from(move |e: MouseEvent| {
+        e.prevent_default();
+        tfile_state.set(match *tfile_state {
+            HoveredOrExpandedState::None => HoveredOrExpandedState::Hovered,
+            HoveredOrExpandedState::Hovered => HoveredOrExpandedState::Hovered,
+            HoveredOrExpandedState::Expanded => HoveredOrExpandedState::Expanded,
+        });
+    });
+
+    let tfile_state = file_state.clone();
+    let on_mouseoff = Callback::from(move |e: MouseEvent| {
+        e.prevent_default();
+        tfile_state.set(match *tfile_state {
+            HoveredOrExpandedState::None => HoveredOrExpandedState::None,
+            HoveredOrExpandedState::Hovered => HoveredOrExpandedState::None,
+            HoveredOrExpandedState::Expanded => HoveredOrExpandedState::Expanded,
+        });
     });
 
     // TODO: make clicking the post number put you in the thread with ?reply=>>{post_number}
@@ -68,22 +104,12 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                             <>{"Replies: "}</>
                                             {
                                                 for post.replies.iter().map(|r| {
-                                                    match Reply::from_str(&format!(">>{}", r), &props.board_discrim.clone()) {
-                                                        Ok(r) => {
-                                                            html! {
-                                                                <div class="post-header-reply-text">
-                                                                    <LazyPost reply={r} this_board={props.board_discrim.clone()} invert={invert} />
-                                                                </div>
-                                                            }
-                                                        }
-                                                        Err(_) => {
-                                                            html! {
-                                                                //<div class="post-header-reply-text">
-                                                                //    {format!(">>{r}")}
-                                                                //</div>
-                                                            }
-                                                        }
+                                                    html! {
+                                                        <div class="post-header-reply-text">
+                                                            <LazyPost reply={r.clone()} this_board={props.board_discrim.clone()} invert={invert} />
+                                                        </div>
                                                     }
+
                                                 })
                                             }
                                         </div>
@@ -99,23 +125,23 @@ pub fn PostView(props: &PostViewProps) -> Html {
                         html! {
                             <div class="post-file-container">
                                 <div class="post-file-header">
-                                    <a href="#" onclick={onclick.clone()}>
+                                    <a href="#" onclick={on_click.clone() }>
                                         {
-                                            if *file_expanded {
-                                                "[-]"
+                                            if !(*file_state == HoveredOrExpandedState::None)  {
+                                                format!("[-]{}", if *file_state == HoveredOrExpandedState::Expanded { " (held)" } else { "" })
                                             } else {
-                                                "[+]"
+                                                "[+]".to_owned()
                                             }
                                         }
                                     </a>
-                                    <span class="post-hash">
-                                        {"Hash: "}{img.hash.clone()}
+                                    <span class="post-hash" title={img.hash.clone()}>
+                                        {"#"}
                                     </span>
                                 </div>
                                 <div class="post-file">
-                                    <a href={img.path.clone()} onclick={onclick}>
+                                    <a href={img.path.clone()} onclick={on_click} onmouseover={on_mouseon} onmouseleave={on_mouseoff} >
                                     {
-                                        if *file_expanded {
+                                        if !(*file_state == HoveredOrExpandedState::None) {
                                             // turn "/files/video/webm/gfj51HYQyWHB_wAh.webm-thumb.jpg" into "video/webm" by replacing "/files/" with "" and then splitting on "/" then taking the first two elements and joining them with "/"
                                             let mimetype = img.path.replace("/files/", "");
                                             let mime = mimetype.split('/').next();
@@ -132,18 +158,18 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                                     match m {
                                                         "video" => {
                                                             html! {
-                                                                <video controls=true class="post-media-video">
+                                                                <video autoplay=true loop=true controls=true class="post-media-video">
                                                                     <source src={img.path.clone()} />
                                                                 </video>
                                                             }
                                                         }
-                                                        "audio" => {
-                                                            html! {
-                                                                <audio controls=true class="post-media-audio">
-                                                                    <source src={img.path.clone()} />
-                                                                </audio>
-                                                            }
-                                                        }
+                                                        // "audio" => {
+                                                        //     html! {
+                                                        //         <audio controls=true class="post-media-audio">
+                                                        //             <source src={img.path.clone()} />
+                                                        //         </audio>
+                                                        //     }
+                                                        // }
                                                         "image" => {
                                                             html! {
                                                                 <img src={img.path.clone()} />

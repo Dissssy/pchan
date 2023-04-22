@@ -1,9 +1,9 @@
 use anyhow::{anyhow, Result};
-use common::structs::{BoardWithThreads, CreatePost, SafePost};
+use common::structs::{BoardWithThreads, CreatePost, SafePost, ThreadWithPosts};
 use web_sys::File;
 use yew::UseStateHandle;
 
-use crate::helpers::Reply;
+use common::structs::Reply;
 
 #[derive(Default)]
 pub struct Api {
@@ -127,7 +127,7 @@ impl Api {
         // we are replying to a thread, post to /api/v1/board/{board_discriminator}/{thread_id}
         let url = format!(
             "/api/v1/board/{}/post/{}",
-            context.board_discrim, context.post_number
+            context.board_discriminator, context.post_number
         );
         // gloo::console::log!(format!("{url}"));
         let res = gloo_net::http::Request::get(&url)
@@ -140,6 +140,24 @@ impl Api {
             anyhow!(serde_json::from_str::<String>(&res)
                 .unwrap_or(format!("could not parse error: {e:?}\nfrom body: {res:?}")))
         })
+    }
+    pub async fn get_thread(
+        &mut self,
+        board_discriminator: &str,
+        thread_id: &str,
+    ) -> Result<ThreadWithPosts> {
+        let url = format!("/api/v1/board/{}/{}", board_discriminator, thread_id);
+        let fetch = gloo_net::http::Request::get(&url).send().await;
+        match fetch {
+            Ok(f) => match f.json::<ThreadWithPosts>().await {
+                Ok(thread) => Ok(thread),
+                Err(e) => Err(anyhow!(format!("{e:?}"))),
+            },
+            Err(e) => {
+                gloo::console::log!(format!("{e:?}"));
+                Err(anyhow!(format!("{e:?}")))
+            }
+        }
     }
 }
 

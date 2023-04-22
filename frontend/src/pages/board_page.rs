@@ -1,9 +1,12 @@
 use common::structs::BoardWithThreads;
-use gloo::timers::callback::Interval;
 use yew::prelude::*;
 use yew_router::prelude::*;
 
-use crate::helpers::{board_title::BoardTitle, new_post_box::PostBox, post_container::PostView};
+use crate::helpers::{
+    board_title::BoardTitle,
+    new_post_box::PostBox,
+    thread_view::{MaybeExpandableThread, ThreadView},
+};
 
 #[function_component]
 pub fn BoardPage(props: &Props) -> Html {
@@ -13,8 +16,8 @@ pub fn BoardPage(props: &Props) -> Html {
 
     let nav = use_navigator();
     let tthreads = threads.clone();
-    let tloadingthreads = loadingthreads.clone();
-    let thandledlastthreadcount = handledlastthreadcount.clone();
+    let tloadingthreads = loadingthreads;
+    let thandledlastthreadcount = handledlastthreadcount;
     let tprops = props.clone();
     let load_threads = Callback::from(move |_: ()| {
         thandledlastthreadcount.set(false);
@@ -105,20 +108,7 @@ pub fn BoardPage(props: &Props) -> Html {
                     for threads.iter().map(|t| {
                         html! {
                             <div class="board-thread">
-                                <div class="board-thread-post">
-                                    <PostView post={t.thread_post.clone()} hyperlink={Some(props.board_discriminator.clone())} board_discrim={props.board_discriminator.clone()} />
-                                </div>
-                                <div class="board-thread-reply">
-                                    {
-                                        for t.posts.iter().map(|p| {
-                                            html! {
-                                                <div class="board-thread-reply-post">
-                                                    <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} />
-                                                </div>
-                                            }
-                                        })
-                                    }
-                                </div>
+                                <ThreadView thread={MaybeExpandableThread::from(t.clone())} board_discriminator={props.board_discriminator.clone()} rerender={false}/>
                             </div>
                         }
                     })

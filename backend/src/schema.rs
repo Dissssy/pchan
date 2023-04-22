@@ -1,6 +1,8 @@
 use anyhow::Result;
 use common::structs::*;
 use deadpool::managed::Object;
+use diesel::dsl::count;
+use diesel::query_dsl::methods::SelectDsl;
 use diesel::{
     query_dsl::methods::{FilterDsl, LimitDsl, OrderDsl},
     ExpressionMethods, Queryable,
@@ -114,6 +116,12 @@ impl Thread {
             .limit(5)
             .load::<Post>(conn)
             .await?;
+        let post_count = posts
+            .select(count(id))
+            .filter(thread.eq(self.id))
+            .filter(id.ne(self.post_id))
+            .first::<i64>(conn)
+            .await?;
         let mut safeposts = Vec::new();
         for post in tposts.iter() {
             safeposts.push(post.safe(conn).await?);
@@ -126,6 +134,7 @@ impl Thread {
         Ok(ThreadWithLazyPosts {
             id: self.id,
             board: self.board,
+            post_count,
             thread_post: tpost.safe(conn).await?,
             posts: safeposts,
         })
@@ -171,12 +180,18 @@ impl Post {
             .iter()
             .flat_map(|p| {
                 if p.replies_to.contains(&self.id) {
-                    Some(p.post_number)
+                    Some(p.id)
                 } else {
                     None
                 }
             })
-            .collect();
+            .collect::<Vec<i64>>();
+
+        let mut newreplies = Vec::new();
+        for reply in replies {
+            newreplies.push(get_reply_info(reply, self.board, conn).await?);
+        }
+
         Ok(SafePost {
             id: self.id,
             post_number: self.post_number,
@@ -186,9 +201,36 @@ impl Post {
             author: self.author.clone(),
             content: self.content.clone(),
             timestamp: format!("{}", self.timestamp),
-            replies,
+            replies: newreplies,
         })
     }
+}
+
+pub async fn get_reply_info(
+    tid: i64,
+    og_board: i64,
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<Reply> {
+    use crate::schema::posts::dsl::*;
+    let post = posts.filter(id.eq(tid)).first::<Post>(conn).await?;
+    let external = post.board != og_board;
+
+    let thisboard = get_board_discrim(post.board, conn).await?;
+
+    Ok(Reply {
+        post_number: post.post_number,
+        board_discriminator: thisboard,
+        external,
+    })
+}
+
+pub async fn get_board_discrim(
+    board: i64,
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<String> {
+    use crate::schema::boards::dsl::*;
+    let board = boards.filter(id.eq(board)).first::<Board>(conn).await?;
+    Ok(board.discriminator)
 }
 
 pub async fn thread_post_number(
