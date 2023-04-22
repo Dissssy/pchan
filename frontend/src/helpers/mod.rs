@@ -8,6 +8,7 @@ pub mod startswith_class;
 pub struct Reply {
     pub post_number: u64,
     pub board_discrim: String,
+    pub external: bool,
 }
 
 impl Reply {
@@ -31,6 +32,7 @@ impl Reply {
                 Ok(Reply {
                     post_number,
                     board_discrim,
+                    external: true,
                 })
             }
             _ => {
@@ -45,6 +47,7 @@ impl Reply {
                         Ok(Reply {
                             post_number,
                             board_discrim: board.to_owned(),
+                            external: false,
                         })
                     }
                     _ => Err(()),
@@ -60,6 +63,14 @@ impl Reply {
         )
     }
     pub fn text(&self) -> String {
-        format!(">>{post_number}", post_number = self.post_number)
+        if self.external {
+            format!(
+                ">>>/{board_discrim}/{post_number}",
+                board_discrim = self.board_discrim,
+                post_number = self.post_number
+            )
+        } else {
+            format!(">>{post_number}", post_number = self.post_number)
+        }
     }
 }

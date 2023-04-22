@@ -9,6 +9,7 @@ Frontend:
     - Seperate out API calls @done
     - Retain name between loads @done
     - Add a way to delete posts THREADS CAN NOT BE DELETED
+    - Keep track of whether a reply to a post is on the same board, if not change the link to >>>/board/post instead of >>post !IMPORTANT
 
 Backend:
     - Prevent spam (possibly by ratelimiting post and thread endpoints):
