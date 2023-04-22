@@ -1,4 +1,5 @@
 use anyhow::{anyhow, Result};
+use common::structs::FileInfo;
 use std::collections::HashMap;
 
 pub struct UnclaimedFiles {
@@ -24,7 +25,7 @@ impl UnclaimedFiles {
         Err(anyhow!("Failed to generate unique id, try again later"))
     }
 
-    pub async fn claim_file(&mut self, id: &str, token: String) -> Result<String> {
+    pub async fn claim_file(&mut self, id: &str, token: String) -> Result<FileInfo> {
         match self.files.remove(&token) {
             Some((tid, file, _)) => {
                 if tid != id {
@@ -45,6 +46,8 @@ impl UnclaimedFiles {
                 // println!("{}", diskfilepath);
                 // println!("{}", universalfilepath);
                 // println!("{}", universalfolderpath);
+
+                let filehash = common::hash_file(&file.data);
                 {
                     // disc actions
                     let folders = format!("{}{}", env!("FILE_STORAGE_PATH"), universalfolderpath);
@@ -101,7 +104,11 @@ impl UnclaimedFiles {
                     }
                 };
                 println!("Thumbnail created at {path}");
-                Ok(universalfilepath)
+                Ok(FileInfo {
+                    path: universalfilepath,
+                    hash: filehash,
+                    thumbnail: path,
+                })
             }
             None => Err(anyhow!("File not found")),
         }

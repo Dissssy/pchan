@@ -136,7 +136,6 @@ diesel::table! {
     posts (id) {
         id -> BigInt,
         post_number -> BigInt,
-        image -> Nullable<Text>,
         thread -> BigInt,
         board -> BigInt,
         author -> Nullable<Text>,
@@ -151,7 +150,6 @@ diesel::table! {
 pub struct Post {
     pub id: i64,
     pub post_number: i64,
-    pub image: Option<String>,
     pub thread: i64,
     pub board: i64,
     pub author: Option<String>,
@@ -182,7 +180,7 @@ impl Post {
         Ok(SafePost {
             id: self.id,
             post_number: self.post_number,
-            image: self.image.clone(),
+            file: get_file(conn, self.id).await?,
             thread: thread_post_number(self.thread, conn).await?,
             board: self.board,
             author: self.author.clone(),
@@ -210,4 +208,46 @@ pub async fn post_number(
     use crate::schema::posts::dsl::*;
     let post = posts.filter(id.eq(post)).first::<Post>(conn).await?;
     Ok(post.post_number)
+}
+
+pub async fn get_file(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    tid: i64,
+) -> Result<Option<FileInfo>> {
+    use crate::schema::files::dsl::*;
+    use diesel::result::OptionalExtension;
+    // if there is no file, return None
+    let file = files
+        .filter(id.eq(tid))
+        .first::<File>(conn)
+        .await
+        .optional()?
+        .map(|x| x.info());
+    Ok(file)
+}
+
+diesel::table! {
+    files (id) {
+        id -> BigInt,
+        filepath -> Text,
+        hash -> Text,
+    }
+}
+
+#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct File {
+    pub id: i64,
+    pub filepath: String,
+    pub hash: String,
+}
+
+impl File {
+    pub fn info(&self) -> FileInfo {
+        let thumbnail = format!("{}-thumb.jpg", self.filepath);
+        FileInfo {
+            path: self.filepath.clone(),
+            thumbnail,
+            hash: self.hash.clone(),
+        }
+    }
 }

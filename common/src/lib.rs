@@ -35,3 +35,10 @@ pub fn hash_with_salt(s: &str, salt: &str) -> String {
     let result = hasher.finalize();
     format!("{result:x}")
 }
+
+pub fn hash_file(data: &[u8]) -> String {
+    let mut hasher = sha2::Sha256::new();
+    hasher.update(data);
+    let result = hasher.finalize();
+    format!("{result:x}")
+}

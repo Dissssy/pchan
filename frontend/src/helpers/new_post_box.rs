@@ -92,7 +92,7 @@ pub fn PostBox(props: &Props) -> Html {
             };
             // if we are replying to a thread, we need to send the thread id to the server. otherwise we need to use a different data structure.
             let post = CreatePost {
-                image: file_to_post,
+                file: file_to_post,
                 content: (*post_text).clone(),
                 author: (*name).clone(),
             };

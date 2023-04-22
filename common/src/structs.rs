@@ -34,13 +34,20 @@ pub struct ThreadWithLazyPosts {
 pub struct SafePost {
     pub id: i64,
     pub post_number: i64,
-    pub image: Option<String>,
+    pub file: Option<FileInfo>,
     pub thread: i64,
     pub board: i64,
     pub author: Option<String>,
     pub content: String,
     pub timestamp: String,
     pub replies: Vec<i64>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct FileInfo {
+    pub path: String,
+    pub thumbnail: String,
+    pub hash: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -51,7 +58,7 @@ pub struct CreateBoard {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CreatePost {
-    pub image: Option<String>,
+    pub file: Option<String>,
     pub content: String,
     pub author: Option<String>,
 }

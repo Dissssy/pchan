@@ -26,6 +26,7 @@ lazy_static::lazy_static! {
     pub static ref PROFANITY: Arc<Profanity> = Arc::new(Profanity::load_csv("./profanity_en.csv").expect("Failed to load profanity list"));
     pub static ref UNCLAIMED_FILES: Arc<Mutex<UnclaimedFiles>> = Arc::new(Mutex::new(UnclaimedFiles::new(HashMap::new())));
     pub static ref MANUAL_FILE_TRIM: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
+    pub static ref FS_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
 }
 
 #[tokio::main]
@@ -93,6 +94,9 @@ async fn main() {
                 // if manual trim is set to true OR auto_delete has elapsed
                 if *MANUAL_FILE_TRIM.lock().await || auto_delete.elapsed() >= std::time::Duration::from_secs(*statics::DELETE_TIME) {
 
+                    let lock = FS_LOCK.lock().await;
+                    println!("acquired lock");
+
                     // println!("Trimming files, last trim was {last_trim}s ago", last_trim = last_trim.elapsed().as_secs());
                     // last_trim = tokio::time::Instant::now();
 
@@ -117,10 +121,16 @@ async fn main() {
                             println!("Error getting files from database: {e}");
                             continue;
                         }
-                    }.iter().flatten().flat_map(|x| vec![format!("{x}-thumb.jpg"), x.clone()]).collect::<Vec<String>>();
+                    };
+
+                    drop(lock);
+                    println!("released lock");
+
+                    // println!("{:#?}", files_in_db);
+                    // println!("{:#?}", files);
 
                     // get a list of all files that are not in the database.
-                    let files_to_delete = files.iter().filter(|x| !files_in_db.contains(x)).cloned().collect::<Vec<String>>().iter().map(|x| format!("{dir}{x}")).collect::<Vec<String>>();
+                    let files_to_delete = files.iter().filter(|x| files_in_db.iter().any(|v| !(&&v.path == x || &&v.thumbnail == x))).cloned().collect::<Vec<String>>().iter().map(|x| format!("{dir}{x}")).collect::<Vec<String>>();
 
                     // println!("{:?}", files);
                     // println!("{:?}", files_in_db);

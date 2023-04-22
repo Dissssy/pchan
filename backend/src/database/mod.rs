@@ -11,6 +11,8 @@ use diesel::ExpressionMethods;
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
 
+use crate::schema::Post;
+
 pub struct Users {
     valid_users: Vec<String>,
 }
@@ -104,17 +106,70 @@ impl Database {
         discrim: String,
         number: i64,
     ) -> Result<SafePost> {
+        Self::get_raw_post(conn, discrim, number)
+            .await?
+            .safe(conn)
+            .await
+    }
+
+    async fn get_raw_post(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        discrim: String,
+        number: i64,
+    ) -> Result<Post> {
         use crate::schema::posts::dsl::*;
 
         let this_board = Self::get_board(conn, discrim).await?;
-        let results = posts
+        Ok(posts
             .filter(board.eq(this_board.id))
             .filter(post_number.eq(number))
             .first::<crate::schema::Post>(&mut *conn)
-            .await?;
-        results.safe(conn).await
+            .await?)
     }
 
+    pub async fn delete_post(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        discrim: String,
+        number: i64,
+        token: String,
+    ) -> Result<()> {
+        use crate::schema::posts::dsl::*;
+
+        let post = Self::get_raw_post(conn, discrim.clone(), number).await?;
+        if post.actual_author == common::hash_with_salt(&token, &format!("{}", post.id))
+            || Self::is_admin(conn, token).await?
+        {
+            diesel::delete(posts.filter(id.eq(post.id)))
+                .execute(conn)
+                .await?;
+        } else {
+            return Err(anyhow::anyhow!("Not authorized to delete post"));
+        }
+        Ok(())
+    }
+
+    async fn is_admin(
+        _conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        _token: String,
+    ) -> Result<bool> {
+        // TODO: admins can delete any post
+        Ok(false)
+    }
+
+    pub async fn create_file(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        file: FileInfo,
+        post_id: i64,
+    ) -> Result<crate::schema::File> {
+        use crate::schema::files::dsl::*;
+
+        let tf = insert_into(files)
+            .values((filepath.eq(file.path), hash.eq(file.hash), id.eq(post_id)))
+            .get_result::<crate::schema::File>(conn)
+            .await?;
+
+        Ok(tf)
+    }
     pub async fn get_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discrim: String,
@@ -168,8 +223,8 @@ impl Database {
     ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
 
-        if post.image.is_none() {
-            return Err(anyhow::anyhow!("No image provided"));
+        if post.file.is_none() {
+            return Err(anyhow::anyhow!("No file provided"));
         }
 
         let this_board = Self::get_board(conn, tboard.clone()).await?;
@@ -178,7 +233,16 @@ impl Database {
             .get_result::<crate::schema::Thread>(conn)
             .await?;
 
-        let p = Self::create_post(conn, this_board.id, tboard, t.id, post, actual_author).await?;
+        let p =
+            match Self::create_post(conn, this_board.id, tboard, t.id, post, actual_author).await {
+                Ok(p) => p,
+                Err(e) => {
+                    diesel::delete(threads.filter(id.eq(t.id)))
+                        .execute(conn)
+                        .await?;
+                    return Err(e);
+                }
+            };
         t.post_id = p.id;
         t.with_posts(conn).await
     }
@@ -195,9 +259,9 @@ impl Database {
         // attempt to parse replies from the post, these are in the form of ">>{post_number}" or ">>/{board}/{post_number}"
 
         post.content = post.content.trim().to_owned();
-        if post.content.is_empty() && post.image.is_none() {
+        if post.content.is_empty() && post.file.is_none() {
             return Err(anyhow::anyhow!(
-                "Either content or an image must be provided for any post"
+                "Either content or an file must be provided for any post"
             ));
         }
 
@@ -245,41 +309,62 @@ impl Database {
             }
         }
 
-        let img = match post.image {
-            Some(img) => Some(
-                crate::UNCLAIMED_FILES
-                    .lock()
-                    .await
-                    .claim_file(&img, tactual_author.clone())
-                    .await?,
-            ),
-            None => None,
+        let lock = crate::FS_LOCK.lock().await;
+        println!("acquired lock");
+
+        let pending_file = if let Some(file) = post.file.clone() {
+            let f = crate::UNCLAIMED_FILES
+                .lock()
+                .await
+                .claim_file(&file, tactual_author.clone())
+                .await?;
+            Some(f)
+        } else {
+            None
         };
 
         let t = insert_into(posts).values((
             post_number.eq(Self::get_board(conn, discrim.clone()).await?.post_count + 1),
-            image.eq(img),
             thread.eq(tthread),
             board.eq(tboard),
             author.eq(post.author.clone()),
             content.eq(post.content.clone()),
             replies_to.eq(replieses),
             timestamp.eq(now),
-            actual_author.eq(tactual_author),
+            actual_author.eq(tactual_author.clone()),
         ));
         // println!("{:?}", diesel::debug_query(&t));
-        let t = t.get_result::<crate::schema::Post>(conn).await?;
+        let p = t.get_result::<crate::schema::Post>(conn).await?;
 
-        t.safe(conn).await
+        if let Some(f) = pending_file {
+            crate::database::Database::create_file(conn, f, p.id).await?;
+        }
+
+        drop(lock);
+        println!("released lock");
+
+        diesel::update(posts.filter(id.eq(p.id)))
+            .set(actual_author.eq(common::hash_with_salt(
+                &tactual_author,
+                &format!("{}", p.id),
+            )))
+            .execute(conn)
+            .await?;
+
+        p.safe(conn).await
     }
 
     pub async fn get_all_files(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    ) -> Result<Vec<Option<String>>> {
-        use crate::schema::posts::dsl::*;
-        use diesel::query_dsl::methods::SelectDsl;
-        let results = posts.select(image).load::<Option<String>>(conn).await?;
-        Ok(results)
+    ) -> Result<Vec<FileInfo>> {
+        use crate::schema::files::dsl::*;
+        let filelist = files
+            .load::<crate::schema::File>(conn)
+            .await?
+            .iter()
+            .map(|x| x.info())
+            .collect::<Vec<FileInfo>>();
+        Ok(filelist)
     }
 }
 

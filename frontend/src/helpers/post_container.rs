@@ -5,12 +5,12 @@ use crate::helpers::startswith_class::StartsWithClass;
 
 #[function_component]
 pub fn PostView(props: &PostViewProps) -> Html {
-    let image_expanded = use_state(|| false);
-    let glimage_glexpanded = image_expanded.clone();
+    let file_expanded = use_state(|| false);
+    let glfile_glexpanded = file_expanded.clone();
     let onclick = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
         gloo::console::log!("clicked");
-        glimage_glexpanded.set(!*glimage_glexpanded);
+        glfile_glexpanded.set(!*glfile_glexpanded);
     });
 
     // TODO: make clicking the post number put you in the thread with ?reply=>>{post_number}
@@ -78,30 +78,35 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     </div>
                 </div>
                 {
-                    if let Some(ref img) = post.image {
+                    if let Some(ref img) = post.file {
                         html! {
-                            <div class="post-image-container">
-                                <a href="#" onclick={onclick}>
-                                    {
-                                        if *image_expanded {
-                                            "[-]"
-                                        } else {
-                                            "[+]"
+                            <div class="post-file-container">
+                                <div class="post-file-header">
+                                    <a href="#" onclick={onclick}>
+                                        {
+                                            if *file_expanded {
+                                                "[-]"
+                                            } else {
+                                                "[+]"
+                                            }
                                         }
-                                    }
-                                </a>
-                                <div class="post-image">
+                                    </a>
+                                    <span class="post-hash">
+                                        {"Hash: "}{img.hash.clone()}
+                                    </span>
+                                </div>
+                                <div class="post-file">
                                     {
-                                        if *image_expanded {
+                                        if *file_expanded {
                                             // turn "/files/video/webm/gfj51HYQyWHB_wAh.webm-thumb.jpg" into "video/webm" by replacing "/files/" with "" and then splitting on "/" then taking the first two elements and joining them with "/"
-                                            let mimetype = img.replace("/files/", "");
+                                            let mimetype = img.path.replace("/files/", "");
                                             let mime = mimetype.split('/').next();
                                             match mime {
                                                 None => {
                                                     html! {
                                                         <div class="post-media-error">
                                                             <img src="/res/404.png"/>
-                                                            <a href={img.clone()}>{"Unsupported embed type: None"}</a>
+                                                            <a href={img.path.clone()}>{"Unsupported embed type: None"}</a>
                                                         </div>
                                                     }
                                                 }
@@ -110,27 +115,27 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                                         "video" => {
                                                             html! {
                                                                 <video controls=true class="post-media-video">
-                                                                    <source src={img.clone()} />
+                                                                    <source src={img.path.clone()} />
                                                                 </video>
                                                             }
                                                         }
                                                         "audio" => {
                                                             html! {
                                                                 <audio controls=true class="post-media-audio">
-                                                                    <source src={img.clone()} />
+                                                                    <source src={img.path.clone()} />
                                                                 </audio>
                                                             }
                                                         }
                                                         "image" => {
                                                             html! {
-                                                                <img src={img.clone()} />
+                                                                <img src={img.path.clone()} />
                                                             }
                                                         }
                                                         _ => {
                                                             html! {
                                                                 <div class="post-media-error">
                                                                     <img src="/res/404.png"/>
-                                                                    <a href={img.clone()}>{"Unsupported embed type: "}{m}</a>
+                                                                    <a href={img.path.clone()}>{"Unsupported embed type: "}{m}</a>
                                                                 </div>
                                                             }
                                                         }
@@ -142,7 +147,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                             // }
                                         } else {
                                             html! {
-                                                <img src={format!("{img}-thumb.jpg")} />
+                                                <img src={img.thumbnail.clone()} />
                                             }
                                         }
                                     }

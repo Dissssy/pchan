@@ -164,9 +164,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::header::<Bearer>("authorization"))
         .and_then({
             |disc: String, post: CreatePost, auth: Bearer| async move {
-                if post.image.is_none() {
+                if post.file.is_none() {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                        &"No image provided".to_owned(),
+                        &"No file provided".to_owned(),
                     ));
                 }
                 match crate::database::Database::create_thread(
@@ -250,14 +250,14 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
-                let imagecount = thread
+                let filecount = thread
                     .posts
                     .iter()
-                    .map(|p| p.image.is_some() as i32)
+                    .map(|p| p.file.is_some() as i32)
                     .sum::<i32>();
-                if post.image.is_some() && imagecount >= 99 {
+                if post.file.is_some() && filecount >= 99 {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                        &"Thread already has 100 images".to_owned(),
+                        &"Thread already has 100 files".to_owned(),
                     ));
                 }
                 match crate::database::Database::create_post(
@@ -285,6 +285,31 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut crate::POOL.get().await.unwrap(),
                     disc,
                     post,
+                )
+                .await
+                {
+                    Ok(post) => {
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&post))
+                    }
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    )),
+                }
+            }
+        });
+
+    // DELETE /{discriminator}/post/{post_id} - deletes a post
+
+    let deletepost = warp::path!("api" / "v1" / "board" / String / "post" / i64)
+        .and(warp::delete())
+        .and(warp::header::<Bearer>("authorization"))
+        .and_then({
+            |disc: String, post: i64, auth: Bearer| async move {
+                match crate::database::Database::delete_post(
+                    &mut crate::POOL.get().await.unwrap(),
+                    disc,
+                    post,
+                    auth.token,
                 )
                 .await
                 {
@@ -399,6 +424,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         });
 
     getpost
+        .or(deletepost)
         .or(postinthread)
         .or(getthread)
         .or(postthread)
