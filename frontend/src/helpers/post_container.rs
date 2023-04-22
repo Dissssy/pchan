@@ -34,9 +34,9 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     <div class="post-header-number">
                         {
                             match props.hyperlink {
-                                Some(_) => {
+                                Some(ref board_discrim) => {
                                     html! {
-                                        <a href={format!("./{}", post.post_number)}>
+                                        <a href={format!("/{}/{}", board_discrim, post.post_number)}>
                                             {format!("No. {}", post.post_number)}
                                         </a>
                                     }
@@ -82,7 +82,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                         html! {
                             <div class="post-file-container">
                                 <div class="post-file-header">
-                                    <a href="#" onclick={onclick}>
+                                    <a href="#" onclick={onclick.clone()}>
                                         {
                                             if *file_expanded {
                                                 "[-]"
@@ -96,6 +96,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                     </span>
                                 </div>
                                 <div class="post-file">
+                                    <a href="#" onclick={onclick}>
                                     {
                                         if *file_expanded {
                                             // turn "/files/video/webm/gfj51HYQyWHB_wAh.webm-thumb.jpg" into "video/webm" by replacing "/files/" with "" and then splitting on "/" then taking the first two elements and joining them with "/"
@@ -147,10 +148,13 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                             // }
                                         } else {
                                             html! {
-                                                <img src={img.thumbnail.clone()} />
+                                                //<a href="#" onclick={onclick}>
+                                                    <img src={img.thumbnail.clone()} />
+                                                //</a>
                                             }
                                         }
                                     }
+                                    </a>
                                 </div>
                             </div>
                         }
@@ -199,5 +203,5 @@ pub fn PostView(props: &PostViewProps) -> Html {
 #[derive(Properties, Clone, PartialEq)]
 pub struct PostViewProps {
     pub post: SafePost,
-    pub hyperlink: Option<()>,
+    pub hyperlink: Option<String>,
 }

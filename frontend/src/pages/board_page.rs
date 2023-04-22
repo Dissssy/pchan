@@ -108,7 +108,7 @@ pub fn BoardPage(props: &Props) -> Html {
                         html! {
                             <div class="board-thread">
                                 <div class="board-thread-post">
-                                    <PostView post={t.thread_post.clone()} hyperlink={Some(())} />
+                                    <PostView post={t.thread_post.clone()} hyperlink={Some(props.board_discriminator.clone())} />
                                 </div>
                                 <div class="board-thread-reply">
                                     {

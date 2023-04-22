@@ -17,24 +17,32 @@ pub fn PostBox(props: &Props) -> Html {
     let post_error = use_state(|| None);
 
     let mvpost_text = post_text.clone();
-    let onchange_post = Callback::from(move |e: Event| {
+    let oninput_post = Callback::from(move |e: InputEvent| {
         if let Some(input) = on_change_to_string(e) {
             mvpost_text.set(input);
         } else {
             gloo::console::log!("no input");
         }
     });
-    let starter_name = match crate::get_name() {
+
+    let expanded = use_state(|| false);
+
+    let mvexpanded = expanded.clone();
+    let onclick_expand = Callback::from(move |e: MouseEvent| {
+        e.prevent_default();
+        mvexpanded.set(!*mvexpanded);
+    });
+
+    let name = use_state(|| match crate::get_name() {
         Ok(v) => v,
         Err(e) => {
             gloo::console::log!(format!("error getting name: {:?}", e));
             None
         }
-    };
-    let name = use_state(|| starter_name.clone());
+    });
 
     let mvname = name.clone();
-    let onchange_name = Callback::from(move |e: Event| {
+    let oninput_name = Callback::from(move |e: InputEvent| {
         if let Some(input) = on_change_to_string(e) {
             if let Err(e) = crate::set_name(input.clone()) {
                 gloo::console::log!(format!("error setting name: {:?}", e));
@@ -63,9 +71,10 @@ pub fn PostBox(props: &Props) -> Html {
 
     let pending = use_state(|| false);
 
-    // let mvpost_text = post_text;
-    // let mvname = name;
+    let mvpost_text = post_text.clone();
+    let mvname = name.clone();
     // let mvfile = file;
+    let mvexpanded = expanded.clone();
     let mvprops = props.clone();
     let mvpost_error = post_error.clone();
     let submit_post = Callback::from(move |_| {
@@ -75,9 +84,10 @@ pub fn PostBox(props: &Props) -> Html {
             gloo::console::log!("already pending");
             return;
         }
-        let post_text = post_text.clone();
-        let name = name.clone();
+        let post_text = mvpost_text.clone();
+        let name = mvname.clone();
         let file = file.clone();
+        let expanded = mvexpanded.clone();
         let pending = pending.clone();
         let post_error = mvpost_error.clone();
         let props = mvprops.clone();
@@ -118,24 +128,26 @@ pub fn PostBox(props: &Props) -> Html {
                 Ok(p) => {
                     // combendnt
                     match props.thread_id {
-                        Some((_, _callback)) => {
+                        Some((_, callback)) => {
                             // initiate a manual post reload using the post thingy!!!
-                            // _callback.emit(());
+                            callback.emit(());
+                            post_text.set(String::new());
+                            expanded.set(false);
                             // nevermind i cant figure out how to clear the text inputs, reload the page :(
 
-                            match web_sys::window() {
-                                Some(w) => match w.location().reload() {
-                                    Ok(_) => {}
-                                    Err(e) => {
-                                        let err = format!("{e:?}");
-                                        gloo::console::log!(err.clone());
-                                        post_error.set(Some(err));
-                                    }
-                                },
-                                None => {
-                                    gloo::console::log!("no window");
-                                }
-                            }
+                            // match web_sys::window() {
+                            //     Some(w) => match w.location().reload() {
+                            //         Ok(_) => {}
+                            //         Err(e) => {
+                            //             let err = format!("{e:?}");
+                            //             gloo::console::log!(err.clone());
+                            //             post_error.set(Some(err));
+                            //         }
+                            //     },
+                            //     None => {
+                            //         gloo::console::log!("no window");
+                            //     }
+                            // }
                         }
                         None => {
                             let url = format!("/{}/{}", props.board_discriminator, p.post_number);
@@ -168,46 +180,67 @@ pub fn PostBox(props: &Props) -> Html {
     html! {
         <div class="submission-box">
             <div class="submission-box-header">
-                <p>{ match props.thread_id {
-                    // Some(ref t) => format!("Reply >>{t}"),
-                    Some(_) => "Reply".to_owned(),
-                    None => "New Thread".to_owned(),
-                }}</p>
-            </div>
-            <div class="submission-box-text-inputs">
-                <div class="submission-box-name-input">
-                    <label for="name-input">{"Name"}</label>
-                    <input type="text" id="name-input" name="name-input" onchange={onchange_name} value={
-                        match starter_name {
-                            Some(ref s) => s.clone(),
-                            None => "".to_owned(),
+                <a href="#" onclick={onclick_expand}>
+                    <p>{ match props.thread_id {
+                        // Some(ref t) => format!("Reply >>{t}"),
+                        Some(_) => "Reply".to_owned(),
+                        None => "New Thread".to_owned(),
+                    }}{" "}{
+                        if *expanded {
+                            "[-]"
+                        } else {
+                            "[+]"
                         }
-                    }/>
-                </div>
-                <div class="submission-box-post-input">
-                    <label for="post-input">{"Post"}</label>
-                    <textarea id="post-input" name="post-input" onchange={onchange_post}>
-                    </textarea>
-                </div>
+                    }</p>
+                </a>
             </div>
-            <div class="submission-box-file-input">
-                <label for="file-input">{"File"}</label>
-                <input type="file" id="file-input" name="file-input" onchange={onchange_file}/>
-            </div>
-            <div class="submission-box-submit">
-                <button onclick={submit_post}>{ match props.thread_id {
-                    Some(_) => "Reply",
-                    None => "New Thread",
-                }}</button>
-                {
-                    match *post_error {
-                        Some(ref e) => html! {
-                            <p class="submission-box-post-error">{e}</p>
-                        },
-                        None => html! {}
+            {
+                if *expanded {
+                    html!{
+                        <div class="submission-box-inputs">
+                            <div class="submission-box-text-inputs">
+                                <div class="submission-box-name-input">
+                                    <label for="name-input">{"Name"}</label>
+                                    <input type="text" id="name-input" name="name-input" oninput={oninput_name} value={
+                                        match &*name {
+                                            Some(n) => n.clone(),
+                                            None => "".to_owned(),
+                                        }
+                                    }/>
+                                </div>
+                                <div class="submission-box-post-input">
+                                    <label for="post-input">{"Post"}</label>
+                                    <textarea id="post-input" name="post-input" oninput={oninput_post} value={
+                                        (*post_text).clone()
+                                    }>
+                                    </textarea>
+                                </div>
+                            </div>
+                            <div class="submission-box-file-input">
+                                <label for="file-input">{"File"}</label>
+                                <input type="file" id="file-input" name="file-input" onchange={onchange_file}/>
+                            </div>
+                            <div class="submission-box-submit">
+                                <button onclick={submit_post}>{ match props.thread_id {
+                                    Some(_) => "Reply",
+                                    None => "New Thread",
+                                }}</button>
+                                {
+                                    match *post_error {
+                                        Some(ref e) => html! {
+                                            <p class="submission-box-post-error">{e}</p>
+                                        },
+                                        None => html! {}
+                                    }
+                                }
+                            </div>
+                        </div>
                     }
+                } else {
+                    html!{}
                 }
-            </div>
+            }
+
         </div>
     }
 }

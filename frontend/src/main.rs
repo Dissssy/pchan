@@ -101,7 +101,7 @@ fn switch(routes: BaseRoute) -> Html {
     }
 }
 
-pub fn on_change_to_string(event: Event) -> Option<String> {
+pub fn on_change_to_string(event: InputEvent) -> Option<String> {
     use wasm_bindgen::JsCast;
     match event.target() {
         Some(t) => {
