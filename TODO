@@ -6,6 +6,7 @@ Frontend:
     - Button to load full thread on board view
     - BlueText™️ @done
     - Seperate out API calls @done
+    - Retain name between loads @done
 
 Backend:
     - Prevent spam (possibly by ratelimiting post and thread endpoints)

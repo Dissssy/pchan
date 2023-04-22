@@ -1,8 +1,9 @@
 pub mod api;
-use std::sync::Arc;
-use async_lock::Mutex;
-
+use anyhow::Result;
 use api::Api;
+use async_lock::Mutex;
+use gloo_storage::Storage;
+use std::sync::Arc;
 use yew::prelude::*;
 use yew_router::prelude::*;
 
@@ -104,7 +105,6 @@ pub fn on_change_to_string(event: Event) -> Option<String> {
     use wasm_bindgen::JsCast;
     match event.target() {
         Some(t) => {
-            gloo::console::log!(format!("t: {t:?}"));
             let t = t.dyn_into::<web_sys::HtmlInputElement>();
             match t {
                 Ok(t) => Some(t.value()),
@@ -127,53 +127,16 @@ pub fn on_change_to_string(event: Event) -> Option<String> {
     }
 }
 
-// pub fn get_cookie(c: &str) -> Option<String> {
-//     use wasm_bindgen::JsCast;
-//     // let window = web_sys::window().map(|w| {
-//     //     w.document().map(|d| {
-//     //         d.dyn_into::<web_sys::HtmlDocument>()
-//     //             .map(|d| d.cookie().map(|coke| wasm_cookies::cookies::get(&coke, c)))
-//     //     })
-//     // });
-//     // match window {
-//     //     Some(Some(Ok(Ok(Some(Ok(cookie)))))) => Some(cookie),
-//     //     _ => None,
-//     // }
-//     match web_sys::window() {
-//         None => {
-//             gloo::console::log!("window is none");
-//             None
-//         }
-//         Some(window) => match window.document() {
-//             None => {
-//                 gloo::console::log!("document is none");
-//                 None
-//             }
-//             Some(document) => match document.dyn_into::<web_sys::HtmlDocument>() {
-//                 Err(e) => {
-//                     gloo::console::log!(format!("Error: {e:?}"));
-//                     None
-//                 }
-//                 Ok(document) => match document.cookie() {
-//                     Err(e) => {
-//                         gloo::console::log!(format!("Error: {e:?}"));
-//                         None
-//                     }
-//                     Ok(cookie) => match wasm_cookies::cookies::get(&cookie, c) {
-//                         None => {
-//                             gloo::console::log!(format!(
-//                                 "cookie is none, cookie string: {cookie:?}"
-//                             ));
-//                             None
-//                         }
-//                         Some(Err(e)) => {
-//                             gloo::console::log!(format!("Error: {e:?}"));
-//                             None
-//                         }
-//                         Some(Ok(cookie)) => Some(cookie),
-//                     },
-//                 },
-//             },
-//         },
-//     }
-// }
+pub fn get_name() -> Result<Option<String>> {
+    Ok(gloo_storage::LocalStorage::get::<String>("name").map(|v| {
+        if v.is_empty() {
+            None
+        } else {
+            Some(v)
+        }
+    })?)
+}
+
+pub fn set_name(name: String) -> Result<()> {
+    Ok(gloo_storage::LocalStorage::set("name", name)?)
+}

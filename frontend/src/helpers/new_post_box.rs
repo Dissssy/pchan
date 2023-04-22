@@ -13,7 +13,7 @@ pub fn PostBox(props: &Props) -> Html {
     // there will be a text area for your name, a text area for the post, a file upload button, and a submit button.
     // the post box will be used on the board page, and the thread page.
 
-    let post_text = use_state(|| "".to_string());
+    let post_text = use_state(String::new);
     let post_error = use_state(|| None);
 
     let mvpost_text = post_text.clone();
@@ -24,12 +24,21 @@ pub fn PostBox(props: &Props) -> Html {
             gloo::console::log!("no input");
         }
     });
-
-    let name = use_state(|| None);
+    let starter_name = match crate::get_name() {
+        Ok(v) => v,
+        Err(e) => {
+            gloo::console::log!(format!("error getting name: {:?}", e));
+            None
+        }
+    };
+    let name = use_state(|| starter_name.clone());
 
     let mvname = name.clone();
     let onchange_name = Callback::from(move |e: Event| {
         if let Some(input) = on_change_to_string(e) {
+            if let Err(e) = crate::set_name(input.clone()) {
+                gloo::console::log!(format!("error setting name: {:?}", e));
+            }
             mvname.set(if input.is_empty() { None } else { Some(input) });
         } else {
             gloo::console::log!("no input");
@@ -168,7 +177,12 @@ pub fn PostBox(props: &Props) -> Html {
             <div class="submission-box-text-inputs">
                 <div class="submission-box-name-input">
                     <label for="name-input">{"Name"}</label>
-                    <input type="text" id="name-input" name="name-input" onchange={onchange_name}/>
+                    <input type="text" id="name-input" name="name-input" onchange={onchange_name} value={
+                        match starter_name {
+                            Some(ref s) => s.clone(),
+                            None => "".to_owned(),
+                        }
+                    }/>
                 </div>
                 <div class="submission-box-post-input">
                     <label for="post-input">{"Post"}</label>
