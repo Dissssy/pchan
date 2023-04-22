@@ -103,7 +103,7 @@ impl UnclaimedFiles {
                         return Err(anyhow!("Invalid file"));
                     }
                 };
-                println!("Thumbnail created at {path}");
+                //println!("Thumbnail created at {path}");
                 Ok(FileInfo {
                     path: universalfilepath,
                     hash: filehash,

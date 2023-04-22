@@ -34,7 +34,7 @@ async fn main() {
     env_logger::init();
     println!("Starting backend with:");
 
-    println!("PROFANITY CHECK: {:#?}", PROFANITY.check_profanity("FUCK"));
+    //println!("PROFANITY CHECK: {:#?}", PROFANITY.check_profanity("FUCK"));
 
     {
         if let Err(e) = DATA.lock().await.open().await {
@@ -124,19 +124,19 @@ async fn main() {
                     };
 
                     drop(lock);
-                    println!("released lock");
+                    //println!("released lock");
 
-                    // println!("{:#?}", files_in_db);
-                    // println!("{:#?}", files);
+                    //println!("{:#?}", files_in_db);
+                    //println!("{:#?}", files);
 
                     // get a list of all files that are not in the database.
-                    let files_to_delete = files.iter().filter(|x| files_in_db.iter().any(|v| !(&&v.path == x || &&v.thumbnail == x))).cloned().collect::<Vec<String>>().iter().map(|x| format!("{dir}{x}")).collect::<Vec<String>>();
+                    let files_to_delete = files.iter().filter(|x| !files_in_db.iter().any(|v| &&v.path == x || &&v.thumbnail == x)).cloned().collect::<Vec<String>>().iter().map(|x| format!("{dir}{x}")).collect::<Vec<String>>();
 
                     // println!("{:?}", files);
                     // println!("{:?}", files_in_db);
                     // delete all files that are not in the database.
                     for file in files_to_delete {
-                        // println!("Deleting file {file}");
+                        //println!("Deleting file {file}");
                         if let Err(e) = tokio::fs::remove_file(file.clone()).await {
                             println!("Error deleting file {file}: {e}");
                         }

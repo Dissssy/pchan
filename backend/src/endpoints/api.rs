@@ -1,6 +1,6 @@
 use crate::filters::Bearer;
 use crate::unclaimedfiles::File;
-use common::structs::{CreatePost, SafeBoard};
+use common::structs::{CreatePost, FileInfo, SafeBoard};
 use common::{hash_with_salt, structs::CreateBoard};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
@@ -250,18 +250,27 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
-                let filecount = thread
+                let mut files = thread
                     .posts
                     .iter()
-                    .map(|p| p.file.is_some() as i32)
-                    .sum::<i32>();
-                if post.file.is_some() && filecount >= 99 {
+                    .flat_map(|p| p.file.clone())
+                    .collect::<Vec<FileInfo>>();
+                if let Some(thread_file) = thread.thread_post.file.clone() {
+                    files.push(thread_file);
+                }
+                if post.file.is_some() && files.len() >= 100 {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &"Thread already has 100 files".to_owned(),
                     ));
                 }
                 match crate::database::Database::create_post(
-                    &mut conn, board.id, disc, thread.id, post, auth.token,
+                    &mut conn,
+                    board.id,
+                    disc,
+                    thread.id,
+                    post,
+                    auth.token,
+                    Some(files),
                 )
                 .await
                 {

@@ -12,7 +12,7 @@ Frontend:
 Backend:
     - Prevent spam (possibly by ratelimiting post and thread endpoints):
         - Hashing files @done
-        - Preventing duplicate uploads
+        - Preventing duplicate uploads @done
     - Rejection of posts with images if the thread contains 100 images already @done
     - Create post specific user tokens to handle deletion without storing the raw user token @done
     - Add a way to handle administrator users

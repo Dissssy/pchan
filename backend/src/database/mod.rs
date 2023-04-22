@@ -234,7 +234,9 @@ impl Database {
             .await?;
 
         let p =
-            match Self::create_post(conn, this_board.id, tboard, t.id, post, actual_author).await {
+            match Self::create_post(conn, this_board.id, tboard, t.id, post, actual_author, None)
+                .await
+            {
                 Ok(p) => p,
                 Err(e) => {
                     diesel::delete(threads.filter(id.eq(t.id)))
@@ -254,6 +256,7 @@ impl Database {
         tthread: i64,
         mut post: CreatePost,
         tactual_author: String,
+        check_hash_against: Option<Vec<FileInfo>>,
     ) -> Result<SafePost> {
         use crate::schema::posts::dsl::*;
         // attempt to parse replies from the post, these are in the form of ">>{post_number}" or ">>/{board}/{post_number}"
@@ -310,7 +313,7 @@ impl Database {
         }
 
         let lock = crate::FS_LOCK.lock().await;
-        println!("acquired lock");
+        //println!("acquired lock");
 
         let pending_file = if let Some(file) = post.file.clone() {
             let f = crate::UNCLAIMED_FILES
@@ -318,6 +321,13 @@ impl Database {
                 .await
                 .claim_file(&file, tactual_author.clone())
                 .await?;
+
+            if let Some(files_check) = check_hash_against {
+                if files_check.iter().any(|x| x.hash == f.hash) {
+                    return Err(anyhow::anyhow!("File already exists"));
+                }
+            }
+
             Some(f)
         } else {
             None
@@ -341,7 +351,7 @@ impl Database {
         }
 
         drop(lock);
-        println!("released lock");
+        //println!("released lock");
 
         diesel::update(posts.filter(id.eq(p.id)))
             .set(actual_author.eq(common::hash_with_salt(
