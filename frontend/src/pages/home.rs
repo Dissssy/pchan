@@ -14,7 +14,7 @@ pub fn Home() -> Html {
                 wasm_bindgen_futures::spawn_local(async move {
                     let fetch = gloo_net::http::Request::get("/api/v1/board").send().await;
                     match fetch {
-                        Ok(f) => match f.json::<Vec<common::structs::Board>>().await {
+                        Ok(f) => match f.json::<Vec<common::structs::SafeBoard>>().await {
                             Ok(boardses) => {
                                 boards.set(Some(Some(boardses)));
                             }

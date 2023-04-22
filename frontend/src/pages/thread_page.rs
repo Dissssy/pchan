@@ -1,24 +1,22 @@
+use common::structs::ThreadWithPosts;
 use gloo::timers::callback::Interval;
-use serde::Deserialize;
+// use serde::Deserialize;
 use yew::prelude::*;
 use yew_router::prelude::*;
 
-use crate::{
-    helpers::{board_title::BoardTitle, new_post_box::PostBox, post_container::PostView},
-    pages::board_page::ThreadWithPosts,
-};
+use crate::helpers::{board_title::BoardTitle, new_post_box::PostBox, post_container::PostView};
 
 #[function_component]
 pub fn ThreadPage(props: &Props) -> Html {
     // get reply value from query string
-    let reply = match use_location().map(|l| l.query::<Reply>()) {
-        Some(Ok(query)) => query.reply,
-        Some(Err(e)) => {
-            gloo::console::log!(format!("{e:?}"));
-            None
-        }
-        None => None,
-    };
+    // let reply = match use_location().map(|l| l.query::<Reply>()) {
+    //     Some(Ok(query)) => query.reply,
+    //     Some(Err(e)) => {
+    //         gloo::console::log!(format!("{e:?}"));
+    //         None
+    //     }
+    //     None => None,
+    // };
 
     let loadingposts = use_state(|| false);
     let handledlastpostcount = use_state(|| true);
@@ -78,11 +76,12 @@ pub fn ThreadPage(props: &Props) -> Html {
     }
     let ttbackoff = backoff.clone();
     let ttmax_backoff = backoff_max.clone();
+    let ttloadposts = load_posts.clone();
     let manually_load_posts = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
         ttmax_backoff.set(5);
         ttbackoff.set(0);
-        tloadposts.emit(());
+        ttloadposts.emit(());
     });
 
     use_effect({
@@ -129,7 +128,7 @@ pub fn ThreadPage(props: &Props) -> Html {
                 <BoardTitle board_discriminator={props.board_discriminator.clone()}/>
             </div>
             <div class="postbox">
-                <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={props.thread_id.clone()} starter_text={reply} />
+                <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={(props.thread_id.clone(), tloadposts)} />
             </div>
                 {
                     match *thread {
@@ -177,7 +176,7 @@ pub struct Props {
     pub thread_id: String,
 }
 
-#[derive(Deserialize, Clone, PartialEq)]
-pub struct Reply {
-    reply: Option<String>,
-}
+// #[derive(Deserialize, Clone, PartialEq)]
+// pub struct Reply {
+//     reply: Option<String>,
+// }

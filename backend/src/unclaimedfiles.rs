@@ -145,6 +145,7 @@ impl File {
     }
 }
 
+#[derive(Default)]
 pub struct FileBuilder {
     extension: Option<String>,
     mimetype: Option<String>,
@@ -153,11 +154,7 @@ pub struct FileBuilder {
 
 impl FileBuilder {
     pub fn new() -> Self {
-        Self {
-            extension: None,
-            mimetype: None,
-            data: None,
-        }
+        Self::default()
     }
 
     pub fn extension(mut self, extension: String) -> Self {

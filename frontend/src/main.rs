@@ -1,3 +1,8 @@
+pub mod api;
+use std::sync::Arc;
+use async_lock::Mutex;
+
+use api::Api;
 use yew::prelude::*;
 use yew_router::prelude::*;
 
@@ -6,6 +11,7 @@ lazy_static::lazy_static! {
         (">".to_owned(), "bluetext".to_owned()),
         ("<".to_owned(), "peetext".to_owned())
     ];
+    pub static ref API: Arc<Mutex<Api>> = Arc::new(Mutex::new(Api::default()));
 }
 
 #[derive(Clone, Routable, PartialEq)]

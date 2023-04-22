@@ -1,6 +1,7 @@
+use common::structs::SafePost;
 use yew::prelude::*;
 
-use crate::{helpers::startswith_class::StartsWithClass, pages::board_page::SafePost};
+use crate::helpers::startswith_class::StartsWithClass;
 
 #[function_component]
 pub fn PostView(props: &PostViewProps) -> Html {

@@ -5,9 +5,12 @@ Frontend:
     - Embed post when clicking on the reply link for said post
     - Button to load full thread on board view
     - BlueText™️ @done
-    - Seperate out API calls
+    - Seperate out API calls @done
 
 Backend:
     - Prevent spam (possibly by ratelimiting post and thread endpoints)
     - Rejection of posts with images if the thread contains 100 images already @done
     - Create post specific user tokens to handle deletion without storing the raw user token
+
+Shared:
+    - Universalize shared structs @done

@@ -1,36 +1,21 @@
 use yew::prelude::*;
 
-use crate::pages::board_page::BoardWithThreads;
-
 #[function_component]
 pub fn BoardTitle(props: &TitleProps) -> Html {
-    let board_info = use_state(|| None);
+    let board_title = use_state(|| None);
 
     {
-        let board_info = board_info.clone();
+        let board_title = board_title.clone();
         let props = props.clone();
         use_effect_with_deps(
             move |_| {
+                // wowowo
                 wasm_bindgen_futures::spawn_local(async move {
-                    let fetch = gloo_net::http::Request::get(&format!(
-                        "/api/v1/board/{}",
-                        props.board_discriminator
-                    ))
-                    .send()
-                    .await;
-                    match fetch {
-                        Ok(f) => match f.json::<BoardWithThreads>().await {
-                            Ok(boardses) => {
-                                board_info.set(Some(boardses.name));
-                            }
-                            Err(e) => {
-                                gloo::console::log!(format!("{e:?}"));
-                            }
-                        },
-                        Err(e) => {
-                            gloo::console::log!(format!("{e:?}"));
-                        }
-                    }
+                    crate::API
+                        .lock()
+                        .await
+                        .get_board_title(props.board_discriminator.clone(), board_title)
+                        .await;
                 });
                 || {}
             },
@@ -42,7 +27,7 @@ pub fn BoardTitle(props: &TitleProps) -> Html {
         <div class="board-title">
             <h1>
                 {
-                    match *board_info {
+                    match *board_title {
                         Some(ref b) => {
                             html! {
                                 <>{format!("/{}/ - {}", props.board_discriminator, b)}</>

@@ -1,9 +1,7 @@
 use crate::filters::Bearer;
-use crate::schema::CreateBoard;
-use crate::schema::CreatePost;
-use crate::schema::CreateThread;
 use crate::unclaimedfiles::File;
-use common::hash_with_salt;
+use common::structs::{CreatePost, SafeBoard};
+use common::{hash_with_salt, structs::CreateBoard};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
 
@@ -124,7 +122,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     .await
                 {
                     Ok(boards) => {
-                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&boards))
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                            &boards.iter().map(|b| b.safe()).collect::<Vec<SafeBoard>>(),
+                        ))
                     }
                     Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
@@ -160,11 +160,11 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let postthread = warp::path!("api" / "v1" / "board" / String)
         .and(warp::post())
-        .and(warp::body::json::<CreateThread>())
+        .and(warp::body::json::<CreatePost>())
         .and(warp::header::<Bearer>("authorization"))
         .and_then({
-            |disc: String, thread: CreateThread, auth: Bearer| async move {
-                if thread.post.image.is_none() {
+            |disc: String, post: CreatePost, auth: Bearer| async move {
+                if post.image.is_none() {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &"No image provided".to_owned(),
                     ));
@@ -172,7 +172,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 match crate::database::Database::create_thread(
                     &mut crate::POOL.get().await.unwrap(),
                     disc,
-                    thread,
+                    post,
                     auth.token,
                 )
                 .await

@@ -1,5 +1,5 @@
+use common::structs::BoardWithThreads;
 use gloo::timers::callback::Interval;
-use serde::Deserialize;
 use yew::prelude::*;
 use yew_router::prelude::*;
 
@@ -133,26 +133,4 @@ pub fn BoardPage(props: &Props) -> Html {
 #[derive(Properties, Clone, PartialEq)]
 pub struct Props {
     pub board_discriminator: String,
-}
-
-#[derive(Deserialize, Clone)]
-pub struct BoardWithThreads {
-    pub threads: Vec<ThreadWithPosts>,
-    pub name: String,
-}
-
-#[derive(Deserialize, Clone)]
-pub struct ThreadWithPosts {
-    pub thread_post: SafePost,
-    pub posts: Vec<SafePost>,
-}
-
-#[derive(Deserialize, Clone, PartialEq)]
-pub struct SafePost {
-    pub post_number: i64,
-    pub image: Option<String>,
-    pub author: Option<String>,
-    pub content: String,
-    pub timestamp: String,
-    pub replies: Vec<i64>,
 }

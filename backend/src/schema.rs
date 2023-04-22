@@ -1,13 +1,12 @@
 use anyhow::Result;
+use common::structs::*;
 use deadpool::managed::Object;
-use diesel::query_dsl::methods::FilterDsl;
-use diesel::query_dsl::methods::LimitDsl;
-use diesel::query_dsl::methods::OrderDsl;
-use diesel::ExpressionMethods;
-use diesel::Queryable;
+use diesel::{
+    query_dsl::methods::{FilterDsl, LimitDsl, OrderDsl},
+    ExpressionMethods, Queryable,
+};
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
-use serde::{Deserialize, Serialize};
 
 diesel::table! {
     boards (id) {
@@ -18,20 +17,12 @@ diesel::table! {
     }
 }
 
-#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Board {
     pub id: i64,
     pub name: String,
     pub discriminator: String,
     pub post_count: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct BoardWithThreads {
-    pub id: i64,
-    pub name: String,
-    pub discriminator: String,
-    pub threads: Vec<ThreadWithLazyPosts>,
 }
 
 impl Board {
@@ -58,6 +49,13 @@ impl Board {
             threads: bthreads,
         })
     }
+
+    pub fn safe(&self) -> SafeBoard {
+        SafeBoard {
+            name: self.name.clone(),
+            discriminator: self.discriminator.clone(),
+        }
+    }
 }
 
 diesel::table! {
@@ -69,28 +67,12 @@ diesel::table! {
     }
 }
 
-#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Thread {
     pub id: i64,
     pub board: i64,
     pub post_id: i64,
     pub latest_post: i64,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ThreadWithPosts {
-    pub id: i64,
-    pub board: i64,
-    pub thread_post: SafePost,
-    pub posts: Vec<SafePost>,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ThreadWithLazyPosts {
-    pub id: i64,
-    pub board: i64,
-    pub thread_post: SafePost,
-    pub posts: Vec<SafePost>,
 }
 
 impl Thread {
@@ -179,19 +161,6 @@ pub struct Post {
     pub replies_to: Vec<i64>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct SafePost {
-    pub id: i64,
-    pub post_number: i64,
-    pub image: Option<String>,
-    pub thread: i64,
-    pub board: i64,
-    pub author: Option<String>,
-    pub content: String,
-    pub timestamp: chrono::NaiveDateTime,
-    pub replies: Vec<i64>,
-}
-
 impl Post {
     pub async fn safe(
         &self,
@@ -218,7 +187,7 @@ impl Post {
             board: self.board,
             author: self.author.clone(),
             content: self.content.clone(),
-            timestamp: self.timestamp,
+            timestamp: format!("{}", self.timestamp),
             replies,
         })
     }
@@ -241,22 +210,4 @@ pub async fn post_number(
     use crate::schema::posts::dsl::*;
     let post = posts.filter(id.eq(post)).first::<Post>(conn).await?;
     Ok(post.post_number)
-}
-
-#[derive(Deserialize)]
-pub struct CreateBoard {
-    pub discriminator: String,
-    pub name: String,
-}
-
-#[derive(Deserialize)]
-pub struct CreateThread {
-    pub post: CreatePost,
-}
-
-#[derive(Deserialize)]
-pub struct CreatePost {
-    pub image: Option<String>,
-    pub content: String,
-    pub author: Option<String>,
 }

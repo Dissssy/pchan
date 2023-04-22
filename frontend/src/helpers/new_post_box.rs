@@ -1,29 +1,17 @@
-use serde::{Deserialize, Serialize};
+use common::structs::CreatePost;
 
 use yew::prelude::*;
 
-use crate::on_change_to_string;
+use crate::{
+    api::{ReplyContext, ThreadContext},
+    on_change_to_string,
+};
 
 #[function_component]
 pub fn PostBox(props: &Props) -> Html {
     // a post box component that will be used to create new posts and reply to existing posts.
     // there will be a text area for your name, a text area for the post, a file upload button, and a submit button.
     // the post box will be used on the board page, and the thread page.
-    let token = use_state(|| None);
-
-    let mvtoken = token.clone();
-    if token.is_none() {
-        wasm_bindgen_futures::spawn_local(async move {
-            let token = gloo_net::http::Request::get("/api/v1/")
-                .send()
-                .await
-                .unwrap()
-                .json::<String>()
-                .await
-                .unwrap();
-            mvtoken.set(Some(token));
-        });
-    }
 
     let post_text = use_state(|| "".to_string());
     let post_error = use_state(|| None);
@@ -66,154 +54,106 @@ pub fn PostBox(props: &Props) -> Html {
 
     let pending = use_state(|| false);
 
-    let mvpost_text = post_text;
-    let mvname = name;
-    let mvfile = file;
-    let mvtoken = token;
+    // let mvpost_text = post_text;
+    // let mvname = name;
+    // let mvfile = file;
     let mvprops = props.clone();
-    let amvpost_error = post_error.clone();
+    let mvpost_error = post_error.clone();
     let submit_post = Callback::from(move |_| {
-        let mvtoken = mvtoken.clone();
         if !*pending {
             pending.set(true);
         } else {
             gloo::console::log!("already pending");
             return;
         }
-        if let Some(ref token) = *mvtoken {
-            let token = token.clone();
-            let mvvpost_text = mvpost_text.clone();
-            let mvvname = mvname.clone();
-            let mvvfile = mvfile.clone();
-            let pclone = pending.clone();
-            let mvpost_error = amvpost_error.clone();
-            let mvprops = mvprops.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let file_to_post = if let Some(f) = &*mvvfile {
-                    gloo::console::log!("uploading {:?}", f);
-                    let form_data = web_sys::FormData::new().unwrap();
-                    form_data.append_with_blob("file", f).unwrap();
+        let post_text = post_text.clone();
+        let name = name.clone();
+        let file = file.clone();
+        let pending = pending.clone();
+        let post_error = mvpost_error.clone();
+        let props = mvprops.clone();
+        wasm_bindgen_futures::spawn_local(async move {
+            let file_to_post = match crate::API.lock().await.upload_file(file.clone()).await {
+                Ok(file) => file,
+                Err(e) => {
+                    gloo::console::log!(format!("error uploading file: {:?}", e));
+                    pending.set(false);
+                    return;
+                }
+            };
+            // if we are replying to a thread, we need to send the thread id to the server. otherwise we need to use a different data structure.
+            let post = CreatePost {
+                image: file_to_post,
+                content: (*post_text).clone(),
+                author: (*name).clone(),
+            };
+            let p = match props.thread_id {
+                Some((ref t, _)) => {
+                    // copmment
+                    let context = ReplyContext {
+                        board_discriminator: props.board_discriminator.clone(),
+                        thread_id: t.clone(),
+                    };
 
-                    let res = match gloo_net::http::Request::post("/api/v1/file")
-                        .header("authorization", &format!("Bearer {token}"))
-                        .body(&form_data)
-                        .send()
-                        .await
-                    {
-                        Ok(res) => res,
-                        Err(e) => {
-                            gloo::console::log!(format!("{e:?}"));
-                            pclone.set(false);
-                            return;
+                    crate::API.lock().await.post_reply(post, context).await
+                }
+                None => {
+                    // commbent
+                    let context = ThreadContext {
+                        board_discriminator: props.board_discriminator.clone(),
+                    };
+                    crate::API.lock().await.post_thread(post, context).await
+                }
+            };
+            match p {
+                Ok(p) => {
+                    // combendnt
+                    match props.thread_id {
+                        Some((_, _callback)) => {
+                            // initiate a manual post reload using the post thingy!!!
+                            // _callback.emit(());
+                            // nevermind i cant figure out how to clear the text inputs, reload the page :(
+
+                            match web_sys::window() {
+                                Some(w) => match w.location().reload() {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        let err = format!("{e:?}");
+                                        gloo::console::log!(err.clone());
+                                        post_error.set(Some(err));
+                                    }
+                                },
+                                None => {
+                                    gloo::console::log!("no window");
+                                }
+                            }
+                        }
+                        None => {
+                            let url = format!("/{}/{}", props.board_discriminator, p.post_number);
+                            match web_sys::window() {
+                                Some(w) => match w.location().set_href(&url) {
+                                    Ok(_) => {}
+                                    Err(e) => {
+                                        let err = format!("{e:?}");
+                                        gloo::console::log!(err.clone());
+                                        post_error.set(Some(err));
+                                    }
+                                },
+                                None => {
+                                    gloo::console::log!("no window");
+                                }
+                            }
                         }
                     };
-                    let file_id = res
-                        .json::<String>()
-                        .await
-                        .unwrap_or_else(|_| " UUUHJHHH MY PSUSSY".to_owned());
-                    if file_id.contains(' ') {
-                        gloo::console::log!("file upload failed");
-                        pclone.set(false);
-                        return;
-                    }
-                    Some(file_id)
-                } else {
-                    None
-                };
-                let name_to_post = &*mvvname;
-                let content_to_post = &*mvvpost_text;
-
-                // if we are replying to a thread, we need to send the thread id to the server. otherwise we need to use a different data structure.
-                let data_to_send = PostReply {
-                    image: file_to_post,
-                    content: content_to_post.clone(),
-                    author: name_to_post.clone(),
-                };
-                let board_discriminator = mvprops.board_discriminator.clone();
-                let thread_id = mvprops.thread_id.clone();
-                let res = if let Some(thread_id) = mvprops.thread_id {
-                    // we are replying to a thread, post to /api/v1/board/{board_discriminator}/{thread_id}
-                    let url = format!("/api/v1/board/{board_discriminator}/{thread_id}");
-
-                    let res = gloo_net::http::Request::post(&url)
-                        .header("authorization", &format!("Bearer {token}"))
-                        .json(&data_to_send)
-                        .unwrap();
-                    let res = res.send().await.unwrap();
-
-                    res
-                } else {
-                    // we are creating a new thread, post to /api/v1/board/{board_discriminator}
-                    let data_to_send = PostThread { post: data_to_send };
-                    let url = format!("/api/v1/board/{board_discriminator}");
-
-                    let res = gloo::net::http::Request::post(&url)
-                        .header("authorization", &format!("Bearer {token}"))
-                        .json(&data_to_send)
-                        .unwrap()
-                        .send()
-                        .await
-                        .unwrap();
-
-                    res
-                };
-                let text = match res.text().await {
-                    Ok(text) => text,
-                    Err(e) => {
-                        gloo::console::log!(format!("{e:?}"));
-                        pclone.set(false);
-                        return;
-                    }
-                };
-
-                let respons = match serde_json::from_str::<Posted>(&text) {
-                    Ok(res) => res,
-                    Err(e) => {
-                        gloo::console::log!(format!("{e:?}"));
-                        let err = match serde_json::from_str::<String>(&text) {
-                            Ok(err) => err,
-                            Err(e) => {
-                                gloo::console::log!(format!("{e:?}"));
-                                "unknown error".to_owned()
-                            }
-                        };
-                        pclone.set(false);
-                        mvpost_error.set(Some(err));
-                        return;
-                    }
-                };
-                // if we are creating a new thread, we need to redirect to the new thread. otherwise we just need to refresh the page.
-                match thread_id {
-                    Some(_) => match web_sys::window() {
-                        Some(w) => match w.location().reload() {
-                            Ok(_) => {}
-                            Err(e) => {
-                                gloo::console::log!(format!("{e:?}"));
-                            }
-                        },
-                        None => {
-                            gloo::console::log!("no window");
-                        }
-                    },
-                    None => {
-                        let url = format!("/{}/{}", board_discriminator, respons.post_number);
-                        match web_sys::window() {
-                            Some(w) => match w.location().set_href(&url) {
-                                Ok(_) => {}
-                                Err(e) => {
-                                    gloo::console::log!(format!("{e:?}"));
-                                }
-                            },
-                            None => {
-                                gloo::console::log!("no window");
-                            }
-                        }
-                    }
                 }
-
-                pclone.set(false);
-            });
-        }
+                Err(e) => {
+                    let err = format!("{e:?}");
+                    gloo::console::log!(err.clone());
+                    post_error.set(Some(err));
+                }
+            }
+            pending.set(false);
+        });
     });
 
     html! {
@@ -261,29 +201,6 @@ pub fn PostBox(props: &Props) -> Html {
 #[derive(Properties, Clone, PartialEq)]
 pub struct Props {
     pub board_discriminator: String,
-    pub thread_id: Option<String>,
-    pub starter_text: Option<String>,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Value {
-    #[serde(rename = "textContent")]
-    pub value: String,
-}
-
-#[derive(Serialize, Debug)]
-pub struct PostReply {
-    pub image: Option<String>,
-    pub content: String,
-    pub author: Option<String>,
-}
-
-#[derive(Serialize, Debug)]
-pub struct PostThread {
-    pub post: PostReply,
-}
-
-#[derive(Deserialize, Debug)]
-pub struct Posted {
-    pub post_number: i64,
+    pub thread_id: Option<(String, Callback<()>)>,
+    // pub starter_text: Option<String>,
 }

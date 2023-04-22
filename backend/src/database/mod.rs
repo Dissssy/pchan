@@ -1,6 +1,7 @@
 use std::io::{Read, Write};
 
 use anyhow::Result;
+use common::structs::*;
 use deadpool::managed::Object;
 use diesel::dsl::now;
 use diesel::insert_into;
@@ -102,7 +103,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discrim: String,
         number: i64,
-    ) -> Result<crate::schema::SafePost> {
+    ) -> Result<SafePost> {
         use crate::schema::posts::dsl::*;
 
         let this_board = Self::get_board(conn, discrim).await?;
@@ -118,7 +119,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discrim: String,
         number: i64,
-    ) -> Result<crate::schema::ThreadWithPosts> {
+    ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
         let this_board = Self::get_board(conn, discrim.clone()).await?;
         let this_post = Self::get_post(conn, discrim, number).await?;
@@ -134,7 +135,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         bboard: i64,
         number: i64,
-    ) -> Result<crate::schema::ThreadWithPosts> {
+    ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
         let this_post = Self::get_post_from_post_number(conn, bboard, number).await?;
         let results = threads
@@ -149,7 +150,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         bboard: i64,
         number: i64,
-    ) -> Result<crate::schema::SafePost> {
+    ) -> Result<SafePost> {
         use crate::schema::posts::dsl::*;
         let results = posts
             .filter(board.eq(bboard))
@@ -162,12 +163,12 @@ impl Database {
     pub async fn create_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tboard: String,
-        threadinfo: crate::schema::CreateThread,
+        post: CreatePost,
         actual_author: String,
-    ) -> Result<crate::schema::ThreadWithPosts> {
+    ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
 
-        if threadinfo.post.image.is_none() {
+        if post.image.is_none() {
             return Err(anyhow::anyhow!("No image provided"));
         }
 
@@ -177,15 +178,7 @@ impl Database {
             .get_result::<crate::schema::Thread>(conn)
             .await?;
 
-        let p = Self::create_post(
-            conn,
-            this_board.id,
-            tboard,
-            t.id,
-            threadinfo.post,
-            actual_author,
-        )
-        .await?;
+        let p = Self::create_post(conn, this_board.id, tboard, t.id, post, actual_author).await?;
         t.post_id = p.id;
         t.with_posts(conn).await
     }
@@ -195,9 +188,9 @@ impl Database {
         tboard: i64,
         discrim: String,
         tthread: i64,
-        mut post: crate::schema::CreatePost,
+        mut post: CreatePost,
         tactual_author: String,
-    ) -> Result<crate::schema::SafePost> {
+    ) -> Result<SafePost> {
         use crate::schema::posts::dsl::*;
         // attempt to parse replies from the post, these are in the form of ">>{post_number}" or ">>/{board}/{post_number}"
 
