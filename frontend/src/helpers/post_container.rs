@@ -38,13 +38,20 @@ pub fn PostView(props: &PostViewProps) -> Html {
     });
 
     let tfile_state = file_state.clone();
+    let mvprops = props.clone();
     let on_mouseon = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
-        tfile_state.set(match *tfile_state {
-            HoveredOrExpandedState::None => HoveredOrExpandedState::Hovered,
-            HoveredOrExpandedState::Hovered => HoveredOrExpandedState::Hovered,
-            HoveredOrExpandedState::Expanded => HoveredOrExpandedState::Expanded,
-        });
+        if if let Some(ref f) = mvprops.post.file {
+            !f.spoiler
+        } else {
+            true
+        } {
+            tfile_state.set(match *tfile_state {
+                HoveredOrExpandedState::None => HoveredOrExpandedState::Hovered,
+                HoveredOrExpandedState::Hovered => HoveredOrExpandedState::Hovered,
+                HoveredOrExpandedState::Expanded => HoveredOrExpandedState::Expanded,
+            });
+        }
     });
 
     let tfile_state = file_state.clone();

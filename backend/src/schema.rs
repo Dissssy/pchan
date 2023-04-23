@@ -43,7 +43,6 @@ impl Board {
         {
             bthreads.push(thread.with_lazy_posts(conn).await?);
         }
-
         Ok(BoardWithThreads {
             id: self.id,
             name: self.name.clone(),
@@ -203,10 +202,12 @@ impl Post {
             newreplies.push(get_reply_info(reply, self.board, conn).await?);
         }
 
+        let t = get_file(conn, self.id).await;
+
         Ok(SafePost {
             id: self.id,
             post_number: self.post_number,
-            file: get_file(conn, self.id).await?,
+            file: t?,
             thread: thread_post_number(self.thread, conn).await?,
             board: self.board,
             author: self.author.clone(),
@@ -269,12 +270,16 @@ pub async fn get_file(
 ) -> Result<Option<FileInfo>> {
     use crate::schema::files::dsl::*;
     use diesel::result::OptionalExtension;
-    let file = files
+
+    let file = match files
         .filter(id.eq(tid))
         .first::<File>(conn)
         .await
         .optional()?
-        .map(|x| x.info());
+    {
+        Some(f) => Some(f.info(conn).await?),
+        None => None,
+    };
     Ok(file)
 }
 
@@ -283,6 +288,7 @@ diesel::table! {
         id -> BigInt,
         filepath -> Text,
         hash -> Text,
+        spoiler -> Bool,
     }
 }
 
@@ -291,15 +297,33 @@ pub struct File {
     pub id: i64,
     pub filepath: String,
     pub hash: String,
+    pub spoiler: bool,
 }
 
 impl File {
-    pub fn info(&self) -> FileInfo {
+    pub async fn info(
+        &self,
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    ) -> Result<FileInfo> {
+        let thumbnail = if self.spoiler {
+            crate::database::Database::get_random_spoiler(conn).await?
+        } else {
+            format!("{}-thumb.jpg", self.filepath)
+        };
+        Ok(FileInfo {
+            path: self.filepath.clone(),
+            thumbnail,
+            hash: self.hash.clone(),
+            spoiler: self.spoiler,
+        })
+    }
+    pub fn raw_info(&self) -> FileInfo {
         let thumbnail = format!("{}-thumb.jpg", self.filepath);
         FileInfo {
             path: self.filepath.clone(),
             thumbnail,
             hash: self.hash.clone(),
+            spoiler: self.spoiler,
         }
     }
 }
@@ -328,4 +352,17 @@ impl Banner {
             href: self.href.clone(),
         }
     }
+}
+
+diesel::table! {
+    spoilers (id) {
+        id -> BigInt,
+        img -> Text,
+    }
+}
+
+#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Spoiler {
+    pub id: i64,
+    pub img: String,
 }

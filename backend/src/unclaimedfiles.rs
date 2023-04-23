@@ -24,15 +24,22 @@ impl UnclaimedFiles {
         Err(anyhow!("Failed to generate unique id, try again later"))
     }
 
-    pub async fn claim_file(&mut self, id: &str, token: String) -> Result<FileInfo> {
+    pub async fn claim_file(
+        &mut self,
+        createfile: &common::structs::CreateFile,
+        token: String,
+    ) -> Result<FileInfo> {
         match self.files.remove(&token) {
             Some((tid, file, _)) => {
-                if tid != id {
+                if tid != createfile.id {
                     return Err(anyhow!("Invalid id"));
                 }
 
                 let universalfolderpath = format!("/files/{}/", file.mimetype);
-                let mut universalfilepath = format!("{universalfolderpath}{id}.{}", file.extension);
+                let mut universalfilepath = format!(
+                    "{}{}.{}",
+                    universalfolderpath, createfile.id, file.extension
+                );
 
                 let mut diskfilepath =
                     format!("{}{}", env!("FILE_STORAGE_PATH"), universalfilepath.clone());
@@ -45,8 +52,10 @@ impl UnclaimedFiles {
                     let mut num = 0;
                     while tokio::fs::metadata(diskfilepath.clone()).await.is_ok() {
                         num += 1;
-                        universalfilepath =
-                            format!("/files/{}/{}{}.{}", file.mimetype, id, num, file.extension);
+                        universalfilepath = format!(
+                            "/files/{}/{}{}.{}",
+                            file.mimetype, createfile.id, num, file.extension
+                        );
                         diskfilepath =
                             format!("{}{}", env!("FILE_STORAGE_PATH"), universalfilepath.clone());
                     }
@@ -86,6 +95,7 @@ impl UnclaimedFiles {
                     path: universalfilepath,
                     hash: filehash,
                     thumbnail: path,
+                    spoiler: createfile.spoiler,
                 })
             }
             None => Err(anyhow!("File not found")),

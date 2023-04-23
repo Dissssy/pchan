@@ -114,6 +114,19 @@ impl Database {
             .await
     }
 
+    // pub async fn get_post_from_id(
+    //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    //     id: i64,
+    // ) -> Result<SafePost> {
+    //     use crate::schema::posts::dsl::*;
+
+    //     let post = posts
+    //         .filter(id.eq(id))
+    //         .first::<crate::schema::Post>(&mut *conn)
+    //         .await?;
+    //     post.safe(conn).await
+    // }
+
     async fn get_raw_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discrim: String,
@@ -165,7 +178,12 @@ impl Database {
         use crate::schema::files::dsl::*;
 
         let tf = insert_into(files)
-            .values((filepath.eq(file.path), hash.eq(file.hash), id.eq(post_id)))
+            .values((
+                filepath.eq(file.path),
+                hash.eq(file.hash),
+                id.eq(post_id),
+                spoiler.eq(file.spoiler),
+            ))
             .get_result::<crate::schema::File>(conn)
             .await?;
 
@@ -363,7 +381,7 @@ impl Database {
             .load::<crate::schema::File>(conn)
             .await?
             .iter()
-            .map(|x| x.info())
+            .map(|x| x.raw_info())
             .collect::<Vec<FileInfo>>();
         Ok(filelist)
     }
@@ -388,6 +406,21 @@ impl Database {
             .cloned()
             .ok_or_else(|| anyhow!("No banners found for board {}!", board_discriminator))?
             .safe())
+    }
+
+    pub async fn get_random_spoiler(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    ) -> Result<String> {
+        use crate::schema::spoilers::dsl::*;
+        use diesel::query_dsl::methods::SelectDsl;
+
+        let spoiler = spoilers.select(img).load::<String>(conn).await?;
+
+        use rand::seq::SliceRandom;
+        spoiler
+            .choose(&mut rand::thread_rng())
+            .cloned()
+            .ok_or_else(|| anyhow!("No spoilers found!"))
     }
 }
 

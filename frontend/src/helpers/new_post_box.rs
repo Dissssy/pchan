@@ -40,6 +40,14 @@ pub fn PostBox(props: &Props) -> Html {
         mvexpanded.set(!*mvexpanded);
     });
 
+    let spoilered = use_state(|| false);
+
+    let mvspoilered = spoilered.clone();
+    let onclick_spoiler = Callback::from(move |e: MouseEvent| {
+        e.prevent_default();
+        mvspoilered.set(!*mvspoilered);
+    });
+
     let name = use_state(|| match crate::get_name() {
         Ok(v) => v,
         Err(e) => {
@@ -84,6 +92,7 @@ pub fn PostBox(props: &Props) -> Html {
     let mvprops = props.clone();
     let mvpost_error = post_error.clone();
     let mvtopic = post_topic.clone();
+    let mvspoilered = spoilered.clone();
     let submit_post = Callback::from(move |_| {
         if !*pending {
             pending.set(true);
@@ -97,10 +106,16 @@ pub fn PostBox(props: &Props) -> Html {
         let expanded = mvexpanded.clone();
         let pending = pending.clone();
         let post_error = mvpost_error.clone();
+        let spoilered = mvspoilered.clone();
         let props = mvprops.clone();
         let post_topic = mvtopic.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            let file_to_post = match crate::API.lock().await.upload_file(file.clone()).await {
+            let file_to_post = match crate::API
+                .lock()
+                .await
+                .upload_file(file.clone(), *spoilered)
+                .await
+            {
                 Ok(file) => file,
                 Err(e) => {
                     gloo::console::log!(format!("error uploading file: {:?}", e));
@@ -225,6 +240,13 @@ pub fn PostBox(props: &Props) -> Html {
                                 </div>
                             </div>
                             <div class="submission-box-file-input">
+                                <input type="button" id="spoiler-button" class="custom-select" name="spoiler-button" onclick={onclick_spoiler} value={
+                                    if *spoilered {
+                                        "Spoiler"
+                                    } else {
+                                        "-"
+                                    }
+                                }/>
                                 <label for="file-input">{"File"}</label>
                                 <input type="file" id="file-input" name="file-input" onchange={onchange_file}/>
                             </div>

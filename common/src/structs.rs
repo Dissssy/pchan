@@ -53,6 +53,7 @@ pub struct FileInfo {
     pub path: String,
     pub thumbnail: String,
     pub hash: String,
+    pub spoiler: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -63,9 +64,15 @@ pub struct CreateBoard {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CreatePost {
-    pub file: Option<String>,
+    pub file: Option<CreateFile>,
     pub content: String,
     pub author: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CreateFile {
+    pub id: String,
+    pub spoiler: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

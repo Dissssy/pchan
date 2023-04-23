@@ -1,5 +1,7 @@
 use anyhow::{anyhow, Result};
-use common::structs::{BoardWithThreads, CreatePost, CreateThread, SafePost, ThreadWithPosts};
+use common::structs::{
+    BoardWithThreads, CreateFile, CreatePost, CreateThread, SafePost, ThreadWithPosts,
+};
 use web_sys::File;
 use yew::UseStateHandle;
 
@@ -101,7 +103,8 @@ impl Api {
     pub async fn upload_file(
         &mut self,
         file: UseStateHandle<Option<File>>,
-    ) -> Result<Option<String>> {
+        spoiler: bool,
+    ) -> Result<Option<CreateFile>> {
         let token = self.get_token().await?;
         let f = if let Some(f) = &*file {
             let form_data = web_sys::FormData::new().map_err(|e| anyhow!(format!("{:?}", e)))?;
@@ -118,7 +121,10 @@ impl Api {
             if file_id.contains(' ') {
                 return Err(anyhow::anyhow!("file upload failed"));
             }
-            Some(file_id)
+            Some(CreateFile {
+                id: file_id,
+                spoiler,
+            })
         } else {
             None
         };

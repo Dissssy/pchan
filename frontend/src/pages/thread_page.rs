@@ -54,7 +54,7 @@ pub fn ThreadPage(props: &Props) -> Html {
             }
 
             ttloadingthreads.set(false);
-            gloo::console::log!("rerendering");
+            // gloo::console::log!("rerendering");
             rerender.set(!*rerender);
         });
     });
