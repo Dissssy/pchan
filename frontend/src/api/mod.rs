@@ -43,7 +43,8 @@ impl Api {
         let fetch = gloo_net::http::Request::get("/api/v1/board").send().await;
         match fetch {
             Ok(f) => match f.json::<Vec<common::structs::SafeBoard>>().await {
-                Ok(boardses) => {
+                Ok(mut boardses) => {
+                    boardses.sort_by(|a, b| a.discriminator.cmp(&b.discriminator));
                     boards.set(Some(boardses));
                 }
                 Err(e) => {
@@ -52,6 +53,25 @@ impl Api {
             },
             Err(_) => {
                 boards.set(Some(vec![]));
+            }
+        }
+    }
+    pub async fn get_board(&mut self, discrim: &str) -> Result<BoardWithThreads> {
+        let fetch = gloo_net::http::Request::get(&format!("/api/v1/board/{}", discrim))
+            .send()
+            .await;
+        match fetch {
+            Ok(f) => match f.json::<BoardWithThreads>().await {
+                Ok(boardses) => Ok(boardses),
+                Err(e) => {
+                    gloo::console::log!(format!("{e:?}"));
+                    // redirect to 404 page
+                    Err(e.into())
+                }
+            },
+            Err(e) => {
+                gloo::console::log!(format!("{e:?}"));
+                Err(e.into())
             }
         }
     }

@@ -1,3 +1,4 @@
+pub mod board_link;
 pub mod board_title;
 pub mod boards_navbar;
 pub mod lazy_post;

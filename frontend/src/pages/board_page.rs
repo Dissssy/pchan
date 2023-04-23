@@ -1,4 +1,3 @@
-use common::structs::BoardWithThreads;
 use yew::prelude::*;
 use yew_router::prelude::*;
 
@@ -28,29 +27,46 @@ pub fn BoardPage(props: &Props) -> Html {
         let ttloadingthreads = tloadingthreads.clone();
         let ttnav = nav.clone();
         wasm_bindgen_futures::spawn_local(async move {
-            let fetch = gloo_net::http::Request::get(&format!(
-                "/api/v1/board/{}",
-                ttprops.board_discriminator
-            ))
-            .send()
-            .await;
-            match fetch {
-                Ok(f) => match f.json::<BoardWithThreads>().await {
-                    Ok(boardses) => {
-                        ttthreads.set(boardses.threads);
-                    }
-                    Err(e) => {
-                        gloo::console::log!(format!("{e:?}"));
-                        // redirect to 404 page
-                        if let Some(n) = ttnav {
-                            n.replace(&crate::BaseRoute::NotFound);
-                        }
-                    }
-                },
+            // let fetch = gloo_net::http::Request::get(&format!(
+            //     "/api/v1/board/{}",
+            //     ttprops.board_discriminator
+            // ))
+            // .send()
+            // .await;
+            // match fetch {
+            //     Ok(f) => match f.json::<BoardWithThreads>().await {
+            //         Ok(boardses) => {
+            //             ttthreads.set(boardses.threads);
+            //         }
+            //         Err(e) => {
+            //             gloo::console::log!(format!("{e:?}"));
+            //             // redirect to 404 page
+            //             if let Some(n) = ttnav {
+            //                 n.replace(&crate::BaseRoute::NotFound);
+            //             }
+            //         }
+            //     },
+            //     Err(e) => {
+            //         gloo::console::log!(format!("{e:?}"));
+            //     }
+            // };
+            let b = crate::API
+                .lock()
+                .await
+                .get_board(&ttprops.board_discriminator)
+                .await;
+            match b {
+                Ok(b) => {
+                    ttthreads.set(b.threads);
+                }
                 Err(e) => {
                     gloo::console::log!(format!("{e:?}"));
+                    // redirect to 404 page
+                    if let Some(n) = ttnav {
+                        n.replace(&crate::BaseRoute::NotFound);
+                    }
                 }
-            };
+            }
             ttloadingthreads.set(false);
         });
     });

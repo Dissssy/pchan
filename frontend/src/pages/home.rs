@@ -12,20 +12,7 @@ pub fn Home() -> Html {
         use_effect_with_deps(
             move |_| {
                 wasm_bindgen_futures::spawn_local(async move {
-                    let fetch = gloo_net::http::Request::get("/api/v1/board").send().await;
-                    match fetch {
-                        Ok(f) => match f.json::<Vec<common::structs::SafeBoard>>().await {
-                            Ok(boardses) => {
-                                boards.set(Some(Some(boardses)));
-                            }
-                            Err(e) => {
-                                gloo::console::log!(format!("{e:?}"));
-                            }
-                        },
-                        Err(_) => {
-                            boards.set(Some(None));
-                        }
-                    }
+                    crate::API.lock().await.get_boards(boards).await;
                 });
                 || {}
             },
@@ -34,7 +21,7 @@ pub fn Home() -> Html {
     }
 
     match &*boards {
-        Some(Some(b)) => {
+        Some(b) => {
             html! {
                 <div class="home">
                     <div class="boards">
@@ -52,11 +39,6 @@ pub fn Home() -> Html {
                         </table>
                     </div>
                 </div>
-            }
-        }
-        Some(None) => {
-            html! {
-                <p>{"Error loading boards, more info in console"}</p>
             }
         }
         None => {

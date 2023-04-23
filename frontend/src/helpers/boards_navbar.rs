@@ -1,5 +1,7 @@
 use yew::prelude::*;
 
+use crate::helpers::board_link::BoardLink;
+
 #[function_component]
 pub fn NavBar(props: &Props) -> Html {
     let boards = use_state(|| None);
@@ -25,11 +27,7 @@ pub fn NavBar(props: &Props) -> Html {
                         html! {
                             {
                                 for b.iter().map(|board| html! {
-                                    <span class={ if board.discriminator == props.board_discriminator { "current-navbar-link" } else { "navbar-link" }} title={board.name.clone()}>
-                                        <a href={format!("/{}/", board.discriminator.clone())}>
-                                            {format!("/{}/", board.discriminator.clone())}
-                                        </a>
-                                    </span>
+                                    <BoardLink board={board.clone()} board_discriminator={props.board_discriminator.clone()} />
                                 })
                             }
                         }
