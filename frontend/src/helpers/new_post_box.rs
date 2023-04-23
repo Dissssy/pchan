@@ -1,4 +1,4 @@
-use common::structs::CreatePost;
+use common::structs::{CreatePost, CreateThread};
 
 use yew::prelude::*;
 
@@ -13,13 +13,24 @@ pub fn PostBox(props: &Props) -> Html {
     // there will be a text area for your name, a text area for the post, a file upload button, and a submit button.
     // the post box will be used on the board page, and the thread page.
 
-    let post_text = use_state(String::new);
+    let post_text = props.post_text.clone();
     let post_error = use_state(|| None);
 
     let mvpost_text = post_text.clone();
     let oninput_post = Callback::from(move |e: InputEvent| {
         if let Some(input) = on_change_to_string(e) {
             mvpost_text.set(input);
+        } else {
+            gloo::console::log!("no input");
+        }
+    });
+
+    let post_topic = use_state(String::new);
+
+    let mvpost_topic = post_topic.clone();
+    let oninput_topic = Callback::from(move |e: InputEvent| {
+        if let Some(input) = on_change_to_string(e) {
+            mvpost_topic.set(input);
         } else {
             gloo::console::log!("no input");
         }
@@ -77,6 +88,7 @@ pub fn PostBox(props: &Props) -> Html {
     let mvexpanded = expanded.clone();
     let mvprops = props.clone();
     let mvpost_error = post_error.clone();
+    let mvtopic = post_topic.clone();
     let submit_post = Callback::from(move |_| {
         if !*pending {
             pending.set(true);
@@ -91,6 +103,7 @@ pub fn PostBox(props: &Props) -> Html {
         let pending = pending.clone();
         let post_error = mvpost_error.clone();
         let props = mvprops.clone();
+        let post_topic = mvtopic.clone();
         wasm_bindgen_futures::spawn_local(async move {
             let file_to_post = match crate::API.lock().await.upload_file(file.clone()).await {
                 Ok(file) => file,
@@ -121,7 +134,11 @@ pub fn PostBox(props: &Props) -> Html {
                     let context = ThreadContext {
                         board_discriminator: props.board_discriminator.clone(),
                     };
-                    crate::API.lock().await.post_thread(post, context).await
+                    let thred = CreateThread {
+                        post,
+                        topic: (*post_topic).clone(),
+                    };
+                    crate::API.lock().await.post_thread(thred, context).await
                 }
             };
             match p {
@@ -201,17 +218,33 @@ pub fn PostBox(props: &Props) -> Html {
                     html!{
                         <div class="submission-box-inputs">
                             <div class="submission-box-text-inputs">
-                                <div class="submission-box-name-input">
-                                    <label for="name-input">{"Name"}</label>
-                                    <input type="text" id="name-input" class="custom-select" name="name-input" oninput={oninput_name} value={
-                                        match &*name {
-                                            Some(n) => n.clone(),
-                                            None => "".to_owned(),
+                                <div class="name-and-topic">
+                                    <div class="submission-box-name-input">
+                                        <label for="name-input">{"Name"}</label>
+                                        <input type="text" id="name-input" class="custom-select" name="name-input" oninput={oninput_name} value={
+                                            match &*name {
+                                                Some(n) => n.clone(),
+                                                None => "".to_owned(),
+                                            }
+                                        }/>
+                                    </div>
+                                    {
+                                        if props.thread_id.is_none() {
+                                            html! {
+                                                <div class="submission-box-topic-input">
+                                                    <label for="topic-input">{"Topic"}</label>
+                                                    <input type="text" id="topic-input" class="custom-select" name="topic-input" oninput={oninput_topic} value={
+                                                        (*post_topic).clone()
+                                                    }/>
+                                                </div>
+                                            }
+                                        } else {
+                                            html! {}
                                         }
-                                    }/>
+                                    }
                                 </div>
                                 <div class="submission-box-post-input">
-                                    <label for="post-input">{"Post"}</label>
+                                    //<label for="post-input">{"Post"}</label>
                                     <textarea id="post-input" class="custom-select" name="post-input" oninput={oninput_post} value={
                                         (*post_text).clone()
                                     }>
@@ -251,5 +284,5 @@ pub fn PostBox(props: &Props) -> Html {
 pub struct Props {
     pub board_discriminator: String,
     pub thread_id: Option<(String, Callback<()>)>,
-    // pub starter_text: Option<String>,
+    pub post_text: UseStateHandle<String>,
 }

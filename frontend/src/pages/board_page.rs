@@ -4,6 +4,7 @@ use yew_router::prelude::*;
 
 use crate::helpers::{
     board_title::BoardTitle,
+    boards_navbar::NavBar,
     new_post_box::PostBox,
     thread_view::{MaybeExpandableThread, ThreadView},
 };
@@ -95,12 +96,15 @@ pub fn BoardPage(props: &Props) -> Html {
     //     }
     // });
 
+    let post_content = use_state(String::new);
+
     html! {
         <div class="board">
             <div class="meta-shiz">
+                <NavBar board_discriminator={props.board_discriminator.clone()}/>
                 <BoardTitle board_discriminator={props.board_discriminator.clone()}/>
                 <div class="postbox">
-                    <PostBox board_discriminator={props.board_discriminator.clone()} />
+                    <PostBox board_discriminator={props.board_discriminator.clone()} post_text={post_content} />
                 </div>
             </div>
             <div class="board-threads">

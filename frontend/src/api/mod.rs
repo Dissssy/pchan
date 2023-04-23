@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use common::structs::{BoardWithThreads, CreatePost, SafePost, ThreadWithPosts};
+use common::structs::{BoardWithThreads, CreatePost, CreateThread, SafePost, ThreadWithPosts};
 use web_sys::File;
 use yew::UseStateHandle;
 
@@ -33,6 +33,25 @@ impl Api {
             },
             Err(e) => {
                 gloo::console::log!(format!("{e:?}"));
+            }
+        }
+    }
+    pub async fn get_boards(
+        &mut self,
+        boards: UseStateHandle<Option<Vec<common::structs::SafeBoard>>>,
+    ) {
+        let fetch = gloo_net::http::Request::get("/api/v1/board").send().await;
+        match fetch {
+            Ok(f) => match f.json::<Vec<common::structs::SafeBoard>>().await {
+                Ok(boardses) => {
+                    boards.set(Some(boardses));
+                }
+                Err(e) => {
+                    gloo::console::log!(format!("{e:?}"));
+                }
+            },
+            Err(_) => {
+                boards.set(Some(vec![]));
             }
         }
     }
@@ -77,7 +96,7 @@ impl Api {
     }
     pub async fn post_thread(
         &mut self,
-        post: CreatePost,
+        thread: CreateThread,
         context: ThreadContext,
     ) -> Result<SafePost> {
         let token = self.get_token().await?;
@@ -85,7 +104,7 @@ impl Api {
 
         let res = gloo_net::http::Request::post(&url)
             .header("authorization", &format!("Bearer {token}"))
-            .json(&post)?
+            .json(&thread)?
             .send()
             .await?
             .text()

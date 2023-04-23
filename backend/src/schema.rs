@@ -66,6 +66,7 @@ diesel::table! {
         board -> BigInt,
         post_id -> BigInt,
         latest_post -> BigInt,
+        topic -> Text,
     }
 }
 
@@ -75,6 +76,7 @@ pub struct Thread {
     pub board: i64,
     pub post_id: i64,
     pub latest_post: i64,
+    pub topic: String,
 }
 
 impl Thread {
@@ -93,6 +95,12 @@ impl Thread {
         for post in tposts.iter() {
             safeposts.push(post.safe(conn).await?);
         }
+        let post_count = posts
+            .select(count(id))
+            .filter(thread.eq(self.id))
+            .filter(id.ne(self.post_id))
+            .first::<i64>(conn)
+            .await?;
         let tpost = posts
             .filter(id.eq(self.post_id))
             .first::<Post>(conn)
@@ -100,6 +108,8 @@ impl Thread {
         Ok(ThreadWithPosts {
             id: self.id,
             board: self.board,
+            post_count,
+            topic: self.topic.clone(),
             thread_post: tpost.safe(conn).await?,
             posts: safeposts,
         })
@@ -135,6 +145,7 @@ impl Thread {
             id: self.id,
             board: self.board,
             post_count,
+            topic: self.topic.clone(),
             thread_post: tpost.safe(conn).await?,
             posts: safeposts,
         })

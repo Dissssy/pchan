@@ -1,4 +1,7 @@
 use yew::prelude::*;
+use yew_router::prelude::Link;
+
+use crate::BaseRoute;
 
 #[function_component]
 pub fn BoardTitle(props: &TitleProps) -> Html {
@@ -30,7 +33,9 @@ pub fn BoardTitle(props: &TitleProps) -> Html {
                     match *board_title {
                         Some(ref b) => {
                             html! {
-                                <>{format!("/{}/ - {}", props.board_discriminator, b)}</>
+                                <Link<BaseRoute> to={BaseRoute::BoardPage{board_discriminator: props.board_discriminator.clone()}}>
+                                    {format!("/{}/ - {}", props.board_discriminator, b)}
+                                </Link<BaseRoute>>
                             }
                         }
                         None => {

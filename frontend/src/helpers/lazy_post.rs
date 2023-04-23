@@ -34,7 +34,7 @@ pub fn LazyPost(props: &Props) -> Html {
         tpost_state.set(match *tpost_state {
             HoveredOrExpandedState::None => HoveredOrExpandedState::Expanded,
             HoveredOrExpandedState::Hovered => HoveredOrExpandedState::Expanded,
-            HoveredOrExpandedState::Expanded => HoveredOrExpandedState::None,
+            HoveredOrExpandedState::Expanded => HoveredOrExpandedState::Hovered,
         });
         // gloo::console::log!(format!("{:?}", *tpost_state));
         if tpost.is_none() {
@@ -75,62 +75,89 @@ pub fn LazyPost(props: &Props) -> Html {
 
     html! {
         <>
-            <a href={props.reply.link()} onclick={on_click} onmouseover={on_mouseon} onmouseleave={on_mouseoff} >{format!("{}{}", props.reply.text(), if *post_state == HoveredOrExpandedState::Expanded { " (held)" } else { "" })}</a>
+            <a href={props.reply.link()} class={
+                match *post {
+                    Some(Ok(_)) => "post-link",
+                    Some(Err(_)) => "post-link-deleted",
+                    None => "post-link-unloaded",
+                }
+            } onclick={on_click} onmouseover={on_mouseon} onmouseleave={on_mouseoff} >{format!("{}{}", props.reply.text(), if *post_state == HoveredOrExpandedState::Expanded { " (held)" } else { "" })}</a>
             {
                 match *post_state {
-                    HoveredOrExpandedState::Expanded => {
-                        html! {
-                            <div>
-                                {
-                                    match *post {
-                                        Some(Ok(ref post)) => {
-                                            html! {
-                                                <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert} />
-                                            }
-                                        }
-                                        Some(Err(ref e)) => {
-                                            html! {
-                                                <div>{e.to_string()}</div>
-                                            }
-                                        }
-                                        None => {
-                                            html! {
-                                                <div>{"loading..."}</div>
-                                            }
-                                        }
-                                    }
-                                }
-                            </div>
-                        }
-                    }
-                    HoveredOrExpandedState::Hovered => {
-                        html! {
-                            <div>
-                                {
-                                    match *post {
-                                        Some(Ok(ref post)) => {
-                                            html! {
-                                                <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert} />
-                                            }
-                                        }
-                                        Some(Err(ref e)) => {
-                                            html! {
-                                                <div>{e.to_string()}</div>
-                                            }
-                                        }
-                                        None => {
-                                            html! {
-                                                <div>{"loading..."}</div>
-                                            }
-                                        }
-                                    }
-                                }
-                            </div>
-                        }
-                    }
-                    _ => {
+                    HoveredOrExpandedState::None => {
                         html! {}
                     }
+                    _ => {
+                        html! {
+                            <>
+                                {
+                                    match *post {
+                                        Some(Ok(ref post)) => {
+                                            html! {
+                                                <div>
+                                                    <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert} />
+                                                </div>
+                                            }
+                                        }
+                                        Some(Err(ref e)) => {
+                                            let eror = format!("{}", e);
+                                            if eror.contains("Record not found") {
+                                                html! {
+                                                    <span>{" [deleted]"}</span>
+                                                }
+                                            } else {
+                                                html! {
+                                                    <div>{e.to_string()}</div>
+                                                }
+                                            }
+                                        }
+                                        None => {
+                                            html! {
+                                                <span>{"loading..."}</span>
+                                            }
+                                        }
+                                    }
+                                }
+                            </>
+                        }
+                    }
+                    // HoveredOrExpandedState::Hovered => {
+                    //     html! {
+                    //         <>
+                    //             {
+                    //                 match *post {
+                    //                     Some(Ok(ref post)) => {
+                    //                         html! {
+                    //                             <div>
+                    //                                 <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert} />
+                    //                             </div>
+                    //                         }
+                    //                     }
+                    //                     Some(Err(ref e)) => {
+                    //                         let eror = format!("{}", e);
+                    //                         if eror.contains("Record not found") {
+                    //                             html! {
+                    //                                 <span>{" [deleted]"}</span>
+                    //                             }
+                    //                         } else {
+                    //                             html! {
+                    //                                 <div>{e.to_string()}</div>
+                    //                             }
+                    //                         }
+                    //                     }
+                    //                     None => {
+                    //                         html! {
+                    //                             <>{"loading..."}</>
+                    //                         }
+                    //                     }
+                    //                 }
+                    //             }
+                    //         </>
+                    //     }
+                    // }
+                    // _ => {
+                    //     html! {}
+                    // }
                 }
             }
         </>

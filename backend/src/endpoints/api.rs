@@ -1,6 +1,6 @@
 use crate::filters::Bearer;
 use crate::unclaimedfiles::File;
-use common::structs::{CreatePost, FileInfo, SafeBoard};
+use common::structs::{CreatePost, CreateThread, FileInfo, SafeBoard};
 use common::{hash_with_salt, structs::CreateBoard};
 use serde::{Deserialize, Serialize};
 use warp::Filter;
@@ -160,19 +160,19 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let postthread = warp::path!("api" / "v1" / "board" / String)
         .and(warp::post())
-        .and(warp::body::json::<CreatePost>())
+        .and(warp::body::json::<CreateThread>())
         .and(warp::header::<Bearer>("authorization"))
         .and_then({
-            |disc: String, post: CreatePost, auth: Bearer| async move {
-                if post.file.is_none() {
-                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                        &"No file provided".to_owned(),
-                    ));
-                }
+            |disc: String, thread: CreateThread, auth: Bearer| async move {
+                // if thread.post.file.is_none() {
+                //     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                //         &"No file provided".to_owned(),
+                //     ));
+                // }
                 match crate::database::Database::create_thread(
                     &mut crate::POOL.get().await.unwrap(),
                     disc,
-                    post,
+                    thread,
                     auth.token,
                 )
                 .await

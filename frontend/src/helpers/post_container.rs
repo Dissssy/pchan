@@ -17,6 +17,21 @@ pub fn PostView(props: &PostViewProps) -> Html {
     // });
     let _prevent_click = Callback::from(|e: MouseEvent| e.prevent_default());
 
+    let add_to = props.add_to_content.clone();
+    let id = props.post.post_number;
+    let on_click_add = Callback::from(move |e: MouseEvent| {
+        e.prevent_default();
+        if let Some(ref add_to) = add_to {
+            let prior = (*add_to).clone();
+            let prior = if prior.trim().is_empty() {
+                "".to_string()
+            } else {
+                format!("{}\n", &*prior)
+            };
+            add_to.set(format!("{}>>{}\n", prior, id));
+        }
+    });
+
     let file_state = use_state(|| HoveredOrExpandedState::None);
 
     let tfile_state = file_state.clone();
@@ -75,10 +90,10 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     </div>
                     <div class="post-header-number">
                         {
-                            match props.hyperlink {
-                                Some(ref board_discrim) => {
+                            match props.add_to_content {
+                                Some(_) => {
                                     html! {
-                                        <a href={format!("/{}/thread/{}", board_discrim, post.post_number)}>
+                                        <a href="#" onclick={on_click_add}>
                                             {format!("No. {}", post.post_number)}
                                         </a>
                                     }
@@ -96,29 +111,42 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     <div class="post-header-timestamp">
                         {post.timestamp.clone()}
                     </div>
-                        {
-                            if !post.replies.is_empty() {
-                                html! {
-                                    <div class="post-header-replies">
-                                        <div class="post-header-reply-list">
-                                            <>{"Replies: "}</>
-                                            {
-                                                for post.replies.iter().map(|r| {
-                                                    html! {
-                                                        <div class="post-header-reply-text">
-                                                            <LazyPost reply={r.clone()} this_board={props.board_discrim.clone()} invert={invert} />
-                                                        </div>
-                                                    }
-
-                                                })
-                                            }
-                                        </div>
-                                    </div>
-                                }
-                            } else {
-                                html! {}
+                    {
+                        if let Some(ref t) = props.topic {
+                            html! {
+                                <div class="post-header-topic">
+                                    <a class="post-topic-link" href={format!("/{}/thread/{}", props.board_discrim, post.post_number)}>
+                                        {t.clone()}
+                                    </a>
+                                </div>
                             }
+                        } else {
+                            html! {}
                         }
+                    }
+                    {
+                        if !post.replies.is_empty() {
+                            html! {
+                                <div class="post-header-replies">
+                                    <div class="post-header-reply-list">
+                                        <>{"Replies: "}</>
+                                        {
+                                            for post.replies.iter().map(|r| {
+                                                html! {
+                                                    <div class="post-header-reply-text">
+                                                        <LazyPost reply={r.clone()} this_board={props.board_discrim.clone()} invert={invert} />
+                                                    </div>
+                                                }
+
+                                            })
+                                        }
+                                    </div>
+                                </div>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
                 </div>
                 {
                     if let Some(ref img) = post.file {
@@ -256,7 +284,9 @@ pub fn PostView(props: &PostViewProps) -> Html {
 #[derive(Properties, Clone, PartialEq)]
 pub struct PostViewProps {
     pub post: SafePost,
-    pub hyperlink: Option<String>,
+    // pub hyperlink: Option<String>,
+    pub add_to_content: Option<UseStateHandle<String>>,
     pub invert: Option<bool>,
     pub board_discrim: String,
+    pub topic: Option<String>,
 }

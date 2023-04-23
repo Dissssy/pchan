@@ -218,33 +218,49 @@ impl Database {
     pub async fn create_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tboard: String,
-        post: CreatePost,
+        thread: CreateThread,
         actual_author: String,
     ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
 
-        if post.file.is_none() {
+        if thread.topic.is_empty() {
+            return Err(anyhow::anyhow!("No topic provided"));
+        }
+
+        if thread.post.file.is_none() {
             return Err(anyhow::anyhow!("No file provided"));
         }
 
         let this_board = Self::get_board(conn, tboard.clone()).await?;
         let mut t = insert_into(threads)
-            .values((board.eq(this_board.id), post_id.eq(0), latest_post.eq(0)))
+            .values((
+                board.eq(this_board.id),
+                post_id.eq(0),
+                latest_post.eq(0),
+                topic.eq(thread.topic),
+            ))
             .get_result::<crate::schema::Thread>(conn)
             .await?;
 
-        let p =
-            match Self::create_post(conn, this_board.id, tboard, t.id, post, actual_author, None)
-                .await
-            {
-                Ok(p) => p,
-                Err(e) => {
-                    diesel::delete(threads.filter(id.eq(t.id)))
-                        .execute(conn)
-                        .await?;
-                    return Err(e);
-                }
-            };
+        let p = match Self::create_post(
+            conn,
+            this_board.id,
+            tboard,
+            t.id,
+            thread.post,
+            actual_author,
+            None,
+        )
+        .await
+        {
+            Ok(p) => p,
+            Err(e) => {
+                diesel::delete(threads.filter(id.eq(t.id)))
+                    .execute(conn)
+                    .await?;
+                return Err(e);
+            }
+        };
         t.post_id = p.id;
         t.with_posts(conn).await
     }

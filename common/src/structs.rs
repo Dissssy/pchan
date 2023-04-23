@@ -20,7 +20,9 @@ pub struct ThreadWithPosts {
     pub id: i64,
     pub board: i64,
     pub thread_post: SafePost,
+    pub post_count: i64,
     pub posts: Vec<SafePost>,
+    pub topic: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -30,6 +32,7 @@ pub struct ThreadWithLazyPosts {
     pub thread_post: SafePost,
     pub post_count: i64,
     pub posts: Vec<SafePost>,
+    pub topic: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -63,6 +66,12 @@ pub struct CreatePost {
     pub file: Option<String>,
     pub content: String,
     pub author: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct CreateThread {
+    pub post: CreatePost,
+    pub topic: String,
 }
 
 #[derive(Clone, PartialEq, Eq, Debug, Serialize, Deserialize, Hash)]

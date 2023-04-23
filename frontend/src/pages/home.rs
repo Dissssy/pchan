@@ -38,13 +38,13 @@ pub fn Home() -> Html {
             html! {
                 <div class="home">
                     <div class="boards">
-                        <h1>{"Boards"}</h1>
-                        <table class="board-list" style="display: inline-block;">
+                        <h1 class="board-title">{"PChan"}</h1>
+                        <table class="board-list">
                             <tr>
                                 {for b.iter().map(|board| html! {
                                     <td class="board-link">
                                         <Link<BaseRoute> to={BaseRoute::BoardPage{board_discriminator: board.discriminator.clone()}}>
-                                            {format!("/{}/ - {}", board.discriminator.clone(), board.name.clone())}
+                                            {board.name.clone()}
                                         </Link<BaseRoute>>
                                     </td>
                                 })}

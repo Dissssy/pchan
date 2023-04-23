@@ -65,7 +65,7 @@ pub fn ThreadView(props: &Props) -> Html {
     html! {
         <div class="threadposts-list">
             <div class="threadposts-post">
-                <PostView post={props.thread.thread_post().clone()} board_discrim={props.board_discriminator.clone()} />
+                <PostView post={props.thread.thread_post().clone()} board_discrim={props.board_discriminator.clone()} topic={props.thread.topic().clone()} add_to_content={props.add_to_content.clone()} />
                 {
                     match props.thread {
                         MaybeExpandableThread::Expandable(ref t) => {
@@ -89,7 +89,7 @@ pub fn ThreadView(props: &Props) -> Html {
                     for posts.iter().map(|p| {
                         html! {
                             <div class="threadposts-post">
-                                <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} />
+                                <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} add_to_content={props.add_to_content.clone()} />
                             </div>
                         }
                     })
@@ -103,6 +103,7 @@ pub fn ThreadView(props: &Props) -> Html {
 pub struct Props {
     pub thread: MaybeExpandableThread,
     pub rerender: bool,
+    pub add_to_content: Option<UseStateHandle<String>>,
     pub board_discriminator: String,
 }
 
@@ -145,6 +146,12 @@ impl MaybeExpandableThread {
         match self {
             Self::Expandable(t) => &t.thread_post,
             Self::AlreadyExpanded(t) => &t.thread_post,
+        }
+    }
+    pub fn topic(&self) -> &String {
+        match self {
+            Self::Expandable(t) => &t.topic,
+            Self::AlreadyExpanded(t) => &t.topic,
         }
     }
 }

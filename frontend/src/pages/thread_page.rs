@@ -5,6 +5,7 @@ use yew_router::prelude::*;
 
 use crate::helpers::{
     board_title::BoardTitle,
+    boards_navbar::NavBar,
     new_post_box::PostBox,
     thread_view::{MaybeExpandableThread, ThreadView},
 };
@@ -20,6 +21,8 @@ pub fn ThreadPage(props: &Props) -> Html {
     //     }
     //     None => None,
     // };
+
+    let post_content = use_state(|| "".to_string());
 
     let rerender = use_state(|| false);
 
@@ -133,9 +136,10 @@ pub fn ThreadPage(props: &Props) -> Html {
     html! {
         <div class="thread">
             <div class="meta-shiz">
+                <NavBar board_discriminator={props.board_discriminator.clone()}/>
                 <BoardTitle board_discriminator={props.board_discriminator.clone()}/>
                 <div class="postbox">
-                    <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={(props.thread_id.clone(), tloadposts)} />
+                    <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={(props.thread_id.clone(), tloadposts)} post_text={post_content.clone()}/>
                 </div>
             </div>
             <div class="threadposts">
@@ -144,7 +148,7 @@ pub fn ThreadPage(props: &Props) -> Html {
                         Some(ref t) => {
                             html! {
                                 <>
-                                    <ThreadView thread={MaybeExpandableThread::from(t.clone())} board_discriminator={props.board_discriminator.clone()} rerender={*rerender}/>
+                                    <ThreadView thread={MaybeExpandableThread::from(t.clone())} board_discriminator={props.board_discriminator.clone()} rerender={*rerender} add_to_content={post_content}/>
                                     <div class="reload-button">
                                         <a href="#" onclick={manually_load_posts}>
                                             {"Checking for new posts in "}{(*read_backoff_max - *read_backoff).max(0)}{" seconds"}
