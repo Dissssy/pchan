@@ -14,6 +14,8 @@ pub mod schema;
 mod statics;
 mod unclaimedfiles;
 use unclaimedfiles::UnclaimedFiles;
+pub mod quotes;
+use quotes::Quotes;
 
 use std::collections::HashMap;
 
@@ -27,6 +29,7 @@ lazy_static::lazy_static! {
     pub static ref UNCLAIMED_FILES: Arc<Mutex<UnclaimedFiles>> = Arc::new(Mutex::new(UnclaimedFiles::new(HashMap::new())));
     pub static ref MANUAL_FILE_TRIM: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     pub static ref FS_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
+    pub static ref QUOTES: Arc<Quotes> = Arc::new(Quotes::load("./quotes.txt".to_string()).expect("Failed to load quotes"));
 }
 
 #[tokio::main]

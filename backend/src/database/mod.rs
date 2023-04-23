@@ -1,6 +1,6 @@
 use std::io::{Read, Write};
 
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use common::structs::*;
 use deadpool::managed::Object;
 use diesel::dsl::now;
@@ -8,9 +8,11 @@ use diesel::insert_into;
 use diesel::query_dsl::methods::FilterDsl;
 use diesel::query_dsl::methods::OrderDsl;
 use diesel::ExpressionMethods;
+use diesel::PgArrayExpressionMethods;
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
 
+use crate::schema::Banner;
 use crate::schema::Post;
 
 pub struct Users {
@@ -218,7 +220,7 @@ impl Database {
     pub async fn create_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tboard: String,
-        thread: CreateThread,
+        mut thread: CreateThread,
         actual_author: String,
     ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
@@ -226,6 +228,8 @@ impl Database {
         if thread.topic.is_empty() {
             return Err(anyhow::anyhow!("No topic provided"));
         }
+
+        thread.topic = replace_possible_profanity(thread.topic);
 
         if thread.post.file.is_none() {
             return Err(anyhow::anyhow!("No file provided"));
@@ -284,45 +288,52 @@ impl Database {
             ));
         }
 
+        post.content = replace_possible_profanity(post.content);
+        post.author = post.author.map(replace_possible_profanity);
+
         let replies = post
             .content
             .split_whitespace()
-            .filter(|x| x.starts_with(">>"))
-            .map(|x| {
-                if x.contains('/') {
-                    let mut split = x.split('/');
-                    split.next();
-                    let bboard = split.next().unwrap_or_default();
-                    let post = split.next().unwrap_or_default();
-                    (Some(bboard.to_string()), post.parse::<i64>().ok())
-                } else {
-                    let post = x.trim_start_matches(">>");
-                    (None, post.parse::<i64>().ok())
-                }
-            })
-            .collect::<Vec<(Option<String>, Option<i64>)>>()
-            .iter()
-            .flat_map(|(bboard, post)| {
-                if let Some(post) = post {
-                    if let Some(bboard) = bboard {
-                        if !bboard.is_empty() {
-                            Some((bboard.to_string(), *post))
-                        } else {
-                            None
-                        }
-                    } else {
-                        Some((discrim.clone(), *post))
-                    }
-                } else {
-                    None
-                }
-            })
-            .collect::<Vec<(String, i64)>>();
+            .flat_map(|x| common::structs::Reply::from_str(x, &discrim))
+            .collect::<Vec<common::structs::Reply>>();
+        // .filter(|x| x.starts_with(">>"))
+        // .map(|x| {
+        //     if x.contains('/') {
+        //         let mut split = x.split('/');
+        //         split.next();
+        //         let bboard = split.next().unwrap_or_default();
+        //         let post = split.next().unwrap_or_default();
+        //         (Some(bboard.to_string()), post.parse::<i64>().ok())
+        //     } else {
+        //         let post = x.trim_start_matches(">>");
+        //         (None, post.parse::<i64>().ok())
+        //     }
+        // })
+        // .collect::<Vec<(Option<String>, Option<i64>)>>()
+        // .iter()
+        // .flat_map(|(bboard, post)| {
+        //     if let Some(post) = post {
+        //         if let Some(bboard) = bboard {
+        //             if !bboard.is_empty() {
+        //                 Some((bboard.to_string(), *post))
+        //             } else {
+        //                 None
+        //             }
+        //         } else {
+        //             Some((discrim.clone(), *post))
+        //         }
+        //     } else {
+        //         None
+        //     }
+        // })
+        // .collect::<Vec<(String, i64)>>();
 
         let mut replieses = Vec::new();
 
-        for (bboard, post) in replies {
-            let this_post = Self::get_post(conn, bboard, post).await.map(|x| x.id);
+        for reply in replies {
+            let this_post = Self::get_post(conn, reply.board_discriminator, reply.post_number)
+                .await
+                .map(|x| x.id);
             if let Ok(this_post) = this_post {
                 replieses.push(this_post);
             }
@@ -392,25 +403,40 @@ impl Database {
             .collect::<Vec<FileInfo>>();
         Ok(filelist)
     }
+
+    pub async fn get_random_banner(
+        board_discriminator: String,
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    ) -> Result<common::structs::Banner> {
+        use crate::schema::banners::dsl::*;
+        // get all banners as Vec<Banner>
+        use diesel::query_dsl::methods::OrFilterDsl;
+        let board = Self::get_board(conn, board_discriminator.clone()).await?;
+
+        let banner = banners
+            .or_filter(boards.contains(vec![board.id]))
+            .or_filter(boards.is_null())
+            .load::<Banner>(conn)
+            .await?;
+
+        use rand::seq::SliceRandom;
+        Ok(banner
+            .choose(&mut rand::thread_rng())
+            .cloned()
+            .ok_or_else(|| anyhow!("No banners found for board {}!", board_discriminator))?
+            .safe())
+    }
 }
 
-// CREATE OR REPLACE FUNCTION update_thread()
-// RETURNS TRIGGER AS $$
-// BEGIN
-//     IF (SELECT COUNT(*) FROM posts WHERE thread = NEW.thread) <= 300 THEN
-//         UPDATE threads SET latest_post = NEW.id WHERE id = NEW.thread;
-//     END IF;
-//     IF (SELECT COUNT(*) FROM posts WHERE thread = NEW.thread) = 0 THEN
-//         UPDATE threads SET post_id = NEW.id WHERE id = NEW.thread;
-//     END IF;
-//     RETURN NEW;
-// END;
-// $$ LANGUAGE plpgsql;
-
-// CREATE OR REPLACE FUNCTION update_board()
-// RETURNS TRIGGER AS $$
-// BEGIN
-//     UPDATE boards SET post_count = NEW.post_count WHERE id = NEW.board;
-//     RETURN NEW;
-// END;
-// $$ LANGUAGE plpgsql;
+pub fn replace_possible_profanity(mut string: String) -> String {
+    let scrunkly = crate::PROFANITY.check_profanity(&string);
+    for word in scrunkly {
+        if word.category == profanity::Category::RacialSlurs
+            || word.category_2 == Some(profanity::Category::RacialSlurs)
+            || word.category_3 == Some(profanity::Category::RacialSlurs)
+        {
+            string = string.replace(&word.word, &crate::QUOTES.random_quote());
+        }
+    }
+    string
+}

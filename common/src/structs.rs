@@ -133,7 +133,7 @@ impl Reply {
             post_number = self.post_number
         )
     }
-    pub fn text(&self) -> String {
+    pub fn text(&self, this_thread_post_number: i64) -> String {
         if self.external {
             format!(
                 ">>>/{board_discriminator}/{post_number}",
@@ -141,7 +141,21 @@ impl Reply {
                 post_number = self.post_number
             )
         } else {
-            format!(">>{post_number}", post_number = self.post_number)
+            format!(
+                ">>{}{}",
+                self.post_number,
+                if this_thread_post_number == self.post_number {
+                    " (OP)"
+                } else {
+                    ""
+                }
+            )
         }
     }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct Banner {
+    pub path: String,
+    pub href: Option<String>,
 }

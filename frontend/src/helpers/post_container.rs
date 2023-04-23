@@ -134,7 +134,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                             for post.replies.iter().map(|r| {
                                                 html! {
                                                     <div class="post-header-reply-text">
-                                                        <LazyPost reply={r.clone()} this_board={props.board_discrim.clone()} invert={invert} />
+                                                        <LazyPost reply={r.clone()} this_board={props.board_discrim.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number}  />
                                                     </div>
                                                 }
 
@@ -233,50 +233,58 @@ pub fn PostView(props: &PostViewProps) -> Html {
                         html! {}
                     }
                 }
-                <div class="post-text">
-                    {
-                        for post.content.lines().map(|l| {
-                            if l.is_empty() && !last_empty {
-                                last_empty = true;
-                                html! {
-                                    <>
-                                        <br />
-                                    </>
-                                }
-                            } else if l.is_empty() {
-                                last_empty = true;
-                                html! {}
-                            } else {
-                                last_empty = false;
-                                html! {
-                                    <>
-                                        {
-                                            if !first {
-                                                html! {
+                {
+                    if !post.content.trim().is_empty() {
+                        html! {
+                            <div class="post-text">
+                                {
+                                    for post.content.lines().map(|l| {
+                                        if l.is_empty() && !last_empty {
+                                            last_empty = true;
+                                            html! {
+                                                <>
                                                     <br />
-                                                }
-                                            } else {
-                                                first = false;
-                                                html! {}
+                                                </>
+                                            }
+                                        } else if l.is_empty() {
+                                            last_empty = true;
+                                            html! {}
+                                        } else {
+                                            last_empty = false;
+                                            html! {
+                                                <>
+                                                    {
+                                                        if !first {
+                                                            html! {
+                                                                <br />
+                                                            }
+                                                        } else {
+                                                            first = false;
+                                                            html! {}
+                                                        }
+                                                    }
+                                                    {
+                                                        if let Ok(r) = Reply::from_str(l, &props.board_discrim) {
+                                                            html! {
+                                                                <LazyPost reply={r} this_board={props.board_discrim.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number} />
+                                                            }
+                                                        } else {
+                                                            html! {
+                                                                <StartsWithClass text={l.to_owned()} map={crate::CLASSMAP.clone()} />
+                                                            }
+                                                        }
+                                                    }
+                                                </>
                                             }
                                         }
-                                        {
-                                            if let Ok(r) = Reply::from_str(l, &props.board_discrim) {
-                                                html! {
-                                                    <LazyPost reply={r} this_board={props.board_discrim.clone()} invert={invert} />
-                                                }
-                                            } else {
-                                                html! {
-                                                    <StartsWithClass text={l.to_owned()} map={crate::CLASSMAP.clone()} />
-                                                }
-                                            }
-                                        }
-                                    </>
+                                    })
                                 }
-                            }
-                        })
+                            </div>
+                        }
+                    } else {
+                        html! {}
                     }
-                </div>
+                }
             </div>
     }
 }
@@ -288,5 +296,6 @@ pub struct PostViewProps {
     pub add_to_content: Option<UseStateHandle<String>>,
     pub invert: Option<bool>,
     pub board_discrim: String,
+    pub this_thread_post_number: i64,
     pub topic: Option<String>,
 }

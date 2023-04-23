@@ -81,7 +81,7 @@ pub fn LazyPost(props: &Props) -> Html {
                     Some(Err(_)) => "post-link-deleted",
                     None => "post-link-unloaded",
                 }
-            } onclick={on_click} onmouseover={on_mouseon} onmouseleave={on_mouseoff} >{format!("{}{}", props.reply.text(), if *post_state == HoveredOrExpandedState::Expanded { " (held)" } else { "" })}</a>
+            } onclick={on_click} onmouseover={on_mouseon} onmouseleave={on_mouseoff} >{format!("{}{}", props.reply.text(props.this_thread_post_number), if *post_state == HoveredOrExpandedState::Expanded { " (held)" } else { "" })}</a>
             {
                 match *post_state {
                     HoveredOrExpandedState::None => {
@@ -95,7 +95,7 @@ pub fn LazyPost(props: &Props) -> Html {
                                         Some(Ok(ref post)) => {
                                             html! {
                                                 <div>
-                                                    <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert} />
+                                                    <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert}  this_thread_post_number={props.this_thread_post_number} />
                                                 </div>
                                             }
                                         }
@@ -203,4 +203,5 @@ pub struct Props {
     pub reply: Reply,
     pub invert: bool,
     pub this_board: String,
+    pub this_thread_post_number: i64,
 }

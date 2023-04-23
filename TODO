@@ -23,3 +23,4 @@ Backend:
 
 Shared:
     - Universalize shared structs @done
+    - Banner ADS @done

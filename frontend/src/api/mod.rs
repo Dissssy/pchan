@@ -36,6 +36,30 @@ impl Api {
             }
         }
     }
+
+    pub async fn get_banner(
+        &mut self,
+        discrim: String,
+        banner: UseStateHandle<Option<common::structs::Banner>>,
+    ) {
+        let fetch = gloo_net::http::Request::get(&format!("/api/v1/{}/banner", discrim))
+            .send()
+            .await;
+        match fetch {
+            Ok(f) => match f.json::<common::structs::Banner>().await {
+                Ok(boardses) => {
+                    banner.set(Some(boardses));
+                }
+                Err(e) => {
+                    gloo::console::log!(format!("{e:?}"));
+                }
+            },
+            Err(e) => {
+                gloo::console::log!(format!("{e:?}"));
+            }
+        }
+    }
+
     pub async fn get_boards(
         &mut self,
         boards: UseStateHandle<Option<Vec<common::structs::SafeBoard>>>,

@@ -65,31 +65,35 @@ pub fn ThreadView(props: &Props) -> Html {
     html! {
         <div class="threadposts-list">
             <div class="threadposts-post">
-                <PostView post={props.thread.thread_post().clone()} board_discrim={props.board_discriminator.clone()} topic={props.thread.topic().clone()} add_to_content={props.add_to_content.clone()} />
-                {
-                    match props.thread {
-                        MaybeExpandableThread::Expandable(ref t) => {
-                            let post_diff = t.post_count as usize - t.posts.len();
-                            if post_diff > 1 {
-                                html! {
-                                    <div class="expand-link">
-                                        <a href={format!("/{}/thread/{}", props.board_discriminator, t.thread_post.post_number)} onclick={callback}>{format!("{} ({} posts hidden)", if *expanded { "Collapse" } else { "Expand" }, post_diff)}</a>
-                                    </div>
-                                }
-                            } else {
-                                html! {}
-                            }
-                        }
-                        _ => html! {}
-                    }
-                }
+                <PostView post={props.thread.thread_post().clone()} board_discrim={props.board_discriminator.clone()} topic={props.thread.topic().clone()} add_to_content={props.add_to_content.clone()} this_thread_post_number={props.thread.thread_post().post_number} />
             </div>
-                <div class="threadposts-replies">
+            {
+                match props.thread {
+                    MaybeExpandableThread::Expandable(ref t) => {
+                        let post_diff = t.post_count as usize - t.posts.len();
+                        if post_diff > 1 {
+                            html! {
+                                <a href={format!("/{}/thread/{}", props.board_discriminator, t.thread_post.post_number)} onclick={callback}>
+                                    <div class="expand-link">
+                                        {
+                                            if *expanded { "Collapse".to_owned() } else { format!("Expand ({} posts hidden)", post_diff) }
+                                        }
+                                    </div>
+                                </a>
+                            }
+                        } else {
+                            html! {}
+                        }
+                    }
+                    _ => html! {}
+                }
+            }
+            <div class="threadposts-replies">
                 {
                     for posts.iter().map(|p| {
                         html! {
                             <div class="threadposts-post">
-                                <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} add_to_content={props.add_to_content.clone()} />
+                                <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} add_to_content={props.add_to_content.clone()} this_thread_post_number={props.thread.thread_post().post_number} />
                             </div>
                         }
                     })

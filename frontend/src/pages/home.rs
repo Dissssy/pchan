@@ -1,6 +1,4 @@
-use crate::BaseRoute;
 use yew::prelude::*;
-use yew_router::prelude::*;
 
 #[function_component]
 pub fn Home() -> Html {
@@ -30,9 +28,9 @@ pub fn Home() -> Html {
                             <tr>
                                 {for b.iter().map(|board| html! {
                                     <td class="board-link">
-                                        <Link<BaseRoute> to={BaseRoute::BoardPage{board_discriminator: board.discriminator.clone()}}>
+                                        <a href={format!("/{}/", board.discriminator)}>
                                             {board.name.clone()}
-                                        </Link<BaseRoute>>
+                                        </a>
                                     </td>
                                 })}
                             </tr>

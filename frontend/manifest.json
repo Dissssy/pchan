@@ -1,0 +1,14 @@
+{
+    "name": "Planet Fifty One Chan",
+    "short_name": "PChan",
+    "icons": [{
+      "src": "/res/icon-256.png",
+        "sizes": "256x256",
+        "type": "image/png"
+      }],
+    "lang": "en-US",
+    "start_url": "/",
+    "display": "standalone",
+    "background_color": "black",
+    "theme_color": "black"
+  }

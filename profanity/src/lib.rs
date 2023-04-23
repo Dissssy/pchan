@@ -19,7 +19,8 @@ impl Profanity {
     }
     pub fn check_profanity(&self, text: &str) -> Vec<ProfanityWord> {
         let text = text.to_lowercase();
-        self.list
+        let mut p = self
+            .list
             .iter()
             .flat_map(|x| {
                 if text.contains(&x.word) {
@@ -28,7 +29,9 @@ impl Profanity {
                     None
                 }
             })
-            .collect()
+            .collect::<Vec<ProfanityWord>>();
+        p.sort_by(|a, b| b.word.len().cmp(&a.word.len()));
+        p
     }
     pub fn get_all(&self, category: Category) -> Vec<ProfanityWord> {
         self.list

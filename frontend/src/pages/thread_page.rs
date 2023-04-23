@@ -1,9 +1,10 @@
 use gloo::timers::callback::Interval;
 // use serde::Deserialize;
 use yew::prelude::*;
-use yew_router::prelude::*;
+use yew_router::prelude::use_navigator;
 
 use crate::helpers::{
+    banner::Banner,
     board_title::BoardTitle,
     boards_navbar::NavBar,
     new_post_box::PostBox,
@@ -138,6 +139,7 @@ pub fn ThreadPage(props: &Props) -> Html {
             <div class="meta-shiz">
                 <NavBar board_discriminator={props.board_discriminator.clone()}/>
                 <BoardTitle board_discriminator={props.board_discriminator.clone()}/>
+                <Banner board_discriminator={props.board_discriminator.clone()} />
                 <div class="postbox">
                     <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={(props.thread_id.clone(), tloadposts)} post_text={post_content.clone()}/>
                 </div>
@@ -166,6 +168,9 @@ pub fn ThreadPage(props: &Props) -> Html {
                         }
                     }
                 }
+            </div>
+            <div class="footer">
+                <Banner board_discriminator={props.board_discriminator.clone()} />
             </div>
         </div>
     }

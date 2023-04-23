@@ -304,3 +304,29 @@ impl File {
         }
     }
 }
+
+diesel::table! {
+    banners (id) {
+        id -> BigInt,
+        img_path -> Text,
+        href -> Nullable<Text>,
+        boards -> Nullable<Array<BigInt>>,
+    }
+}
+
+#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Banner {
+    pub id: i64,
+    pub img_path: String,
+    pub href: Option<String>,
+    pub boards: Option<Vec<i64>>,
+}
+
+impl Banner {
+    pub fn safe(&self) -> common::structs::Banner {
+        common::structs::Banner {
+            path: self.img_path.clone(),
+            href: self.href.clone(),
+        }
+    }
+}
