@@ -4,7 +4,6 @@ use std::collections::HashMap;
 
 pub struct UnclaimedFiles {
     pub files: HashMap<String, (String, File, tokio::time::Instant)>,
-    // pub timeouts: HashMap<String, tokio::time::Instant>,
 }
 
 impl UnclaimedFiles {
@@ -38,18 +37,8 @@ impl UnclaimedFiles {
                 let mut diskfilepath =
                     format!("{}{}", env!("FILE_STORAGE_PATH"), universalfilepath.clone());
 
-                // replace the file extension with the .tmp.{ext}
-                // let mut tempfilepath = diskfilepath.clone().replace(
-                //     &format!(".{}", file.extension),
-                //     &format!(".tmp.{}", file.extension),
-                // );
-                // println!("{}", diskfilepath);
-                // println!("{}", universalfilepath);
-                // println!("{}", universalfolderpath);
-
                 let filehash = common::hash_file(&file.data);
                 {
-                    // disc actions
                     let folders = format!("{}{}", env!("FILE_STORAGE_PATH"), universalfolderpath);
                     tokio::fs::create_dir_all(folders).await?;
 
@@ -60,20 +49,12 @@ impl UnclaimedFiles {
                             format!("/files/{}/{}{}.{}", file.mimetype, id, num, file.extension);
                         diskfilepath =
                             format!("{}{}", env!("FILE_STORAGE_PATH"), universalfilepath.clone());
-                        // tempfilepath = diskfilepath.clone().replace(
-                        //     &format!(".{}", file.extension),
-                        //     &format!(".tmp.{}", file.extension),
-                        // );
                     }
                     tokio::fs::write(diskfilepath.clone(), file.data).await?;
                 }
 
-                // if i can figure it out i want to attempt to reencode the files (to their original file type) to fix any potential issues with the file. this is a very low priority task as it's not my fault if the user uploads a broken file
-
-                // tokio spawn blocking thread to create thumbnails
                 let handle = tokio::task::spawn(async move {
                     let thumbpath = format!("{diskfilepath}-thumb.jpg");
-                    // use the ffmpeg command `ffmpeg -i {file} -r 1 -vf scale=80:-2 -frames:v 1 {id}.jpg -y` to create a thumbnail for the file. return a result of the filepath OR an error if it is not created. so we can delete the file and reject the post with an invalid file error
                     let output = tokio::process::Command::new("ffmpeg")
                         .args(["-i", &diskfilepath])
                         .args(["-r", "1"])
@@ -85,7 +66,6 @@ impl UnclaimedFiles {
                         .await;
 
                     if output.is_ok() {
-                        // check if the file was created
                         if tokio::fs::metadata(thumbpath.clone()).await.is_ok() {
                             Ok(thumbpath)
                         } else {
@@ -98,12 +78,10 @@ impl UnclaimedFiles {
                 let path = match handle.await? {
                     Ok(path) => path,
                     Err(f) => {
-                        // remove the file
                         tokio::fs::remove_file(f).await?;
                         return Err(anyhow!("Invalid file"));
                     }
                 };
-                //println!("Thumbnail created at {path}");
                 Ok(FileInfo {
                     path: universalfilepath,
                     hash: filehash,

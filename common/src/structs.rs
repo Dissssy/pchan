@@ -84,11 +84,6 @@ pub struct Reply {
 impl Reply {
     pub fn from_str(s: &str, board: &str) -> anyhow::Result<Self> {
         let s = s.trim();
-        // >>{post_number}
-        // or
-        // >>>/{board_discriminator}/{post_number}
-
-        // THIS BOARD POST DOES NOT HAVE A /
 
         let mut split = s.split('/');
         let first = split.next();

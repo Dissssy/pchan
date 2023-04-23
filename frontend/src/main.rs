@@ -19,10 +19,8 @@ lazy_static::lazy_static! {
 pub enum BaseRoute {
     #[at("/")]
     Home,
-    // /{board_discriminator}
     #[at("/:board_discriminator/")]
     BoardPage { board_discriminator: String },
-    // /{board_discriminator}/{thread_id}
     #[at("/:board_discriminator/thread/:thread_id")]
     ThreadPage {
         board_discriminator: String,
@@ -65,12 +63,9 @@ fn main() {
 
 #[function_component]
 fn Root() -> Html {
-    // This is the root app component. this will determind if the user is logged in via the token cookie
-    // if the user is logged in, then the user will be permitted to access the app, otherwise they will be redirected to the login page
-
     html! {
         <BrowserRouter>
-            <Switch<BaseRoute> render={switch} /> // <- must be child of <BrowserRouter>
+            <Switch<BaseRoute> render={switch} />
         </BrowserRouter>
     }
 }

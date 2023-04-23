@@ -37,8 +37,6 @@ async fn main() {
     env_logger::init();
     println!("Starting backend with:");
 
-    //println!("PROFANITY CHECK: {:#?}", PROFANITY.check_profanity("FUCK"));
-
     {
         if let Err(e) = DATA.lock().await.open().await {
             println!("Error opening data: {e}");
@@ -66,9 +64,6 @@ async fn main() {
             .then(|token: Option<String>| async move {
                 match token {
                     None => Ok(warp::http::Response::builder()
-                        // .status(401)
-                        // .body("Invalid token. navigate to /login to log in.".to_owned())
-                        // .unwrap()),
                         .header("Location", "/login")
                         .status(302)
                         .body("".to_owned())
@@ -93,27 +88,16 @@ async fn main() {
     let mut trim_files = tokio::time::interval(std::time::Duration::from_secs(*statics::TRIM_TIME));
     let mut delete_old_files = tokio::time::interval(std::time::Duration::from_secs(1));
     let mut auto_delete = tokio::time::Instant::now();
-    // let mut last_trim = tokio::time::Instant::now();
     loop {
         tokio::select! {
             _ = delete_old_files.tick() => {
 
-                // if manual trim is set to true OR auto_delete has elapsed
                 if *MANUAL_FILE_TRIM.lock().await || auto_delete.elapsed() >= std::time::Duration::from_secs(*statics::DELETE_TIME) {
 
                     let lock = FS_LOCK.lock().await;
-                    // println!("acquired lock");
-
-                    // println!("Trimming files, last trim was {last_trim}s ago", last_trim = last_trim.elapsed().as_secs());
-                    // last_trim = tokio::time::Instant::now();
-
-                    // reset auto_delete
                     auto_delete = tokio::time::Instant::now();
-                    // set manual trim to false
                     *MANUAL_FILE_TRIM.lock().await = false;
-                    // get the file storage path
                     let dir = env!("FILE_STORAGE_PATH");
-                    // get a list of all files in all directories in the dir
                     let files = get_all_entries(dir).await.unwrap_or_default().iter().flat_map(|x| x.path().to_str().map(|s| s.replace(dir, ""))).collect::<Vec<String>>();
                     let mut db = match POOL.get().await {
                         Ok(x) => x,
@@ -131,19 +115,9 @@ async fn main() {
                     };
 
                     drop(lock);
-                    //println!("released lock");
-
-                    //println!("{:#?}", files_in_db);
-                    //println!("{:#?}", files);
-
-                    // get a list of all files that are not in the database.
                     let files_to_delete = files.iter().filter(|x| !files_in_db.iter().any(|v| &&v.path == x || &&v.thumbnail == x)).cloned().collect::<Vec<String>>().iter().map(|x| format!("{dir}{x}")).collect::<Vec<String>>();
 
-                    // println!("{:?}", files);
-                    // println!("{:?}", files_in_db);
-                    // delete all files that are not in the database.
                     for file in files_to_delete {
-                        //println!("Deleting file {file}");
                         if let Err(e) = tokio::fs::remove_file(file.clone()).await {
                             println!("Error deleting file {file}: {e}");
                         }
@@ -170,7 +144,6 @@ async fn main() {
 
 #[async_recursion::async_recursion]
 async fn get_all_entries(dir: &str) -> anyhow::Result<Vec<tokio::fs::DirEntry>> {
-    // get a list of all files in all directories in the dir, if the file is a directory, recurse
     let mut return_files = Vec::new();
     let mut files = tokio::fs::read_dir(dir).await?;
     while let Some(file) = files.next_entry().await? {

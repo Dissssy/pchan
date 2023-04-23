@@ -28,7 +28,6 @@ pub fn ThreadView(props: &Props) -> Html {
                 }
                 false => match *cache {
                     Some(ref c) => {
-                        // gloo::console::log!("Using cache");
                         tposts.set(c.clone());
                         texpanded.set(true);
                     }
@@ -117,16 +116,6 @@ pub enum MaybeExpandableThread {
     AlreadyExpanded(ThreadWithPosts),
 }
 
-// impl PartialEq for MaybeExpandableThread {
-//     fn eq(&self, other: &Self) -> bool {
-//         match (self, other) {
-//             (Self::Expandable(a), Self::Expandable(b)) => Arc::ptr_eq(a, b),
-//             (Self::AlreadyExpanded(a), Self::AlreadyExpanded(b)) => a == b,
-//             _ => false,
-//         }
-//     }
-// }
-
 impl From<ThreadWithLazyPosts> for MaybeExpandableThread {
     fn from(t: ThreadWithLazyPosts) -> Self {
         Self::Expandable(t)
@@ -159,115 +148,3 @@ impl MaybeExpandableThread {
         }
     }
 }
-//     pub fn expand_button(
-//         &self,
-//         board_discriminator: &str,
-//         posts: UseStateSetter<Vec<SafePost>>,
-//     ) -> Option<(Callback<MouseEvent>, String)> {
-//         match self {
-//             Self::Expandable(t) => {
-//                 // bombent
-//                 let expandtext;
-//                 let loaded;
-//                 if let Ok(t) = t.try_lock() {
-//                     if !t.needs_expansion() {
-//                         return None;
-//                     }
-//                     loaded = t.expanded.is_some();
-//                     expandtext = if t.currently_expanded {
-//                         format!("Collapse ({} posts)", t.minimized.post_count)
-//                     } else {
-//                         format!("Expand ({} posts)", t.minimized.post_count)
-//                     };
-//                 } else {
-//                     return None;
-//                 }
-//                 let t = t.clone();
-//                 let thread_id = format!("{}", self.thread_post().post_number);
-//                 let board_discriminator = board_discriminator.to_string();
-//                 Some((
-//                     Callback::from(move |e: MouseEvent| {
-//                         e.prevent_default();
-//                         let t = t.clone();
-//                         let thread_id = thread_id.clone();
-//                         let board_discriminator = board_discriminator.clone();
-//                         wasm_bindgen_futures::spawn_local(async move {
-//                             gloo::console::log!("Expand button clicked");
-//                             let mut set_to = None;
-//                             if !loaded {
-//                                 gloo::console::log!("Loading thread");
-//                                 let threads = crate::API
-//                                     .lock()
-//                                     .await
-//                                     .get_thread(&board_discriminator, &thread_id)
-//                                     .await;
-//                                 gloo::console::log!("Thread loaded");
-//                                 match threads {
-//                                     Ok(treds) => {
-//                                         gloo::console::log!("Thread loaded successfully");
-//                                         set_to = Some(treds);
-//                                     }
-//                                     Err(e) => {
-//                                         gloo::console::log!(format!("Error loading thread: {}", e));
-//                                     }
-//                                 }
-//                             }
-//                             if let Ok(mut t) = t.lock() {
-//                                 gloo::console::log!("Lock acquired");
-//                                 if let Some(treds) = set_to {
-//                                     gloo::console::log!("Setting expanded thread");
-//                                     t.expanded = Some(treds);
-//                                 }
-//                                 gloo::console::log!("Toggling");
-//                                 t.toggle();
-//                             }
-//                             gloo::console::log!("Done");
-//                         });
-//                     }),
-//                     expandtext,
-//                 ))
-//             }
-//             Self::AlreadyExpanded(_) => None,
-//         }
-//     }
-//     pub fn thread_post_number(&self) -> i64 {
-//         match self {
-//             Self::Expandable(t) => match t.lock() {
-//                 Ok(t) => t.thread_post().post_number,
-//                 Err(_) => 0,
-//             },
-//             Self::AlreadyExpanded(t) => t.thread_post.post_number,
-//         }
-//     }
-// }
-
-// #[derive(Clone, PartialEq)]
-// pub struct ExpandableThread {
-//     minimized: ThreadWithLazyPosts,
-//     expanded: Option<ThreadWithPosts>,
-//     currently_expanded: bool,
-// }
-
-// impl ExpandableThread {
-//     pub fn posts(&self) -> &Vec<SafePost> {
-//         match (self.currently_expanded, &self.expanded) {
-//             (true, Some(t)) => {
-//                 gloo::console::log!("Returning expanded posts");
-//                 &t.posts
-//             }
-//             _ => &self.minimized.posts,
-//         }
-//     }
-//     pub fn thread_post(&self) -> &SafePost {
-//         match (self.currently_expanded, &self.expanded) {
-//             (true, Some(t)) => &t.thread_post,
-//             _ => &self.minimized.thread_post,
-//         }
-//     }
-//     pub fn toggle(&mut self) {
-//         self.currently_expanded = !self.currently_expanded;
-//     }
-//     pub fn needs_expansion(&self) -> bool {
-//         self.minimized.post_count > (self.minimized.posts.len() + 1) as i64
-//     }
-// }

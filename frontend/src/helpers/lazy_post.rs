@@ -121,82 +121,11 @@ pub fn LazyPost(props: &Props) -> Html {
                             </>
                         }
                     }
-                    // HoveredOrExpandedState::Hovered => {
-                    //     html! {
-                    //         <>
-                    //             {
-                    //                 match *post {
-                    //                     Some(Ok(ref post)) => {
-                    //                         html! {
-                    //                             <div>
-                    //                                 <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert} />
-                    //                             </div>
-                    //                         }
-                    //                     }
-                    //                     Some(Err(ref e)) => {
-                    //                         let eror = format!("{}", e);
-                    //                         if eror.contains("Record not found") {
-                    //                             html! {
-                    //                                 <span>{" [deleted]"}</span>
-                    //                             }
-                    //                         } else {
-                    //                             html! {
-                    //                                 <div>{e.to_string()}</div>
-                    //                             }
-                    //                         }
-                    //                     }
-                    //                     None => {
-                    //                         html! {
-                    //                             <>{"loading..."}</>
-                    //                         }
-                    //                     }
-                    //                 }
-                    //             }
-                    //         </>
-                    //     }
-                    // }
-                    // _ => {
-                    //     html! {}
-                    // }
                 }
             }
         </>
     }
 }
-
-// {
-//                 if *post_HoveredOrExpandedState == HoveredOrExpandedState::Expanded {
-// html! {
-//     <>
-//         <a href={props.reply.link()} onclick={on_click}>{props.reply.text()}</a>
-//         {
-//             match *post {
-//                 Some(Ok(ref post)) => {
-//                     html! {
-//                         <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert} />
-//                     }
-//                 }
-//                 Some(Err(ref e)) => {
-//                     html! {
-//                         <div>{e.to_string()}</div>
-//                     }
-//                 }
-//                 None => {
-//                     html! {
-//                         <div>{"loading..."}</div>
-//                     }
-//                 }
-//             }
-//         }
-//     </>
-// }
-
-//                 } else {
-//                     html! {
-//                         <a href={props.reply.link()} onclick={on_click}>{props.reply.text()}</a>
-//                     }
-//                 }
-//             }
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct Props {

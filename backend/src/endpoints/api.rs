@@ -42,7 +42,6 @@ pub fn priveleged_api_endpoints(
                 {
                     Ok(_) => {}
                     Err(e) => {
-                        // println!("Error: {e}");
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&e.to_string()),
                         );
@@ -66,7 +65,6 @@ pub fn priveleged_api_endpoints(
                 {
                     Ok(_) => {}
                     Err(e) => {
-                        // println!("Error: {e}");
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&e.to_string()),
                         );
@@ -95,7 +93,6 @@ pub fn priveleged_api_endpoints(
                 {
                     Ok(_) => {}
                     Err(e) => {
-                        // println!("Error: {e}");
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&e.to_string()),
                         );
@@ -164,11 +161,6 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::header::<Bearer>("authorization"))
         .and_then({
             |disc: String, thread: CreateThread, auth: Bearer| async move {
-                // if thread.post.file.is_none() {
-                //     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                //         &"No file provided".to_owned(),
-                //     ));
-                // }
                 match crate::database::Database::create_thread(
                     &mut crate::POOL.get().await.unwrap(),
                     disc,

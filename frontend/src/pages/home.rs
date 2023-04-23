@@ -2,8 +2,6 @@ use yew::prelude::*;
 
 #[function_component]
 pub fn Home() -> Html {
-    // make a request to /api/v1/board to get a list of boards
-
     let boards = use_state(|| None);
     {
         let boards = boards.clone();

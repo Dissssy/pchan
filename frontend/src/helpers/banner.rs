@@ -9,7 +9,6 @@ pub fn Banner(props: &Props) -> Html {
         let props = props.clone();
         use_effect_with_deps(
             move |_| {
-                // wowowo
                 wasm_bindgen_futures::spawn_local(async move {
                     crate::API
                         .lock()

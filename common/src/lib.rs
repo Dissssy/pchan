@@ -3,7 +3,6 @@ use sha2::Digest;
 pub mod structs;
 
 pub fn format_seconds(s: u64) -> String {
-    // format seconds into a human readable string (e.g. 1d 2h 3m 4s)
     let mut s = s;
     let mut out = String::new();
     let days = s / 86400;

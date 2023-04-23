@@ -13,16 +13,6 @@ use crate::helpers::{
 
 #[function_component]
 pub fn ThreadPage(props: &Props) -> Html {
-    // get reply value from query string
-    // let reply = match use_location().map(|l| l.query::<Reply>()) {
-    //     Some(Ok(query)) => query.reply,
-    //     Some(Err(e)) => {
-    //         gloo::console::log!(format!("{e:?}"));
-    //         None
-    //     }
-    //     None => None,
-    // };
-
     let post_content = use_state(|| "".to_string());
 
     let rerender = use_state(|| false);
@@ -57,7 +47,6 @@ pub fn ThreadPage(props: &Props) -> Html {
                 }
                 Err(e) => {
                     gloo::console::log!(format!("{e:?}"));
-                    // redirect to 404 page
                     if let Some(n) = tnav {
                         n.replace(&crate::BaseRoute::NotFound);
                     }
@@ -82,22 +71,18 @@ pub fn ThreadPage(props: &Props) -> Html {
         load_posts.emit(());
         firstrun.set(false);
     }
-    // let ttbackoff = backoff.clone();
     let ttmax_backoff = backoff_max.clone();
     let ttloadposts = load_posts.clone();
     let manually_load_posts = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
-        // ttbackoff.set(4);
         ttmax_backoff.set(0);
         ttloadposts.emit(());
     });
 
     use_effect({
-        // let bindings
         let load_posts = load_posts;
         move || {
             let interval = Interval::new(1000, move || {
-                // gloo::console::log!(format!("{}/{}", *backoff, *backoff_max));
                 backoff.set(*backoff + 1);
                 if !*loadingposts {
                     if !*handledlastpostcount {
@@ -181,8 +166,3 @@ pub struct Props {
     pub board_discriminator: String,
     pub thread_id: String,
 }
-
-// #[derive(Deserialize, Clone, PartialEq)]
-// pub struct Reply {
-//     reply: Option<String>,
-// }

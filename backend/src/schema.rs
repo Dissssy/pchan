@@ -269,7 +269,6 @@ pub async fn get_file(
 ) -> Result<Option<FileInfo>> {
     use crate::schema::files::dsl::*;
     use diesel::result::OptionalExtension;
-    // if there is no file, return None
     let file = files
         .filter(id.eq(tid))
         .first::<File>(conn)

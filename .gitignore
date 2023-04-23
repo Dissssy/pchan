@@ -9,5 +9,6 @@ Cargo.lock
 backend/migrations
 backend/auth.bin.gz
 backend/profanity_en.csv
+backend/quotes.txt
 frontend/tempdist
 files

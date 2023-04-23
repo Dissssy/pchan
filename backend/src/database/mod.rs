@@ -154,7 +154,6 @@ impl Database {
         _conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         _token: String,
     ) -> Result<bool> {
-        // TODO: admins can delete any post
         Ok(false)
     }
 
@@ -279,7 +278,6 @@ impl Database {
         check_hash_against: Option<Vec<FileInfo>>,
     ) -> Result<SafePost> {
         use crate::schema::posts::dsl::*;
-        // attempt to parse replies from the post, these are in the form of ">>{post_number}" or ">>/{board}/{post_number}"
 
         post.content = post.content.trim().to_owned();
         if post.content.is_empty() && post.file.is_none() {
@@ -296,37 +294,6 @@ impl Database {
             .split_whitespace()
             .flat_map(|x| common::structs::Reply::from_str(x, &discrim))
             .collect::<Vec<common::structs::Reply>>();
-        // .filter(|x| x.starts_with(">>"))
-        // .map(|x| {
-        //     if x.contains('/') {
-        //         let mut split = x.split('/');
-        //         split.next();
-        //         let bboard = split.next().unwrap_or_default();
-        //         let post = split.next().unwrap_or_default();
-        //         (Some(bboard.to_string()), post.parse::<i64>().ok())
-        //     } else {
-        //         let post = x.trim_start_matches(">>");
-        //         (None, post.parse::<i64>().ok())
-        //     }
-        // })
-        // .collect::<Vec<(Option<String>, Option<i64>)>>()
-        // .iter()
-        // .flat_map(|(bboard, post)| {
-        //     if let Some(post) = post {
-        //         if let Some(bboard) = bboard {
-        //             if !bboard.is_empty() {
-        //                 Some((bboard.to_string(), *post))
-        //             } else {
-        //                 None
-        //             }
-        //         } else {
-        //             Some((discrim.clone(), *post))
-        //         }
-        //     } else {
-        //         None
-        //     }
-        // })
-        // .collect::<Vec<(String, i64)>>();
 
         let mut replieses = Vec::new();
 
@@ -340,7 +307,6 @@ impl Database {
         }
 
         let lock = crate::FS_LOCK.lock().await;
-        //println!("acquired lock");
 
         let pending_file = if let Some(file) = post.file.clone() {
             let f = crate::UNCLAIMED_FILES
@@ -370,7 +336,6 @@ impl Database {
             timestamp.eq(now),
             actual_author.eq(tactual_author.clone()),
         ));
-        // println!("{:?}", diesel::debug_query(&t));
         let p = t.get_result::<crate::schema::Post>(conn).await?;
 
         if let Some(f) = pending_file {
@@ -378,7 +343,6 @@ impl Database {
         }
 
         drop(lock);
-        //println!("released lock");
 
         diesel::update(posts.filter(id.eq(p.id)))
             .set(actual_author.eq(common::hash_with_salt(
@@ -409,7 +373,6 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     ) -> Result<common::structs::Banner> {
         use crate::schema::banners::dsl::*;
-        // get all banners as Vec<Banner>
         use diesel::query_dsl::methods::OrFilterDsl;
         let board = Self::get_board(conn, board_discriminator.clone()).await?;
 

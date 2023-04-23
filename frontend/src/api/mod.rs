@@ -89,7 +89,6 @@ impl Api {
                 Ok(boardses) => Ok(boardses),
                 Err(e) => {
                     gloo::console::log!(format!("{e:?}"));
-                    // redirect to 404 page
                     Err(e.into())
                 }
             },
@@ -166,7 +165,6 @@ impl Api {
     ) -> Result<SafePost> {
         let token = self.get_token().await?;
 
-        // we are replying to a thread, post to /api/v1/board/{board_discriminator}/{thread_id}
         let url = format!(
             "/api/v1/board/{}/{}",
             context.board_discriminator, context.thread_id
@@ -187,12 +185,10 @@ impl Api {
     pub async fn get_post(&mut self, context: &Reply) -> Result<SafePost> {
         let token = self.get_token().await?;
 
-        // we are replying to a thread, post to /api/v1/board/{board_discriminator}/{thread_id}
         let url = format!(
             "/api/v1/board/{}/post/{}",
             context.board_discriminator, context.post_number
         );
-        // gloo::console::log!(format!("{url}"));
         let res = gloo_net::http::Request::get(&url)
             .header("authorization", &format!("Bearer {token}"))
             .send()

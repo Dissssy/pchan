@@ -9,10 +9,6 @@ use crate::{
 
 #[function_component]
 pub fn PostBox(props: &Props) -> Html {
-    // a post box component that will be used to create new posts and reply to existing posts.
-    // there will be a text area for your name, a text area for the post, a file upload button, and a submit button.
-    // the post box will be used on the board page, and the thread page.
-
     let post_text = props.post_text.clone();
     let post_error = use_state(|| None);
 
@@ -84,7 +80,6 @@ pub fn PostBox(props: &Props) -> Html {
 
     let mvpost_text = post_text.clone();
     let mvname = name.clone();
-    // let mvfile = file;
     let mvexpanded = expanded.clone();
     let mvprops = props.clone();
     let mvpost_error = post_error.clone();
@@ -113,7 +108,6 @@ pub fn PostBox(props: &Props) -> Html {
                     return;
                 }
             };
-            // if we are replying to a thread, we need to send the thread id to the server. otherwise we need to use a different data structure.
             let post = CreatePost {
                 file: file_to_post,
                 content: (*post_text).clone(),
@@ -121,7 +115,6 @@ pub fn PostBox(props: &Props) -> Html {
             };
             let p = match props.thread_id {
                 Some((ref t, _)) => {
-                    // copmment
                     let context = ReplyContext {
                         board_discriminator: props.board_discriminator.clone(),
                         thread_id: t.clone(),
@@ -130,7 +123,6 @@ pub fn PostBox(props: &Props) -> Html {
                     crate::API.lock().await.post_reply(post, context).await
                 }
                 None => {
-                    // commbent
                     let context = ThreadContext {
                         board_discriminator: props.board_discriminator.clone(),
                     };
@@ -143,29 +135,12 @@ pub fn PostBox(props: &Props) -> Html {
             };
             match p {
                 Ok(p) => {
-                    // combendnt
                     match props.thread_id {
                         Some((_, callback)) => {
-                            // initiate a manual post reload using the post thingy!!!
                             callback.emit(());
                             post_text.set(String::new());
                             file.set(None);
                             expanded.set(false);
-                            // nevermind i cant figure out how to clear the text inputs, reload the page :(
-
-                            // match web_sys::window() {
-                            //     Some(w) => match w.location().reload() {
-                            //         Ok(_) => {}
-                            //         Err(e) => {
-                            //             let err = format!("{e:?}");
-                            //             gloo::console::log!(err.clone());
-                            //             post_error.set(Some(err));
-                            //         }
-                            //     },
-                            //     None => {
-                            //         gloo::console::log!("no window");
-                            //     }
-                            // }
                         }
                         None => {
                             let url =
@@ -201,7 +176,6 @@ pub fn PostBox(props: &Props) -> Html {
             <div class="submission-box-header">
                 <a href="#" onclick={onclick_expand}>
                     <p>{ match props.thread_id {
-                        // Some(ref t) => format!("Reply >>{t}"),
                         Some(_) => "Reply".to_owned(),
                         None => "New Thread".to_owned(),
                     }}{" "}{
@@ -244,7 +218,6 @@ pub fn PostBox(props: &Props) -> Html {
                                     }
                                 </div>
                                 <div class="submission-box-post-input">
-                                    //<label for="post-input">{"Post"}</label>
                                     <textarea id="post-input" class="custom-select" name="post-input" oninput={oninput_post} value={
                                         (*post_text).clone()
                                     }>

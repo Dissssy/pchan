@@ -8,13 +8,6 @@ use common::structs::Reply;
 
 #[function_component]
 pub fn PostView(props: &PostViewProps) -> Html {
-    // let file_expanded = use_state(|| false);
-    // let glfile_glexpanded = file_expanded.clone();
-    // let onclick = Callback::from(move |e: MouseEvent| {
-    //     e.prevent_default();
-    //     gloo::console::log!("clicked");
-    //     glfile_glexpanded.set(!*glfile_glexpanded);
-    // });
     let _prevent_click = Callback::from(|e: MouseEvent| e.prevent_default());
 
     let add_to = props.add_to_content.clone();
@@ -64,7 +57,6 @@ pub fn PostView(props: &PostViewProps) -> Html {
         });
     });
 
-    // TODO: make clicking the post number put you in the thread with ?reply=>>{post_number}
     let invert = props.invert.unwrap_or(false);
     let mut last_empty = false;
     let mut first = true;
@@ -78,7 +70,6 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     }
                 }>
                 <div class="post-header">
-                    // contains author name, post number, timestamp, and any replies
                     <div class="post-header-author">
                         {
                             if let Some(ref author) = post.author {
@@ -170,7 +161,6 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                     <a href={img.path.clone()} onclick={on_click} onmouseover={on_mouseon} onmouseleave={on_mouseoff} >
                                     {
                                         if !(*file_state == HoveredOrExpandedState::None) {
-                                            // turn "/files/video/webm/gfj51HYQyWHB_wAh.webm-thumb.jpg" into "video/webm" by replacing "/files/" with "" and then splitting on "/" then taking the first two elements and joining them with "/"
                                             let mimetype = img.path.replace("/files/", "");
                                             let mime = mimetype.split('/').next();
                                             match mime {
@@ -191,13 +181,6 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                                                 </video>
                                                             }
                                                         }
-                                                        // "audio" => {
-                                                        //     html! {
-                                                        //         <audio controls=true class="post-media-audio">
-                                                        //             <source src={img.path.clone()} />
-                                                        //         </audio>
-                                                        //     }
-                                                        // }
                                                         "image" => {
                                                             html! {
                                                                 <img src={img.path.clone()} />
@@ -214,14 +197,9 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                                     }
                                                 }
                                             }
-                                            // html! {
-                                            //     <embed src={img.clone()} type={mimetype} />
-                                            // }
                                         } else {
                                             html! {
-                                                //<a href="#" onclick={onclick}>
-                                                    <img src={img.thumbnail.clone()} />
-                                                //</a>
+                                                <img src={img.thumbnail.clone()} />
                                             }
                                         }
                                     }
@@ -292,7 +270,6 @@ pub fn PostView(props: &PostViewProps) -> Html {
 #[derive(Properties, Clone, PartialEq)]
 pub struct PostViewProps {
     pub post: SafePost,
-    // pub hyperlink: Option<String>,
     pub add_to_content: Option<UseStateHandle<String>>,
     pub invert: Option<bool>,
     pub board_discrim: String,
