@@ -80,16 +80,16 @@ pub fn other_endpoints(
                             return Ok(warp::reply::json(&e.to_string()).into_response());
                         }
                     };
+                let hashed_id = hash_with_salt(&id, &crate::statics::HASH_SALT);
                 let is_auth = {
                     let mut conn = crate::POOL
                         .get()
                         .await
                         .map_err(|_| warp::reject::reject())?;
 
-                    crate::database::Database::is_valid_token(&mut conn, token).await
+                    crate::database::Database::is_valid_token(&mut conn, hashed_id).await
                 };
                 println!("is_auth: {is_auth:?}");
-                let hashed_id = hash_with_salt(&id, &crate::statics::HASH_SALT);
                 match is_auth {
                     Ok(true) => Ok::<_, warp::reject::Rejection>(
                         warp::reply::with_header(
