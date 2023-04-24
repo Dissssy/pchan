@@ -49,7 +49,7 @@ async fn main() {
             .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
     );
 
-    let manifest = warp::get().and(warp::fs::file(
+    let manifest = warp::path!("manifest.json").and(warp::get()).and(warp::fs::file(
         "/git/pchan/frontend/dist/manifest.json",
     ));
 
