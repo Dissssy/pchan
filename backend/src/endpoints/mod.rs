@@ -87,7 +87,7 @@ pub fn other_endpoints(
                         .await
                         .map_err(|_| warp::reject::reject())?;
 
-                    crate::database::Database::is_valid_token(&mut conn, hashed_id).await
+                    crate::database::Database::is_valid_token(&mut conn, hashed_id.clone()).await
                 };
                 println!("is_auth: {is_auth:?}");
                 match is_auth {
