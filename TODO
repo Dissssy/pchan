@@ -4,6 +4,7 @@ Frontend:
 Backend:
     - Moderation tools
     - Prevent spam (possibly by ratelimiting post and thread endpoints):
+    - Seperate login code out into its own function to simplify the OAuth flow readability
 
 
 Shared:

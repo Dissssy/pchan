@@ -30,18 +30,24 @@ pub fn other_endpoints(
                         Ok(r) => r,
                         Err(e) => {
                             println!("Error: {e}");
-                            return Ok(warp::redirect(warp::http::Uri::from_static("/login"))
-                                .into_response());
+                            return Ok(warp::reply::json(&e.to_string()).into_response());
                         }
                     }
-                    .json::<DiscordTokenResponse>()
+                    .text()
                     .await
                     {
-                        Ok(r) => r.access_token,
+                        Ok(r) => {
+                            match serde_json::from_str::<DiscordTokenResponse>(&r) {
+                                Ok(r) => r.access_token,
+                                Err(e) => {
+                                    println!("Error: {e:?}");
+                                    return Ok(warp::reply::json(&format!("Error: {e:?} while parsing {r}")).into_response());
+                                }
+                            }
+                        },
                         Err(e) => {
                             println!("Error: {e:?}");
-                            return Ok(warp::redirect(warp::http::Uri::from_static("/login"))
-                                .into_response());
+                            return Ok(warp::reply::json(&e.to_string()).into_response());
                         }
                     };
                 let id =
@@ -54,18 +60,24 @@ pub fn other_endpoints(
                         Ok(r) => r,
                         Err(e) => {
                             println!("Error: {e}");
-                            return Ok(warp::redirect(warp::http::Uri::from_static("/login"))
-                                .into_response());
+                            return Ok(warp::reply::json(&e.to_string()).into_response());
                         }
                     }
-                    .json::<DiscordUser>()
+                    .text()
                     .await
                     {
-                        Ok(r) => r.id,
+                        Ok(r) => {
+                            match serde_json::from_str::<DiscordUser>(&r) {
+                                Ok(r) => r.id,
+                                Err(e) => {
+                                    println!("Error: {e:?}");
+                                    return Ok(warp::reply::json(&format!("Error: {e:?} while parsing {r}")).into_response());
+                                }
+                            }
+                        },
                         Err(e) => {
                             println!("Error: {e}");
-                            return Ok(warp::redirect(warp::http::Uri::from_static("/login"))
-                                .into_response());
+                            return Ok(warp::reply::json(&e.to_string()).into_response());
                         }
                     };
                 let is_auth = {
@@ -94,7 +106,11 @@ pub fn other_endpoints(
                         )
                         .into_response(),
                     ),
-                    _ => Ok(warp::redirect(warp::http::Uri::from_static("/login")).into_response()),
+                    _ => Ok(warp::http::Response::builder()
+                    .header("Location", "/login")
+                    .status(302)
+                    .body("".to_owned())
+                    .unwrap().into_response()),
                 }
             }
         });
