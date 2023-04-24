@@ -19,12 +19,12 @@ use quotes::Quotes;
 
 use std::collections::HashMap;
 
-use crate::database::Users;
+// use crate::database::Users;
 use profanity::Profanity;
 
 lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
-    pub static ref DATA: Arc<Mutex<Users>> = Arc::new(Mutex::new(Users::new().unwrap()));
+    // pub static ref DATA: Arc<Mutex<Users>> = Arc::new(Mutex::new(Users::new().unwrap()));
     pub static ref PROFANITY: Arc<Profanity> = Arc::new(Profanity::load_csv("./profanity_en.csv").expect("Failed to load profanity list"));
     pub static ref UNCLAIMED_FILES: Arc<Mutex<UnclaimedFiles>> = Arc::new(Mutex::new(UnclaimedFiles::new(HashMap::new())));
     pub static ref MANUAL_FILE_TRIM: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
@@ -37,11 +37,11 @@ async fn main() {
     env_logger::init();
     println!("Starting backend with:");
 
-    {
-        if let Err(e) = DATA.lock().await.open().await {
-            println!("Error opening data: {e}");
-        }
-    }
+    // {
+    //     if let Err(e) = DATA.lock().await.open().await {
+    //         println!("Error opening data: {e}");
+    //     }
+    // }
 
     let root = warp::get().and(
         warp::fs::dir(env!("FILE_STORAGE_PATH"))
@@ -138,8 +138,8 @@ async fn main() {
     println!("Awaiting warp shutdown");
     let _ = sendkill.send(());
     let _ = killrecv.await;
-    println!("Saving data");
-    DATA.lock().await.close().await.unwrap();
+    // println!("Saving data");
+    // DATA.lock().await.close().await.unwrap();
 }
 
 #[async_recursion::async_recursion]

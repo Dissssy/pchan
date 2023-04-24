@@ -35,17 +35,20 @@ pub fn priveleged_api_endpoints(
         .and(warp::body::json::<UserSafe>())
         .and_then({
             move |user: UserSafe| async move {
-                let mut data = crate::DATA.lock().await;
-                match data
-                    .add_auth(hash_with_salt(&user.id, &crate::statics::HASH_SALT))
+                let mut conn = crate::POOL
+                    .get()
                     .await
+                    .map_err(|_| warp::reject::reject())?;
+
+                if let Err(e) = crate::database::Database::add_token(
+                    &mut conn,
+                    hash_with_salt(&user.id, &crate::statics::HASH_SALT),
+                )
+                .await
                 {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                            warp::reply::json(&e.to_string()),
-                        );
-                    }
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    ));
                 };
                 Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                     &"OK".to_owned(),
@@ -58,17 +61,20 @@ pub fn priveleged_api_endpoints(
         .and(warp::body::json::<UserSafe>())
         .and_then({
             move |user: UserSafe| async move {
-                let mut data = crate::DATA.lock().await;
-                match data
-                    .remove_auth(hash_with_salt(&user.id, &crate::statics::HASH_SALT))
+                let mut conn = crate::POOL
+                    .get()
                     .await
+                    .map_err(|_| warp::reject::reject())?;
+
+                if let Err(e) = crate::database::Database::remove_token(
+                    &mut conn,
+                    hash_with_salt(&user.id, &crate::statics::HASH_SALT),
+                )
+                .await
                 {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                            warp::reply::json(&e.to_string()),
-                        );
-                    }
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    ));
                 };
                 Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                     &"OK".to_owned(),
@@ -81,22 +87,20 @@ pub fn priveleged_api_endpoints(
         .and(warp::body::json::<Vec<UserSafe>>())
         .and_then({
             move |users: Vec<UserSafe>| async move {
-                let mut data = crate::DATA.lock().await;
-                match data
-                    .sync_auth(
-                        users
-                            .iter()
-                            .map(|u| hash_with_salt(&u.id, &crate::statics::HASH_SALT))
-                            .collect::<Vec<String>>(),
-                    )
+                let mut conn = crate::POOL
+                    .get()
                     .await
-                {
-                    Ok(_) => {}
-                    Err(e) => {
-                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                            warp::reply::json(&e.to_string()),
-                        );
-                    }
+                    .map_err(|_| warp::reject::reject())?;
+
+                let tokens = users
+                    .iter()
+                    .map(|u| hash_with_salt(&u.id, &crate::statics::HASH_SALT))
+                    .collect::<Vec<String>>();
+
+                if let Err(e) = crate::database::Database::sync_tokens(&mut conn, tokens).await {
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    ));
                 };
                 Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                     &"OK".to_owned(),
@@ -446,7 +450,20 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // GET /from_token_to_internal_id/{token} - hashes {token} with the TOKEN_SALT and returns it
+
+    let getinternalid = warp::path!("api" / "v1" / "from_token_to_internal_id" / String)
+        .and(warp::get())
+        .and_then({
+            |token: String| async move {
+                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &common::hash_with_salt(&token, &crate::statics::TOKEN_SALT),
+                ))
+            }
+        });
+
     getpost
+        .or(getinternalid)
         .or(getbanner)
         .or(deletepost)
         .or(postinthread)

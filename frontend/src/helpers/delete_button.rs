@@ -9,7 +9,7 @@ pub fn DeleteButton(props: &Props) -> Html {
     let on_click = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
         let state = mvstate.clone();
-        if *state == DeleteState::Untouched {
+        if *state == DeleteState::Confirmation {
             state.set(DeleteState::Pending);
             let post_number = mvprops.post_number;
             let board_discriminator = mvprops.board_discriminator.clone();
@@ -28,6 +28,8 @@ pub fn DeleteButton(props: &Props) -> Html {
                     }
                 }
             });
+        } else if *state == DeleteState::Untouched {
+            state.set(DeleteState::Confirmation);
         }
     });
 
@@ -39,6 +41,13 @@ pub fn DeleteButton(props: &Props) -> Html {
                         html! {
                             <a href="#" onclick={on_click}>
                                 {"🗑️"}
+                            </a>
+                        }
+                    }
+                    DeleteState::Confirmation => {
+                        html! {
+                            <a href="#" onclick={on_click}>
+                                {"❓"}
                             </a>
                         }
                     }
@@ -74,6 +83,7 @@ pub struct Props {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DeleteState {
     Untouched,
+    Confirmation,
     Pending,
     Complete(Option<String>),
 }

@@ -1,4 +1,4 @@
-use std::io::{Read, Write};
+// use std::io::{Read, Write};
 
 use anyhow::{anyhow, Result};
 use common::structs::*;
@@ -15,52 +15,52 @@ use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConne
 use crate::schema::Banner;
 use crate::schema::Post;
 
-pub struct Users {
-    valid_users: Vec<String>,
-}
+// pub struct Users {
+//     valid_users: Vec<String>,
+// }
 
-impl Users {
-    pub fn new() -> Result<Self> {
-        Ok(Self {
-            valid_users: vec![],
-        })
-    }
-    pub async fn open(&mut self) -> Result<()> {
-        if let Ok(auth) = tokio::fs::read("./auth.bin.gz").await {
-            let mut bytes = vec![];
-            {
-                let mut auth = flate2::read::GzDecoder::new(auth.as_slice());
-                let _ = auth.read_to_end(&mut bytes);
-            }
-            let auth: Vec<String> = postcard::from_bytes(&bytes).unwrap_or_default();
-            self.valid_users = auth;
-        }
+// impl Users {
+//     pub fn new() -> Result<Self> {
+//         Ok(Self {
+//             valid_users: vec![],
+//         })
+//     }
+//     pub async fn open(&mut self) -> Result<()> {
+//         if let Ok(auth) = tokio::fs::read("./auth.bin.gz").await {
+//             let mut bytes = vec![];
+//             {
+//                 let mut auth = flate2::read::GzDecoder::new(auth.as_slice());
+//                 let _ = auth.read_to_end(&mut bytes);
+//             }
+//             let auth: Vec<String> = postcard::from_bytes(&bytes).unwrap_or_default();
+//             self.valid_users = auth;
+//         }
 
-        Ok(())
-    }
-    pub async fn close(&mut self) -> Result<()> {
-        let mut auth = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-        auth.write_all(&postcard::to_allocvec(&self.valid_users)?)?;
-        tokio::fs::write("./auth.bin.gz", auth.finish()?).await?;
-        Ok(())
-    }
+//         Ok(())
+//     }
+//     pub async fn close(&mut self) -> Result<()> {
+//         let mut auth = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+//         auth.write_all(&postcard::to_allocvec(&self.valid_users)?)?;
+//         tokio::fs::write("./auth.bin.gz", auth.finish()?).await?;
+//         Ok(())
+//     }
 
-    pub async fn is_auth(&mut self, token: String) -> Result<bool> {
-        Ok(self.valid_users.contains(&token))
-    }
-    pub async fn add_auth(&mut self, token: String) -> Result<()> {
-        self.valid_users.push(token);
-        Ok(())
-    }
-    pub async fn sync_auth(&mut self, tokens: Vec<String>) -> Result<()> {
-        self.valid_users = tokens;
-        Ok(())
-    }
-    pub async fn remove_auth(&mut self, token: String) -> Result<()> {
-        self.valid_users.retain(|x| x != &token);
-        Ok(())
-    }
-}
+//     pub async fn is_auth(&mut self, token: String) -> Result<bool> {
+//         Ok(self.valid_users.contains(&token))
+//     }
+//     pub async fn add_auth(&mut self, token: String) -> Result<()> {
+//         self.valid_users.push(token);
+//         Ok(())
+//     }
+//     pub async fn sync_auth(&mut self, tokens: Vec<String>) -> Result<()> {
+//         self.valid_users = tokens;
+//         Ok(())
+//     }
+//     pub async fn remove_auth(&mut self, token: String) -> Result<()> {
+//         self.valid_users.retain(|x| x != &token);
+//         Ok(())
+//     }
+// }
 
 pub struct Database;
 
@@ -157,19 +157,19 @@ impl Database {
             return Err(anyhow!("Not authorized to delete post"));
         }
 
-        let tthread = Self::get_thread(conn, discriminator, number).await.is_ok();
+        let tthread = Self::get_thread(conn, discriminator, number).await;
         let id = tpost.id;
         match (tadmin, tauthor, tthread, tpost) {
             // if the user is an admin they can delete a post
-            (true, _, false, post) => {
+            (true, _, Err(_), post) => {
                 Self::raw_delete_post(conn, post.id).await?;
             }
             // if the user is an admin they can delete a thread
-            (true, _, true, post) => {
-                Self::raw_delete_thread(conn, post.id).await?;
+            (true, _, Ok(thrd), _) => {
+                Self::raw_delete_thread(conn, thrd.id).await?;
             }
             // if the user is the author of the post and it is not a thread they can delete it
-            (false, true, false, post) => {
+            (false, true, Err(_), post) => {
                 Self::raw_delete_post(conn, post.id).await?;
             }
             // otherwise they are not authorized to delete the post
@@ -196,9 +196,9 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tid: i64,
     ) -> Result<()> {
-        use crate::schema::posts::dsl::*;
+        use crate::schema::threads::dsl::*;
 
-        diesel::delete(posts.filter(id.eq(tid)))
+        diesel::delete(threads.filter(id.eq(tid)))
             .execute(conn)
             .await?;
         Ok(())
@@ -209,7 +209,22 @@ impl Database {
         token: String,
         board_id: i64,
     ) -> Result<bool> {
-        Ok(false)
+        use crate::schema::members::dsl::*;
+        use diesel::query_dsl::methods::SelectDsl;
+
+        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
+
+        // get this members moderates Vec<i64>
+        let status = members
+            .select(moderates)
+            .filter(token_hash.eq(hashed_token))
+            .first::<Option<Vec<i64>>>(&mut *conn)
+            .await?;
+
+        Ok(match status {
+            Some(status) => status.is_empty() || status.contains(&board_id),
+            None => false,
+        })
     }
 
     pub async fn create_file(
@@ -466,6 +481,89 @@ impl Database {
             .choose(&mut rand::thread_rng())
             .cloned()
             .ok_or_else(|| anyhow!("No spoilers found!"))
+    }
+
+    pub async fn is_valid_token(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: String,
+    ) -> Result<bool> {
+        use crate::schema::members::dsl::*;
+        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
+
+        // check if a user with this token exists
+        let user = members
+            .filter(token_hash.eq(hashed_token))
+            .first::<crate::schema::Member>(conn)
+            .await;
+
+        Ok(user.is_ok())
+    }
+
+    pub async fn add_token(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: String,
+    ) -> Result<()> {
+        use crate::schema::members::dsl::*;
+
+        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
+
+        // check if a user with this token exists
+        if Self::is_valid_token(conn, token.clone()).await? {
+            return Ok(());
+        };
+
+        // if not, create one
+        diesel::insert_into(members)
+            .values((token_hash.eq(hashed_token),))
+            .execute(conn)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn remove_token(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: String,
+    ) -> Result<()> {
+        use crate::schema::members::dsl::*;
+
+        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
+
+        // check if a user with this token exists
+        if !Self::is_valid_token(conn, token.clone()).await? {
+            return Ok(());
+        };
+
+        // if so, delete it
+        diesel::delete(members.filter(token_hash.eq(hashed_token)))
+            .execute(conn)
+            .await?;
+
+        Ok(())
+    }
+
+    pub async fn sync_tokens(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        tokens: Vec<String>,
+    ) -> Result<()> {
+        use crate::schema::members::dsl::*;
+
+        let hashed_tokens = tokens
+            .iter()
+            .map(|x| common::hash_with_salt(x, &crate::statics::TOKEN_SALT))
+            .collect::<Vec<String>>();
+
+        // delete all tokens that are not in the list
+        diesel::delete(members.filter(token_hash.ne_all(hashed_tokens)))
+            .execute(conn)
+            .await?;
+
+        // add all tokens that are not in the database
+        for token in tokens {
+            Self::add_token(conn, token).await?;
+        }
+
+        Ok(())
     }
 }
 

@@ -366,3 +366,18 @@ pub struct Spoiler {
     pub id: i64,
     pub img: String,
 }
+
+diesel::table! {
+    members (id) {
+        id -> BigInt,
+        token_hash -> Text,
+        moderates -> Nullable<Array<BigInt>>,
+    }
+}
+
+#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Member {
+    pub id: i64,
+    pub token_hash: String,
+    pub moderates: Option<Vec<i64>>,
+}

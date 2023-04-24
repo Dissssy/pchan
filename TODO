@@ -8,7 +8,7 @@ Frontend:
     - BlueText™️ @done
     - Seperate out API calls @done
     - Retain name between loads @done
-    - Add a way to delete posts THREADS CAN NOT BE DELETED
+    - Add a way to delete posts THREADS CAN NOT BE DELETED UNLESS YOU'RE A MODERATOR @done
     - Mouse over files! @done
     - Keep track of whether a reply to a post is on the same board, if not change the link to >>>/board/post instead of >>post !IMPORTANT (MOVE REPLY STRUCT TO BACKEND) @done
 
@@ -17,6 +17,8 @@ Backend:
         - Hashing files @done
         - Preventing duplicate uploads @done
     - Rejection of posts with images if the thread contains 100 images already @done
+    - Moderation tools
+        - Delete posts @done
     - Create post specific user tokens to handle deletion without storing the raw user token @done
     - Add a way to handle administrator users
     - Change file handling to store file info in a seperate table @done

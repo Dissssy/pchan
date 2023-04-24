@@ -68,34 +68,33 @@ pub fn other_endpoints(
                                 .into_response());
                         }
                     };
-                let mut locked = crate::DATA.lock().await;
+                let is_auth = {
+                    let mut conn = crate::POOL
+                        .get()
+                        .await
+                        .map_err(|_| warp::reject::reject())?;
+
+                    crate::database::Database::is_valid_token(&mut conn, token).await
+                };
+
                 let hashed_id = hash_with_salt(&id, &crate::statics::HASH_SALT);
-                match locked.is_auth(hashed_id.clone()).await {
-                    Ok(r) => {
-                        if r {
-                            Ok::<_, warp::reject::Rejection>(
-                                warp::reply::with_header(
-                                    warp::http::Response::builder()
-                                        .header("Location", "/")
-                                        .status(302)
-                                        .body("".to_owned())
-                                        .unwrap(),
-                                    "set-cookie",
-                                    format!(
-                                        "token={hashed_id}; Path=/; HttpOnly; Max-Age={}",
-                                        60 * 60 * 24 * 365 * 10
-                                    ),
-                                )
-                                .into_response(),
-                            )
-                        } else {
-                            Ok(warp::redirect(warp::http::Uri::from_static("/login"))
-                                .into_response())
-                        }
-                    }
-                    Err(_) => {
-                        Ok(warp::redirect(warp::http::Uri::from_static("/login")).into_response())
-                    }
+                match is_auth {
+                    Ok(true) => Ok::<_, warp::reject::Rejection>(
+                        warp::reply::with_header(
+                            warp::http::Response::builder()
+                                .header("Location", "/")
+                                .status(302)
+                                .body("".to_owned())
+                                .unwrap(),
+                            "set-cookie",
+                            format!(
+                                "token={hashed_id}; Path=/; HttpOnly; Max-Age={}",
+                                60 * 60 * 24 * 365 * 10
+                            ),
+                        )
+                        .into_response(),
+                    ),
+                    _ => Ok(warp::redirect(warp::http::Uri::from_static("/login")).into_response()),
                 }
             }
         });

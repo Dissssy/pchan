@@ -9,26 +9,27 @@ pub fn valid_token() -> impl Filter<Extract = (), Error = warp::Rejection> + Clo
         .and(warp::cookie::optional("token"))
         .and_then(
             |header: Option<Bearer>, cookie: Option<String>| async move {
-                let mut d = crate::DATA.lock().await;
-                let header_is_valid = if let Some(header) = header {
-                    d.is_auth(header.token)
+                let mut conn = crate::POOL
+                    .get()
+                    .await
+                    .map_err(|_| warp::reject::reject())?;
+                if let Some(header) = header {
+                    if crate::database::Database::is_valid_token(&mut conn, header.token)
                         .await
                         .map_err(|_| warp::reject::reject())?
-                } else {
-                    false
+                    {
+                        return Ok(());
+                    }
                 };
-                let cookie_is_valid = if let Some(cookie) = cookie {
-                    d.is_auth(cookie)
+                if let Some(cookie) = cookie {
+                    if crate::database::Database::is_valid_token(&mut conn, cookie)
                         .await
                         .map_err(|_| warp::reject::reject())?
-                } else {
-                    false
+                    {
+                        return Ok(());
+                    }
                 };
-                if header_is_valid || cookie_is_valid {
-                    Ok(())
-                } else {
-                    Err(warp::reject::reject())
-                }
+                Err(warp::reject::reject())
             },
         )
         .and(warp::any())
