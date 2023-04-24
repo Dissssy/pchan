@@ -1,5 +1,6 @@
 pub mod banner;
 pub mod board_link;
+pub mod board_list;
 pub mod board_title;
 pub mod boards_navbar;
 pub mod delete_button;

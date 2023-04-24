@@ -92,7 +92,7 @@ fn switch(routes: BaseRoute) -> Html {
                 <pages::thread_page::ThreadPage board_discriminator={board_discriminator} thread_id={thread_id} />
             }
         }
-        BaseRoute::NotFound => html! { <h1>{"404"}</h1> },
+        BaseRoute::NotFound => html! { <pages::not_found::NotFound/> },
     }
 }
 
