@@ -1,5 +1,6 @@
 Frontend:
     - Error handling, show error message to user
+    - Truncate posts that are too long in board view
 
 Backend:
     - Moderation tools
