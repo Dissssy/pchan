@@ -55,9 +55,8 @@ async fn main() {
             "/git/pchan/frontend/tempdist/unauthorized.html",
         ));
 
-    let routes = endpoints::api::priveleged_api_endpoints().or(filters::valid_token()
+    let routes = endpoints::other_endpoints().or(endpoints::api::priveleged_api_endpoints()).or(filters::valid_token()
         .and(endpoints::api::api_endpoints().or(root))
-        .or(endpoints::other_endpoints())
         .or(unauthorized)
         .or(warp::any()
             .and(warp::cookie::optional::<String>("token"))
