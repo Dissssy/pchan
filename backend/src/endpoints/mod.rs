@@ -88,7 +88,7 @@ pub fn other_endpoints(
 
                     crate::database::Database::is_valid_token(&mut conn, token).await
                 };
-                println!("is_auth: {is_auth}");
+                println!("is_auth: {is_auth:?}");
                 let hashed_id = hash_with_salt(&id, &crate::statics::HASH_SALT);
                 match is_auth {
                     Ok(true) => Ok::<_, warp::reject::Rejection>(
