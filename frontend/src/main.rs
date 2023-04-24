@@ -63,8 +63,28 @@ fn main() {
 
 #[function_component]
 fn Root() -> Html {
+    let theme = use_state(|| gloo_storage::LocalStorage::get::<bool>("theme").unwrap_or(true));
+
+    let mvtheme = theme.clone();
+    let on_click = Callback::from(move |e: MouseEvent| {
+        e.prevent_default();
+        mvtheme.set(!*mvtheme);
+        gloo_storage::LocalStorage::set("theme", !*mvtheme).unwrap();
+    });
+
     html! {
         <BrowserRouter>
+            <div class="toggle-theme">
+                <a href="#" onclick={on_click} >{ if *theme { "🌑" } else { "🌕" }}</a>
+                <style>
+                {format!("
+                    :root {{
+                        {}
+                    }}
+                    ", if *theme {env!("DARK_THEME")} else {env!("LIGHT_THEME")} )
+                }
+            </style>
+            </div>
             <Switch<BaseRoute> render={switch} />
         </BrowserRouter>
     }
