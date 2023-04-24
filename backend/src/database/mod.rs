@@ -105,10 +105,10 @@ impl Database {
 
     pub async fn get_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discrim: String,
+        discriminator: String,
         number: i64,
     ) -> Result<SafePost> {
-        Self::get_raw_post(conn, discrim, number)
+        Self::get_raw_post(conn, discriminator, number)
             .await?
             .safe(conn)
             .await
@@ -129,12 +129,12 @@ impl Database {
 
     async fn get_raw_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discrim: String,
+        discriminator: String,
         number: i64,
     ) -> Result<Post> {
         use crate::schema::posts::dsl::*;
 
-        let this_board = Self::get_board(conn, discrim).await?;
+        let this_board = Self::get_board(conn, discriminator).await?;
         Ok(posts
             .filter(board.eq(this_board.id))
             .filter(post_number.eq(number))
@@ -144,28 +144,70 @@ impl Database {
 
     pub async fn delete_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discrim: String,
+        discriminator: String,
         number: i64,
         token: String,
+    ) -> Result<i64> {
+        let tpost = Self::get_raw_post(conn, discriminator.clone(), number).await?;
+        let tauthor =
+            tpost.actual_author == common::hash_with_salt(&token, &format!("{}", tpost.id));
+        let tadmin = Self::is_admin(conn, token, tpost.board).await?;
+
+        if !(tadmin || tauthor) {
+            return Err(anyhow!("Not authorized to delete post"));
+        }
+
+        let tthread = Self::get_thread(conn, discriminator, number).await.is_ok();
+        let id = tpost.id;
+        match (tadmin, tauthor, tthread, tpost) {
+            // if the user is an admin they can delete a post
+            (true, _, false, post) => {
+                Self::raw_delete_post(conn, post.id).await?;
+            }
+            // if the user is an admin they can delete a thread
+            (true, _, true, post) => {
+                Self::raw_delete_thread(conn, post.id).await?;
+            }
+            // if the user is the author of the post and it is not a thread they can delete it
+            (false, true, false, post) => {
+                Self::raw_delete_post(conn, post.id).await?;
+            }
+            // otherwise they are not authorized to delete the post
+            _ => {
+                return Err(anyhow::anyhow!("Not authorized to delete post"));
+            }
+        }
+        Ok(id)
+    }
+
+    async fn raw_delete_post(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        tid: i64,
     ) -> Result<()> {
         use crate::schema::posts::dsl::*;
 
-        let post = Self::get_raw_post(conn, discrim.clone(), number).await?;
-        if post.actual_author == common::hash_with_salt(&token, &format!("{}", post.id))
-            || Self::is_admin(conn, token).await?
-        {
-            diesel::delete(posts.filter(id.eq(post.id)))
-                .execute(conn)
-                .await?;
-        } else {
-            return Err(anyhow::anyhow!("Not authorized to delete post"));
-        }
+        diesel::delete(posts.filter(id.eq(tid)))
+            .execute(conn)
+            .await?;
+        Ok(())
+    }
+
+    async fn raw_delete_thread(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        tid: i64,
+    ) -> Result<()> {
+        use crate::schema::posts::dsl::*;
+
+        diesel::delete(posts.filter(id.eq(tid)))
+            .execute(conn)
+            .await?;
         Ok(())
     }
 
     async fn is_admin(
-        _conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        _token: String,
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: String,
+        board_id: i64,
     ) -> Result<bool> {
         Ok(false)
     }
@@ -191,12 +233,12 @@ impl Database {
     }
     pub async fn get_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discrim: String,
+        discriminator: String,
         number: i64,
     ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
-        let this_board = Self::get_board(conn, discrim.clone()).await?;
-        let this_post = Self::get_post(conn, discrim, number).await?;
+        let this_board = Self::get_board(conn, discriminator.clone()).await?;
+        let this_post = Self::get_post(conn, discriminator, number).await?;
         let results = threads
             .filter(board.eq(this_board.id))
             .filter(post_id.eq(this_post.id))
@@ -289,7 +331,7 @@ impl Database {
     pub async fn create_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tboard: i64,
-        discrim: String,
+        discriminator: String,
         tthread: i64,
         mut post: CreatePost,
         tactual_author: String,
@@ -310,7 +352,7 @@ impl Database {
         let replies = post
             .content
             .split_whitespace()
-            .flat_map(|x| common::structs::Reply::from_str(x, &discrim))
+            .flat_map(|x| common::structs::Reply::from_str(x, &discriminator))
             .collect::<Vec<common::structs::Reply>>();
 
         let mut replieses = Vec::new();
@@ -345,7 +387,10 @@ impl Database {
         };
 
         let t = insert_into(posts).values((
-            post_number.eq(Self::get_board(conn, discrim.clone()).await?.post_count + 1),
+            post_number.eq(Self::get_board(conn, discriminator.clone())
+                .await?
+                .post_count
+                + 1),
             thread.eq(tthread),
             board.eq(tboard),
             author.eq(post.author.clone()),

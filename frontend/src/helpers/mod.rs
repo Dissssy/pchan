@@ -2,6 +2,7 @@ pub mod banner;
 pub mod board_link;
 pub mod board_title;
 pub mod boards_navbar;
+pub mod delete_button;
 pub mod lazy_post;
 pub mod new_post_box;
 pub mod post_container;

@@ -1,6 +1,8 @@
 use common::structs::SafePost;
 use yew::prelude::*;
 
+use super::delete_button::DeleteButton;
+
 use crate::helpers::{
     lazy_post::LazyPost, startswith_class::StartsWithClass, HoveredOrExpandedState,
 };
@@ -77,6 +79,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     }
                 }>
                 <div class="post-header">
+                    <DeleteButton post_number={post.post_number} board_discriminator={props.board_discrim.clone()} />
                     <div class="post-header-author">
                         {
                             if let Some(ref author) = post.author {

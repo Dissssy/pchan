@@ -242,9 +242,9 @@ pub fn PostBox(props: &Props) -> Html {
                             <div class="submission-box-file-input">
                                 <input type="button" id="spoiler-button" class="custom-select" name="spoiler-button" onclick={onclick_spoiler} value={
                                     if *spoilered {
-                                        "Spoiler"
+                                        "Spoiler!"
                                     } else {
-                                        "-"
+                                        "Spoiler?"
                                     }
                                 }/>
                                 <label for="file-input">{"File"}</label>

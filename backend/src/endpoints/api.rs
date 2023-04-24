@@ -299,7 +299,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    // DELETE /{discriminator}/post/{post_id} - deletes a post
+    // DELETE /{discriminator}/post/{post_number} - deletes a post
 
     let deletepost = warp::path!("api" / "v1" / "board" / String / "post" / i64)
         .and(warp::delete())

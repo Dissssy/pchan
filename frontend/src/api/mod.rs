@@ -224,6 +224,36 @@ impl Api {
             }
         }
     }
+    pub async fn delete_post(
+        &mut self,
+        board_discriminator: &str,
+        post_number: &str,
+    ) -> Result<()> {
+        // DELETE /{discriminator}/post/{post_number} - deletes a post
+        let token = self.get_token().await?;
+
+        let url = format!("/api/v1/board/{}/post/{}", board_discriminator, post_number);
+        let fetch = gloo_net::http::Request::delete(&url)
+            .header("authorization", &format!("Bearer {token}"))
+            .send()
+            .await;
+        match fetch {
+            Ok(f) => match f.text().await {
+                Ok(v) => match v.parse::<i64>() {
+                    Ok(_) => Ok(()),
+                    Err(_) => match serde_json::from_str::<String>(&v) {
+                        Ok(s) => Err(anyhow!(s)),
+                        Err(_) => Err(anyhow!("could not parse error")),
+                    },
+                },
+                Err(e) => Err(anyhow!(format!("{e:?}"))),
+            },
+            Err(e) => {
+                gloo::console::log!(format!("{e:?}"));
+                Err(anyhow!(format!("{e:?}")))
+            }
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
