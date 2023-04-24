@@ -1,6 +1,6 @@
 Frontend:
-    - Exponendial backoff retry @done
     - Error handling, show error message to user
+    - Exponendial backoff retry @done
     - Thread links from board view @done
     - Embed post when clicking on the reply link for said post @done
         - LazyPost is ready to be made clickable @done
@@ -13,14 +13,14 @@ Frontend:
     - Keep track of whether a reply to a post is on the same board, if not change the link to >>>/board/post instead of >>post !IMPORTANT (MOVE REPLY STRUCT TO BACKEND) @done
 
 Backend:
+    - Moderation tools
     - Prevent spam (possibly by ratelimiting post and thread endpoints):
         - Hashing files @done
         - Preventing duplicate uploads @done
+    - Add a way to handle administrator users @done
     - Rejection of posts with images if the thread contains 100 images already @done
-    - Moderation tools
         - Delete posts @done
     - Create post specific user tokens to handle deletion without storing the raw user token @done
-    - Add a way to handle administrator users
     - Change file handling to store file info in a seperate table @done
 
 Shared:
