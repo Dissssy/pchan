@@ -9,32 +9,51 @@ pub fn DeleteButton(props: &Props) -> Html {
     let on_click = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
         let state = mvstate.clone();
-        if *state == DeleteState::Confirmation {
-            state.set(DeleteState::Pending);
-            let post_number = mvprops.post_number;
-            let board_discriminator = mvprops.board_discriminator.clone();
-            wasm_bindgen_futures::spawn_local(async move {
-                let del = crate::API
-                    .lock()
-                    .await
-                    .delete_post(&board_discriminator, &format!("{}", post_number))
-                    .await;
-                match del {
-                    Ok(_) => {
-                        state.set(DeleteState::Complete(None));
+        match *state {
+            DeleteState::ExclamationMark => {
+                state.set(DeleteState::Pending);
+                let post_number = mvprops.post_number;
+                let board_discriminator = mvprops.board_discriminator.clone();
+                wasm_bindgen_futures::spawn_local(async move {
+                    let del = crate::API
+                        .lock()
+                        .await
+                        .delete_post(&board_discriminator, &format!("{}", post_number))
+                        .await;
+                    match del {
+                        Ok(_) => {
+                            state.set(DeleteState::Complete(None));
+                        }
+                        Err(e) => {
+                            state.set(DeleteState::Complete(Some(e.to_string())));
+                        }
                     }
-                    Err(e) => {
-                        state.set(DeleteState::Complete(Some(e.to_string())));
-                    }
-                }
-            });
-        } else if *state == DeleteState::Untouched {
-            state.set(DeleteState::Confirmation);
+                });
+            }
+            DeleteState::Interrobang => {
+                state.set(DeleteState::ExclamationMark);
+            }
+            DeleteState::QuestionMark => {
+                state.set(DeleteState::Interrobang);
+            }
+            DeleteState::Untouched => {
+                state.set(DeleteState::QuestionMark);
+            }
+            _ => {}
+        }
+    });
+
+    let mvstate = state.clone();
+    let on_mouseout = Callback::from(move |_: MouseEvent| match *mvstate {
+        DeleteState::Pending => {}
+        DeleteState::Complete(_) => {}
+        _ => {
+            mvstate.set(DeleteState::Untouched);
         }
     });
 
     html! {
-        <div class="post-header-delete-button">
+        <div class="post-header-delete-button" onmouseout={on_mouseout}>
             {
                 match *state {
                     DeleteState::Untouched => {
@@ -44,10 +63,24 @@ pub fn DeleteButton(props: &Props) -> Html {
                             </a>
                         }
                     }
-                    DeleteState::Confirmation => {
+                    DeleteState::QuestionMark => {
                         html! {
                             <a href="#" onclick={on_click}>
                                 {"❓"}
+                            </a>
+                        }
+                    }
+                    DeleteState::Interrobang => {
+                        html! {
+                            <a href="#" onclick={on_click}>
+                                {"⁉️"}
+                            </a>
+                        }
+                    }
+                    DeleteState::ExclamationMark => {
+                        html! {
+                            <a href="#" onclick={on_click}>
+                                {"❗"}
                             </a>
                         }
                     }
@@ -83,7 +116,9 @@ pub struct Props {
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum DeleteState {
     Untouched,
-    Confirmation,
+    QuestionMark,
+    Interrobang,
+    ExclamationMark,
     Pending,
     Complete(Option<String>),
 }
