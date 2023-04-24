@@ -49,6 +49,10 @@ async fn main() {
             .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
     );
 
+    let manifest = warp::get().and(warp::fs::file(
+        "/git/pchan/frontend/dist/manifest.json",
+    ));
+
     let unauthorized = warp::path!("unauthorized")
         .and(warp::get())
         .and(warp::fs::file(
@@ -58,6 +62,7 @@ async fn main() {
     let routes = endpoints::other_endpoints().or(endpoints::api::priveleged_api_endpoints()).or(filters::valid_token()
         .and(endpoints::api::api_endpoints().or(root))
         .or(unauthorized)
+        .or(manifest)
         .or(warp::any()
             .and(warp::cookie::optional::<String>("token"))
             .then(|token: Option<String>| async move {
