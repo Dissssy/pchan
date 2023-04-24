@@ -26,3 +26,7 @@ Backend:
 Shared:
     - Universalize shared structs @done
     - Banner ADS @done
+
+Long term goals:
+    - Federation? probably the ability to issue two way tokens between instances that allow access to the API endpoints for the opposite instance
+    - Dockerize the whole thing including the database, initializing the DB with all the relevant functions and tables based on environment variables
