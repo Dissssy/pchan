@@ -95,7 +95,7 @@ pub fn LazyPost(props: &Props) -> Html {
                                         Some(Ok(ref post)) => {
                                             html! {
                                                 <div>
-                                                    <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert}  this_thread_post_number={props.this_thread_post_number} />
+                                                    <PostView post={post.clone()} board_discrim={props.reply.board_discriminator.clone()} invert={!props.invert}  this_thread_post_number={props.this_thread_post_number} load_posts={props.load_posts.clone()} />
                                                 </div>
                                             }
                                         }
@@ -131,6 +131,7 @@ pub fn LazyPost(props: &Props) -> Html {
 pub struct Props {
     pub reply: Reply,
     pub invert: bool,
+    pub load_posts: Option<Callback<()>>,
     pub this_board: String,
     pub this_thread_post_number: i64,
 }

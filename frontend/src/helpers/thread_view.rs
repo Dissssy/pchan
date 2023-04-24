@@ -92,7 +92,7 @@ pub fn ThreadView(props: &Props) -> Html {
                     for posts.iter().map(|p| {
                         html! {
                             <div class="threadposts-post">
-                                <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} add_to_content={props.add_to_content.clone()} this_thread_post_number={props.thread.thread_post().post_number} />
+                                <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} add_to_content={props.add_to_content.clone()} this_thread_post_number={props.thread.thread_post().post_number} load_posts={props.load_posts.clone()}/>
                             </div>
                         }
                     })
@@ -106,6 +106,7 @@ pub fn ThreadView(props: &Props) -> Html {
 pub struct Props {
     pub thread: MaybeExpandableThread,
     pub rerender: bool,
+    pub load_posts: Option<Callback<()>>,
     pub add_to_content: Option<UseStateHandle<String>>,
     pub board_discriminator: String,
 }

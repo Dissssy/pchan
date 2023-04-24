@@ -126,7 +126,7 @@ pub fn ThreadPage(props: &Props) -> Html {
                 <BoardTitle board_discriminator={props.board_discriminator.clone()}/>
                 <Banner board_discriminator={props.board_discriminator.clone()} />
                 <div class="postbox">
-                    <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={(props.thread_id.clone(), tloadposts)} post_text={post_content.clone()}/>
+                    <PostBox board_discriminator={props.board_discriminator.clone()} thread_id={(props.thread_id.clone(), tloadposts.clone())} post_text={post_content.clone()}/>
                 </div>
             </div>
             <div class="threadposts">
@@ -135,7 +135,7 @@ pub fn ThreadPage(props: &Props) -> Html {
                         Some(ref t) => {
                             html! {
                                 <>
-                                    <ThreadView thread={MaybeExpandableThread::from(t.clone())} board_discriminator={props.board_discriminator.clone()} rerender={*rerender} add_to_content={post_content}/>
+                                    <ThreadView thread={MaybeExpandableThread::from(t.clone())} board_discriminator={props.board_discriminator.clone()} rerender={*rerender} add_to_content={post_content} load_posts={tloadposts}/>
                                     <div class="reload-button">
                                         <a href="#" onclick={manually_load_posts}>
                                             {"Checking for new posts in "}{(*read_backoff_max - *read_backoff).max(0)}{" seconds"}

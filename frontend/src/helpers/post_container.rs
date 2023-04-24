@@ -79,7 +79,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     }
                 }>
                 <div class="post-header">
-                    <DeleteButton post_number={post.post_number} board_discriminator={props.board_discrim.clone()} />
+                    <DeleteButton post_number={post.post_number} board_discriminator={props.board_discrim.clone()} load_posts={props.load_posts.clone()} />
                     <div class="post-header-author">
                         {
                             if let Some(ref author) = post.author {
@@ -135,7 +135,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                             for post.replies.iter().map(|r| {
                                                 html! {
                                                     <div class="post-header-reply-text">
-                                                        <LazyPost reply={r.clone()} this_board={props.board_discrim.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number}  />
+                                                        <LazyPost reply={r.clone()} this_board={props.board_discrim.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number} load_posts={props.load_posts.clone()} />
                                                     </div>
                                                 }
 
@@ -254,7 +254,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                                     {
                                                         if let Ok(r) = Reply::from_str(l, &props.board_discrim) {
                                                             html! {
-                                                                <LazyPost reply={r} this_board={props.board_discrim.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number} />
+                                                                <LazyPost reply={r} this_board={props.board_discrim.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number} load_posts={props.load_posts.clone()} />
                                                             }
                                                         } else {
                                                             html! {
@@ -282,6 +282,7 @@ pub struct PostViewProps {
     pub post: SafePost,
     pub add_to_content: Option<UseStateHandle<String>>,
     pub invert: Option<bool>,
+    pub load_posts: Option<Callback<()>>,
     pub board_discrim: String,
     pub this_thread_post_number: i64,
     pub topic: Option<String>,
