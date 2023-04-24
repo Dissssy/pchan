@@ -53,6 +53,10 @@ async fn main() {
         "/git/pchan/frontend/dist/manifest.json",
     ));
 
+    let icon = warp::path!("res" / "icon.png").and(warp::get()).and(warp::fs::file(
+        "/git/pchan/frontend/dist/res/icon-256.png",
+    ));
+
     let unauthorized = warp::path!("unauthorized")
         .and(warp::get())
         .and(warp::fs::file(
@@ -63,6 +67,7 @@ async fn main() {
         .and(endpoints::api::api_endpoints().or(root))
         .or(unauthorized)
         .or(manifest)
+        .or(icon)
         .or(warp::any()
             .and(warp::cookie::optional::<String>("token"))
             .then(|token: Option<String>| async move {
