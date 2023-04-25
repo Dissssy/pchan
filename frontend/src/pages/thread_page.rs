@@ -135,7 +135,7 @@ pub fn ThreadPage(props: &Props) -> Html {
                         Some(ref t) => {
                             html! {
                                 <>
-                                    <ThreadView thread={MaybeExpandableThread::from(t.clone())} board_discriminator={props.board_discriminator.clone()} rerender={*rerender} add_to_content={post_content} load_posts={tloadposts}/>
+                                    <ThreadView thread={MaybeExpandableThread::from(t.clone())} board_discriminator={props.board_discriminator.clone()} rerender={*rerender} add_to_content={post_content} load_posts={tloadposts} ignore_max_length={true}/>
                                     <div class="reload-button">
                                         <a href="#" onclick={manually_load_posts}>
                                             {"Checking for new posts in "}{(*read_backoff_max - *read_backoff).max(0)}{" seconds"}

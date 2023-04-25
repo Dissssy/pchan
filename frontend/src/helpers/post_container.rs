@@ -223,7 +223,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     if !post.content.trim().is_empty() {
                         html! {
                             <div class="post-text">
-                                <TruncateText text={post.content.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number} load_posts={props.load_posts.clone()} board_discrim={props.board_discrim.clone()}/>
+                                <TruncateText text={post.content.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number} load_posts={props.load_posts.clone()} board_discrim={props.board_discrim.clone()} ignore_max_length={props.ignore_max_length}/>
                             </div>
                         }
                     } else {
@@ -243,4 +243,5 @@ pub struct PostViewProps {
     pub board_discrim: String,
     pub this_thread_post_number: i64,
     pub topic: Option<String>,
+    pub ignore_max_length: Option<bool>,
 }

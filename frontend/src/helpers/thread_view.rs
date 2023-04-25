@@ -64,7 +64,7 @@ pub fn ThreadView(props: &Props) -> Html {
     html! {
         <div class="threadposts-list">
             <div class="threadposts-post">
-                <PostView post={props.thread.thread_post().clone()} board_discrim={props.board_discriminator.clone()} topic={props.thread.topic().clone()} add_to_content={props.add_to_content.clone()} this_thread_post_number={props.thread.thread_post().post_number} />
+                <PostView post={props.thread.thread_post().clone()} board_discrim={props.board_discriminator.clone()} topic={props.thread.topic().clone()} add_to_content={props.add_to_content.clone()} this_thread_post_number={props.thread.thread_post().post_number} ignore_max_length={props.ignore_max_length}/>
             </div>
             {
                 match props.thread {
@@ -92,7 +92,7 @@ pub fn ThreadView(props: &Props) -> Html {
                     for posts.iter().map(|p| {
                         html! {
                             <div class="threadposts-post">
-                                <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} add_to_content={props.add_to_content.clone()} this_thread_post_number={props.thread.thread_post().post_number} load_posts={props.load_posts.clone()}/>
+                                <PostView post={p.clone()} board_discrim={props.board_discriminator.clone()} add_to_content={props.add_to_content.clone()} this_thread_post_number={props.thread.thread_post().post_number} load_posts={props.load_posts.clone()} ignore_max_length={props.ignore_max_length}/>
                             </div>
                         }
                     })
@@ -109,6 +109,7 @@ pub struct Props {
     pub load_posts: Option<Callback<()>>,
     pub add_to_content: Option<UseStateHandle<String>>,
     pub board_discriminator: String,
+    pub ignore_max_length: Option<bool>,
 }
 
 #[derive(Clone, PartialEq)]
