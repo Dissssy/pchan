@@ -3,8 +3,10 @@ target
 .vscode
 depricated
 frontend/dist
-frontend/res
-frontend/index.html
+frontend/res/*.png
+frontend/res/*.svg
+frontend/res/spoilers
+frontend/res/banners
 Cargo.lock
 backend/migrations
 backend/auth.bin.gz
@@ -12,3 +14,4 @@ backend/profanity_en.csv
 backend/quotes.txt
 frontend/tempdist
 files
+keys

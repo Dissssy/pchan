@@ -1,0 +1,79 @@
+<!DOCTYPE html>
+<html>
+    <head>
+        <meta charset="utf-8" />
+        <title>PChan</title>
+        <link data-trunk rel="copy-dir" href="res">
+        <link data-trunk rel="copy-file" href="manifest.json">
+	<link data-trunk rel="copy-file" href="service_worker.js">
+	<link rel="manifest" href="/manifest.json"/>
+        <link rel="stylesheet" href="/res/css/style.css" />
+	
+	<script>
+
+        
+                function urlBase64ToUint8Array(base64String) {
+                        var padding = '='.repeat((4 - base64String.length % 4) % 4);
+                        var base64 = (base64String + padding)
+                                .replace(/\-/g, '+')
+                                .replace(/_/g, '/');
+
+                        var rawData = window.atob(base64);
+                        var outputArray = new Uint8Array(rawData.length);
+
+                        for (var i = 0; i < rawData.length; ++i)  {
+                                outputArray[i] = rawData.charCodeAt(i);
+                        }
+
+                        return outputArray;
+                }
+
+                function get_token_from_cookies() {
+                        // get "token" cookie
+                        var cookies = document.cookie.split(';');
+                        for (var i = 0; i < cookies.length; i++) {
+                                var cookie = cookies[i].trim();
+                                if (cookie.startsWith('token=')) {
+                                        return cookie.substring('token='.length, cookie.length);
+                                }
+                        }
+                        return null;
+                }
+        
+        // document.onclick = function() {
+                // Notification.requestPermission();
+        // };
+        // register ServiceWorker
+        window.onload = () => {
+            'use strict';
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker
+                        .register('./service_worker.js').then((serviceWorkerRegistration) => {
+                        serviceWorkerRegistration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array("BD5mCRfVrSTvzmpHYulsiKI5ogPBC9y_K-JJBVxavAqulOQP94lgFYoEfg93xy7ZPGKapn8jAyamwHukxYaQFHA")}).then(
+                                (pushSubscription) => {
+                                        // let s = JSON.stringify(pushSubscription).replace("{\"endpoint\":\"", "").replace("\",\"expirationTime\":null,\"keys\":{\"auth\":\"", "|").replace("\",\"p256dh\":\"", "|").replace("\"}}", "");
+                                        // console.log(s);
+                                        fetch('/api/v1/subscribe', {
+                                                method: 'post',
+                                                headers: { 'Content-type': 'application/json' },
+                                                body: JSON.stringify(pushSubscription)
+                                                }).then((response) => {
+                                                        response.text().then((text) => {
+                                                                console.log(text);
+                                                        });
+                                                });
+                                },
+                                (error) => {
+                                        // During development it often helps to log errors to the
+                                        // console. In a production environment it might make sense to
+                                        // also report information about errors back to the
+                                        // application server.
+                                        console.error(error);
+                                }
+                                );
+                        });
+                }
+            }
+    	</script>
+    </head>
+</html>

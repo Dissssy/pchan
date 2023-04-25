@@ -462,7 +462,33 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // POST /subscribe - sets the user's push notification url
+
+    let subscribble = warp::path!("api" / "v1" / "subscribe")
+        .and(warp::post())
+        .and(warp::body::json::<SubscriptionData>())
+        .and(warp::cookie::<String>("token"))
+        .and_then({
+            |sub: SubscriptionData, token: String| async move {
+                match crate::database::Database::set_user_push_url(
+                    &mut crate::POOL.get().await.unwrap(),
+                    token,
+                    Some(sub.to_database_string()),
+                )
+                .await
+                {
+                    Ok(_) => {
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&"ok"))
+                    }
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    )),
+                }
+            }
+        });
+
     getpost
+        .or(subscribble)
         .or(getinternalid)
         .or(getbanner)
         .or(deletepost)
@@ -478,4 +504,41 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSafe {
     pub id: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionData {
+    pub endpoint: String,
+    pub keys: SubscriptionKeys,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SubscriptionKeys {
+    pub p256dh: String,
+    pub auth: String,
+}
+
+impl SubscriptionData {
+    pub fn to_database_string(&self) -> String {
+        format!(
+            "{}|{}|{}",
+            self.endpoint.to_string(),
+            self.keys.p256dh.to_string(),
+            self.keys.auth.to_string()
+        )
+    }
+
+    pub fn from_database_string(s: &str) -> Option<Self> {
+        let mut split = s.split('|');
+        let endpoint = split.next()?.to_string();
+        let p256dh = split.next()?.to_string();
+        let auth = split.next()?.to_string();
+        if split.next().is_some() {
+            return None;
+        }
+        Some(Self {
+            endpoint,
+            keys: SubscriptionKeys { p256dh, auth },
+        })
+    }
 }
