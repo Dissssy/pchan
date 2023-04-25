@@ -17,6 +17,10 @@
   --edge-padding: 2%;
 } */
 
+.clickable {
+  color: var(--link-color);
+}
+
 .toggle-theme {
   z-index: 1000;
   float: right;

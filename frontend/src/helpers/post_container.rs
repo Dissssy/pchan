@@ -4,9 +4,8 @@ use yew::prelude::*;
 use super::delete_button::DeleteButton;
 
 use crate::helpers::{
-    lazy_post::LazyPost, startswith_class::StartsWithClass, HoveredOrExpandedState,
+    lazy_post::LazyPost, possibly_long_text::TruncateText, HoveredOrExpandedState,
 };
-use common::structs::Reply;
 
 #[function_component]
 pub fn PostView(props: &PostViewProps) -> Html {
@@ -67,8 +66,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
     });
 
     let invert = props.invert.unwrap_or(false);
-    let mut last_empty = false;
-    let mut first = true;
+
     let post = &props.post;
     html! {
             <div class={
@@ -225,48 +223,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     if !post.content.trim().is_empty() {
                         html! {
                             <div class="post-text">
-                                {
-                                    for post.content.lines().map(|l| {
-                                        if l.is_empty() && !last_empty {
-                                            last_empty = true;
-                                            html! {
-                                                <>
-                                                    <br />
-                                                </>
-                                            }
-                                        } else if l.is_empty() {
-                                            last_empty = true;
-                                            html! {}
-                                        } else {
-                                            last_empty = false;
-                                            html! {
-                                                <>
-                                                    {
-                                                        if !first {
-                                                            html! {
-                                                                <br />
-                                                            }
-                                                        } else {
-                                                            first = false;
-                                                            html! {}
-                                                        }
-                                                    }
-                                                    {
-                                                        if let Ok(r) = Reply::from_str(l, &props.board_discrim) {
-                                                            html! {
-                                                                <LazyPost reply={r} this_board={props.board_discrim.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number} load_posts={props.load_posts.clone()} />
-                                                            }
-                                                        } else {
-                                                            html! {
-                                                                <StartsWithClass text={l.to_owned()} map={crate::CLASSMAP.clone()} />
-                                                            }
-                                                        }
-                                                    }
-                                                </>
-                                            }
-                                        }
-                                    })
-                                }
+                                <TruncateText text={post.content.clone()} invert={invert} this_thread_post_number={props.this_thread_post_number} load_posts={props.load_posts.clone()} board_discrim={props.board_discrim.clone()}/>
                             </div>
                         }
                     } else {

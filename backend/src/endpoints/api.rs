@@ -165,6 +165,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::header::<Bearer>("authorization"))
         .and_then({
             |disc: String, thread: CreateThread, auth: Bearer| async move {
+                if let Err(e) = verify_post(&thread.post, Some(&thread.topic)) {
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    ));
+                }
+
                 match crate::database::Database::create_thread(
                     &mut crate::POOL.get().await.unwrap(),
                     disc,
@@ -217,6 +223,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::header::<Bearer>("authorization"))
         .and_then(
             |disc: String, thread: i64, post: CreatePost, auth: Bearer| async move {
+                if let Err(e) = verify_post(&post, None) {
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    ));
+                }
+
                 let mut conn = match crate::POOL.get().await {
                     Ok(v) => v,
                     Err(e) => {
@@ -541,4 +553,21 @@ impl SubscriptionData {
             keys: SubscriptionKeys { p256dh, auth },
         })
     }
+}
+
+fn verify_post(post: &CreatePost, topic: Option<&String>) -> anyhow::Result<()> {
+    if let Some(ref a) = post.author {
+        if a.len() > 30 {
+            return Err(anyhow::anyhow!("Author name too long"));
+        }
+    }
+    if post.content.len() > 5000 {
+        return Err(anyhow::anyhow!("Post content too long"));
+    }
+    if let Some(t) = topic {
+        if t.len() > 100 {
+            return Err(anyhow::anyhow!("Topic name too long"));
+        }
+    }
+    Ok(())
 }
