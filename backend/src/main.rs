@@ -22,6 +22,8 @@ use std::collections::HashMap;
 // use crate::database::Users;
 use profanity::Profanity;
 
+use crate::filters::user_agent_is_scraper;
+
 lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
     // pub static ref DATA: Arc<Mutex<Users>> = Arc::new(Mutex::new(Users::new().unwrap()));
@@ -49,13 +51,13 @@ async fn main() {
             .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
     );
 
-    let manifest = warp::path!("manifest.json").and(warp::get()).and(warp::fs::file(
-        "/git/pchan/frontend/dist/manifest.json",
-    ));
+    let manifest = warp::path!("manifest.json")
+        .and(warp::get())
+        .and(warp::fs::file("/git/pchan/frontend/dist/manifest.json"));
 
-    let icon = warp::path!("res" / "icon-256.png").and(warp::get()).and(warp::fs::file(
-        "/git/pchan/frontend/dist/res/icon-256.png",
-    ));
+    let icon = warp::path!("res" / "icon-256.png")
+        .and(warp::get())
+        .and(warp::fs::file("/git/pchan/frontend/dist/res/icon-256.png"));
 
     let unauthorized = warp::path!("unauthorized")
         .and(warp::get())
@@ -63,35 +65,43 @@ async fn main() {
             "/git/pchan/frontend/tempdist/unauthorized.html",
         ));
 
-    let routes = endpoints::other_endpoints().or(endpoints::api::priveleged_api_endpoints()).or(filters::valid_token()
-        .and(endpoints::api::api_endpoints().or(root))
-        .or(unauthorized)
-        .or(manifest)
-        .or(icon)
-        .or(warp::any()
-            .and(warp::cookie::optional::<String>("token"))
-            .then(|token: Option<String>| async move {
-                match token {
-                    None => Ok(warp::http::Response::builder()
-                        .header("Location", "/login")
-                        .status(302)
-                        .body("".to_owned())
-                        .unwrap()),
-                    Some(_) => Ok(warp::http::Response::builder()
-                        .header("Location", "/unauthorized")
-                        .status(302)
-                        .body("".to_owned())
-                        .unwrap()),
-                }
-            })));
+    let is_scraper =
+        user_agent_is_scraper().and(warp::fs::file("/git/pchan/frontend/tempdist/scraping.html"));
+
+    let routes = endpoints::other_endpoints()
+        .or(endpoints::api::priveleged_api_endpoints())
+        .or(filters::valid_token()
+            .and(endpoints::api::api_endpoints().or(root))
+            .or(unauthorized)
+            .or(manifest)
+            .or(icon)
+            .or(warp::any()
+                .and(warp::cookie::optional::<String>("token"))
+                .then(|token: Option<String>| async move {
+                    match token {
+                        None => Ok(warp::http::Response::builder()
+                            .header("Location", "/login")
+                            .status(302)
+                            .body("".to_owned())
+                            .unwrap()),
+                        Some(_) => Ok(warp::http::Response::builder()
+                            .header("Location", "/unauthorized")
+                            .status(302)
+                            .body("".to_owned())
+                            .unwrap()),
+                    }
+                })));
+
     let (sendkill, kill) = tokio::sync::oneshot::channel::<()>();
     let (killreply, killrecv) = tokio::sync::oneshot::channel::<()>();
-    let (_, server) =
-        warp::serve(routes).bind_with_graceful_shutdown(([0, 0, 0, 0], 16835), async {
+    let (_, server) = warp::serve(is_scraper.or(routes)).bind_with_graceful_shutdown(
+        ([0, 0, 0, 0], 16835),
+        async {
             let _ = kill.await;
             let _ = killreply.send(());
             println!("Shutting down Warp server");
-        });
+        },
+    );
     tokio::spawn(server);
 
     let mut trim_files = tokio::time::interval(std::time::Duration::from_secs(*statics::TRIM_TIME));

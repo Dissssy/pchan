@@ -49,6 +49,19 @@ pub fn priveleged_endpoint() -> impl Filter<Extract = (), Error = warp::Rejectio
         .untuple_one()
 }
 
+pub fn user_agent_is_scraper() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
+    warp::header::header::<String>("user-agent")
+        .and_then(|user_agent: String| async move {
+            if crate::statics::KNOWN_SCRAPERS.contains(&user_agent.as_str()) {
+                Ok(())
+            } else {
+                Err(warp::reject::reject())
+            }
+        })
+        .and(warp::any())
+        .untuple_one()
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bearer {
     pub token: String,

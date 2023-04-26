@@ -14,72 +14,72 @@ pub fn other_endpoints(
                 let code = q.code;
 
                 let client = reqwest::Client::new();
-                let token =
-                    match match client
-                        .post("https://discord.com/api/v10/oauth2/token")
-                        .form(&DiscordTokenForm {
-                            client_id: env!("CLIENT_ID").to_owned(),
-                            client_secret: env!("CLIENT_SECRET").to_owned(),
-                            grant_type: "authorization_code".to_owned(),
-                            redirect_uri: "https://pchan.p51.nl/login/callback".to_owned(),
-                            code,
-                        })
-                        .send()
-                        .await
-                    {
-                        Ok(r) => r,
-                        Err(e) => {
-                            println!("Error: {e}");
-                            return Ok(warp::reply::json(&e.to_string()).into_response());
-                        }
-                    }
-                    .text()
+                let token = match match client
+                    .post("https://discord.com/api/v10/oauth2/token")
+                    .form(&DiscordTokenForm {
+                        client_id: env!("CLIENT_ID").to_owned(),
+                        client_secret: env!("CLIENT_SECRET").to_owned(),
+                        grant_type: "authorization_code".to_owned(),
+                        redirect_uri: "https://pchan.p51.nl/login/callback".to_owned(),
+                        code,
+                    })
+                    .send()
                     .await
-                    {
-                        Ok(r) => {
-                            match serde_json::from_str::<DiscordTokenResponse>(&r) {
-                                Ok(r) => r.access_token,
-                                Err(e) => {
-                                    println!("Error: {e:?}");
-                                    return Ok(warp::reply::json(&format!("Error: {e:?} while parsing {r}")).into_response());
-                                }
-                            }
-                        },
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        println!("Error: {e}");
+                        return Ok(warp::reply::json(&e.to_string()).into_response());
+                    }
+                }
+                .text()
+                .await
+                {
+                    Ok(r) => match serde_json::from_str::<DiscordTokenResponse>(&r) {
+                        Ok(r) => r.access_token,
                         Err(e) => {
                             println!("Error: {e:?}");
-                            return Ok(warp::reply::json(&e.to_string()).into_response());
+                            return Ok(warp::reply::json(&format!(
+                                "Error: {e:?} while parsing {r}"
+                            ))
+                            .into_response());
                         }
-                    };
-                let id =
-                    match match client
-                        .get("https://discordapp.com/api/users/@me")
-                        .bearer_auth(&token)
-                        .send()
-                        .await
-                    {
-                        Ok(r) => r,
-                        Err(e) => {
-                            println!("Error: {e}");
-                            return Ok(warp::reply::json(&e.to_string()).into_response());
-                        }
+                    },
+                    Err(e) => {
+                        println!("Error: {e:?}");
+                        return Ok(warp::reply::json(&e.to_string()).into_response());
                     }
-                    .text()
+                };
+                let id = match match client
+                    .get("https://discordapp.com/api/users/@me")
+                    .bearer_auth(&token)
+                    .send()
                     .await
-                    {
-                        Ok(r) => {
-                            match serde_json::from_str::<DiscordUser>(&r) {
-                                Ok(r) => r.id,
-                                Err(e) => {
-                                    println!("Error: {e:?}");
-                                    return Ok(warp::reply::json(&format!("Error: {e:?} while parsing {r}")).into_response());
-                                }
-                            }
-                        },
+                {
+                    Ok(r) => r,
+                    Err(e) => {
+                        println!("Error: {e}");
+                        return Ok(warp::reply::json(&e.to_string()).into_response());
+                    }
+                }
+                .text()
+                .await
+                {
+                    Ok(r) => match serde_json::from_str::<DiscordUser>(&r) {
+                        Ok(r) => r.id,
                         Err(e) => {
-                            println!("Error: {e}");
-                            return Ok(warp::reply::json(&e.to_string()).into_response());
+                            println!("Error: {e:?}");
+                            return Ok(warp::reply::json(&format!(
+                                "Error: {e:?} while parsing {r}"
+                            ))
+                            .into_response());
                         }
-                    };
+                    },
+                    Err(e) => {
+                        println!("Error: {e}");
+                        return Ok(warp::reply::json(&e.to_string()).into_response());
+                    }
+                };
                 let hashed_id = hash_with_salt(&id, &crate::statics::HASH_SALT);
                 let is_auth = {
                     let mut conn = crate::POOL
@@ -107,10 +107,11 @@ pub fn other_endpoints(
                         .into_response(),
                     ),
                     _ => Ok(warp::http::Response::builder()
-                    .header("Location", "/login")
-                    .status(302)
-                    .body("".to_owned())
-                    .unwrap().into_response()),
+                        .header("Location", "/login")
+                        .status(302)
+                        .body("".to_owned())
+                        .unwrap()
+                        .into_response()),
                 }
             }
         });

@@ -1,5 +1,6 @@
 use anyhow::{anyhow, Result};
 use common::structs::FileInfo;
+use imageproc::drawing::draw_text_mut;
 use std::collections::HashMap;
 
 pub struct UnclaimedFiles {
@@ -35,6 +36,10 @@ impl UnclaimedFiles {
                     return Err(anyhow!("Invalid id"));
                 }
 
+                if file.mimetype.split('/').next() == Some("application") {
+                    return Err(anyhow!("Invalid file type"));
+                }
+
                 let universalfolderpath = format!("/files/{}/", file.mimetype);
                 let mut universalfilepath = format!(
                     "{}{}.{}",
@@ -62,6 +67,7 @@ impl UnclaimedFiles {
                     tokio::fs::write(diskfilepath.clone(), file.data).await?;
                 }
 
+                let ext = file.extension.to_uppercase();
                 let handle = tokio::task::spawn(async move {
                     let thumbpath = format!("{diskfilepath}-thumb.jpg");
                     let output = tokio::process::Command::new("ffmpeg")
@@ -78,7 +84,47 @@ impl UnclaimedFiles {
                         if tokio::fs::metadata(thumbpath.clone()).await.is_ok() {
                             Ok(thumbpath)
                         } else {
-                            Err(diskfilepath)
+                            // FFMPEG failed to create thumbnail, manually create one with the file type printed over our default thumbnail
+
+                            let mut img =
+                                match image::load_from_memory(*crate::statics::BASE_THUMBNAIL) {
+                                    Ok(img) => img,
+                                    Err(e) => {
+                                        println!("Failed to load base thumbnail: {e:?}");
+                                        return Err(diskfilepath);
+                                    }
+                                };
+
+                            let font = match rusttype::Font::try_from_vec(
+                                (*crate::statics::FONT).to_vec(),
+                            ) {
+                                Some(f) => f,
+                                None => {
+                                    println!("Failed to load font");
+                                    return Err(diskfilepath);
+                                }
+                            };
+
+                            let scale = rusttype::Scale { x: 30.0, y: 30.0 };
+
+                            // draw_text_mut(canvas, color, x, y, scale, font, text)
+                            draw_text_mut(
+                                &mut img,
+                                image::Rgba([127, 127, 127, 255]),
+                                5,
+                                20,
+                                scale,
+                                &font,
+                                &ext,
+                            );
+
+                            match img.save(&thumbpath) {
+                                Ok(_) => Ok(thumbpath),
+                                Err(e) => {
+                                    println!("Failed to save thumbnail: {e:?}");
+                                    Err(diskfilepath)
+                                }
+                            }
                         }
                     } else {
                         Err(diskfilepath)

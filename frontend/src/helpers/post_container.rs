@@ -11,6 +11,21 @@ use crate::helpers::{
 pub fn PostView(props: &PostViewProps) -> Html {
     let _prevent_click = Callback::from(|e: MouseEvent| e.prevent_default());
 
+    let ignore_files = vec!["audio"];
+
+    let ignore_mouse = props
+        .post
+        .file
+        .clone()
+        .and_then(|f| {
+            f.path
+                .replace("/files/", "")
+                .split('/')
+                .next()
+                .map(|s| ignore_files.contains(&s))
+        })
+        .unwrap_or(false);
+
     let add_to = props.add_to_content.clone();
     let id = props.post.post_number;
     let on_click_add = Callback::from(move |e: MouseEvent| {
@@ -43,7 +58,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
     let on_mouseon = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
         if if let Some(ref f) = mvprops.post.file {
-            !f.spoiler
+            !f.spoiler && !ignore_mouse
         } else {
             true
         } {
@@ -58,11 +73,13 @@ pub fn PostView(props: &PostViewProps) -> Html {
     let tfile_state = file_state.clone();
     let on_mouseoff = Callback::from(move |e: MouseEvent| {
         e.prevent_default();
-        tfile_state.set(match *tfile_state {
-            HoveredOrExpandedState::None => HoveredOrExpandedState::None,
-            HoveredOrExpandedState::Hovered => HoveredOrExpandedState::None,
-            HoveredOrExpandedState::Expanded => HoveredOrExpandedState::Expanded,
-        });
+        if !ignore_mouse {
+            tfile_state.set(match *tfile_state {
+                HoveredOrExpandedState::None => HoveredOrExpandedState::None,
+                HoveredOrExpandedState::Hovered => HoveredOrExpandedState::None,
+                HoveredOrExpandedState::Expanded => HoveredOrExpandedState::Expanded,
+            });
+        }
     });
 
     let invert = props.invert.unwrap_or(false);
@@ -148,7 +165,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                     }
                 </div>
                 {
-                    if let Some(ref img) = post.file {
+                    if let Some(ref file) = post.file {
                         html! {
                             <div class="post-file-container">
                                 <div class="post-file-header">
@@ -161,44 +178,50 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                             }
                                         }
                                     </a>
-                                    <span class="post-hash" title={img.hash.clone()}>
+                                    <span class="post-hash" title={file.hash.clone()}>
                                         {"#"}
                                     </span>
                                 </div>
                                 <div class="post-file">
-                                    <a href={img.path.clone()} onclick={on_click} onmouseover={on_mouseon} onmouseleave={on_mouseoff} >
+                                    <a href={file.path.clone()} onclick={on_click} onmouseover={on_mouseon} onmouseleave={on_mouseoff} >
                                     {
                                         if !(*file_state == HoveredOrExpandedState::None) {
-                                            let mimetype = img.path.replace("/files/", "");
+                                            let mimetype = file.path.replace("/files/", "");
                                             let mime = mimetype.split('/').next();
                                             match mime {
                                                 None => {
                                                     html! {
                                                         <div class="post-media-error">
                                                             <img src="/res/404.png"/>
-                                                            <a href={img.path.clone()}>{"Unsupported embed type: None"}</a>
+                                                            <a href={file.path.clone()}>{"Unsupported embed type: None"}</a>
                                                         </div>
                                                     }
                                                 }
                                                 Some(m) => {
                                                     match m {
+                                                        "image" => {
+                                                            html! {
+                                                                <img src={file.path.clone()} />
+                                                            }
+                                                        }
                                                         "video" => {
                                                             html! {
                                                                 <video autoplay=true loop=true controls=true class="post-media-video">
-                                                                    <source src={img.path.clone()} />
+                                                                    <source src={file.path.clone()} />
                                                                 </video>
                                                             }
                                                         }
-                                                        "image" => {
+                                                        "audio" => {
                                                             html! {
-                                                                <img src={img.path.clone()} />
+                                                                <audio autoplay=true loop=true controls=true class="post-media-audio">
+                                                                    <source src={file.path.clone()} />
+                                                                </audio>
                                                             }
                                                         }
                                                         _ => {
                                                             html! {
                                                                 <div class="post-media-error">
-                                                                    <img src="/res/404.png"/>
-                                                                    <a href={img.path.clone()}>{"Unsupported embed type: "}{m}</a>
+                                                                    <a href={file.path.clone()}>{"Unsupported embed type: "}{m}</a>
                                                                 </div>
                                                             }
                                                         }
@@ -207,7 +230,7 @@ pub fn PostView(props: &PostViewProps) -> Html {
                                             }
                                         } else {
                                             html! {
-                                                <img src={img.thumbnail.clone()} />
+                                                <img src={file.thumbnail.clone()} />
                                             }
                                         }
                                     }

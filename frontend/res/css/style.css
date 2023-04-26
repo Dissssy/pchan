@@ -17,6 +17,10 @@
   --edge-padding: 2%;
 } */
 
+* {
+  border-radius: 0.25em;
+}
+
 .clickable {
   color: var(--link-color);
 }
@@ -376,9 +380,7 @@ video {
 }
 
 .submission-box-text-inputs {
-  display: flex;
-  justify-content: center;
-  flex-direction: column;
+  width 100%;
 }
 
 .submission-box-name-input {
@@ -448,8 +450,8 @@ video {
 
 #post-input {
   resize: none;
-  width: 40em;
-  height: 10em;
+  height: 8em;
+  margin-top: 0.5em;
 }
 
 .submission-box-submit {
@@ -460,7 +462,7 @@ video {
 body {
   color: var(--text-color);
   font-family: verdana; /* used to be sans-serif */
-  background-color: var(--secondary-color);
+  background-color: var(--secondary-color, #1d1f21);
   margin: 0;
   /*! padding-left: 10px; */
 }
