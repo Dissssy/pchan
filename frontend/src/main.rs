@@ -1,24 +1,24 @@
 pub mod api;
-use anyhow::Result;
-use api::Api;
-use async_lock::Mutex;
+pub mod components;
+pub mod helpers;
+pub mod pages;
+pub mod theme_data;
+
 use gloo_storage::Storage;
 use std::sync::Arc;
+use theme_data::ThemeData;
 use yew::prelude::*;
+use yew_hooks::use_local_storage;
 use yew_router::prelude::*;
 
-lazy_static::lazy_static! {
-    pub static ref CLASSMAP: Vec<(String, String)> = vec![
-        (">".to_owned(), "bluetext".to_owned()),
-        ("<".to_owned(), "peetext".to_owned())
-    ];
-    pub static ref API: Arc<Mutex<Api>> = Arc::new(Mutex::new(Api::default()));
-}
+use crate::components::settings::SettingsButton;
 
-#[derive(Clone, Routable, PartialEq)]
+#[derive(Clone, Routable, PartialEq, Debug)]
 pub enum BaseRoute {
     #[at("/")]
     Home,
+    #[at("/settings")]
+    Settings,
     #[at("/:board_discriminator/")]
     BoardPage { board_discriminator: String },
     #[at("/:board_discriminator/thread/:thread_id")]
@@ -31,62 +31,64 @@ pub enum BaseRoute {
     NotFound,
 }
 
-#[derive(Clone, PartialEq)]
-pub struct OptionalValue<T>(Option<T>);
-
-impl<T: std::fmt::Display> std::fmt::Display for OptionalValue<T> {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        match &self.0 {
-            Some(value) => write!(f, "{value}"),
-            None => write!(f, ""),
-        }
-    }
-}
-
-impl std::str::FromStr for OptionalValue<String> {
-    type Err = ();
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        if s.is_empty() {
-            return Ok(Self(None));
-        }
-        Ok(Self(Some(s.to_string())))
-    }
-}
-
-mod helpers;
-mod pages;
-
 fn main() {
     yew::Renderer::<Root>::new().render();
 }
 
 #[function_component]
 fn Root() -> Html {
-    let theme = use_state(|| gloo_storage::LocalStorage::get::<bool>("theme").unwrap_or(true));
+    let theme_ctx = use_state(|| None);
+    {
+        let theme_ctx = theme_ctx.clone();
+        use_effect(move || {
+            if theme_ctx.is_none() {
+                theme_ctx.set(Some(
+                    gloo::storage::LocalStorage::get("theme")
+                        .unwrap_or(ThemeData::default_dark_theme()),
+                ));
+            }
+        });
+    }
 
-    let mvtheme = theme.clone();
-    let on_click = Callback::from(move |e: MouseEvent| {
-        e.prevent_default();
-        mvtheme.set(!*mvtheme);
-        gloo_storage::LocalStorage::set("theme", !*mvtheme).unwrap();
-    });
+    let api_ctx = use_state(|| None);
+    let dispatched = use_state(|| false);
 
-    html! {
-        <BrowserRouter>
-            <div class="toggle-theme">
-                <a href="#" onclick={on_click} >{ if *theme { "🌑" } else { "🌕" }}</a>
-                <style>
-                {format!("
-                    :root {{
-                        {}
-                    }}
-                    ", if *theme {env!("DARK_THEME")} else {env!("LIGHT_THEME")} )
-                }
-            </style>
-            </div>
-            <Switch<BaseRoute> render={switch} />
-        </BrowserRouter>
+    let token = use_local_storage::<String>("token".to_owned());
+
+    {
+        let api_ctx = api_ctx.clone();
+        use_effect(move || {
+            if !*dispatched {
+                wasm_bindgen_futures::spawn_local(async move {
+                    let api = api::Api::new(token).await.map(Arc::new);
+                    api_ctx.set(Some(ApiContext { api }));
+                });
+                dispatched.set(true);
+            }
+        });
+    }
+    match (&*api_ctx, &*theme_ctx) {
+        (Some(api_ctx), Some(_)) => {
+            html! {
+                <ContextProvider<Option<ApiContext>> context={api_ctx.clone()}>
+                    <ContextProvider<UseStateHandle<Option<ThemeData>>> context={theme_ctx.clone()}>
+                        <BrowserRouter>
+                            <SettingsButton/>
+                            <Switch<BaseRoute> render={switch} />
+                        </BrowserRouter>
+                    </ContextProvider<UseStateHandle<Option<ThemeData>>>>
+                </ContextProvider<Option<ApiContext>>>
+            }
+        }
+        _ => html! {
+            //<div class="valign">
+            //    <div class="halign">
+            //        <div class="loading">
+            //            <h1>{"Loading..."}</h1>
+            //        </div>
+            //    </div>
+            //</div>
+        },
     }
 }
 
@@ -97,11 +99,17 @@ fn switch(routes: BaseRoute) -> Html {
                 <pages::home::Home/>
             }
         }
+        BaseRoute::Settings => {
+            html! {
+                <pages::settings::Settings/>
+            }
+        }
         BaseRoute::BoardPage {
             board_discriminator,
         } => {
             html! {
-                <pages::board_page::BoardPage board_discriminator={board_discriminator} />
+                {board_discriminator}
+                // <pages::board_page::BoardPage board_discriminator={board_discriminator} />
             }
         }
         BaseRoute::ThreadPage {
@@ -109,49 +117,26 @@ fn switch(routes: BaseRoute) -> Html {
             thread_id,
         } => {
             html! {
-                <pages::thread_page::ThreadPage board_discriminator={board_discriminator} thread_id={thread_id} />
+                <>
+                {board_discriminator}
+                {thread_id}
+                </>
+                // <pages::thread_page::ThreadPage board_discriminator={board_discriminator} thread_id={thread_id} />
             }
         }
-        BaseRoute::NotFound => html! { <pages::not_found::NotFound/> },
+        BaseRoute::NotFound => html! {
+           {"404"}
+        },
     }
 }
 
-pub fn on_change_to_string(event: InputEvent) -> Option<String> {
-    use wasm_bindgen::JsCast;
-    match event.target() {
-        Some(t) => {
-            let t = t.dyn_into::<web_sys::HtmlInputElement>();
-            match t {
-                Ok(t) => Some(t.value()),
-                Err(e) => {
-                    let t = e.dyn_into::<web_sys::HtmlTextAreaElement>();
-                    match t {
-                        Ok(t) => Some(t.value()),
-                        Err(e) => {
-                            gloo::console::log!(format!("e: {e:?}"));
-                            None
-                        }
-                    }
-                }
-            }
-        }
-        None => {
-            gloo::console::log!("event target is none");
-            None
-        }
-    }
+#[derive(Clone, PartialEq, Debug)]
+pub struct ApiContext {
+    pub api: Result<Arc<api::Api>, api::ApiError>,
 }
 
-pub fn get_name() -> Result<Option<String>> {
-    Ok(gloo_storage::LocalStorage::get::<String>("name").map(|v| {
-        if v.is_empty() {
-            None
-        } else {
-            Some(v)
-        }
-    })?)
-}
-
-pub fn set_name(name: String) -> Result<()> {
-    Ok(gloo_storage::LocalStorage::set("name", name)?)
+#[derive(Clone, PartialEq, Debug)]
+pub struct ThemeContext {
+    pub theme: ThemeData,
+    pub set_theme: Callback<ThemeData>,
 }

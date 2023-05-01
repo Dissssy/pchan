@@ -3,6 +3,7 @@ target
 .vscode
 depricated
 frontend/dist
+frontend/olddist
 frontend/res/*.png
 frontend/res/*.svg
 frontend/res/spoilers
@@ -17,3 +18,4 @@ files
 keys
 backend/cwf_normal.ttf
 backend/thumb.png
+frontend/src-old

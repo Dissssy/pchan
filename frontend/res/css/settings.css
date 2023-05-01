@@ -1,0 +1,94 @@
+
+.popup-blur {
+  position: fixed;
+  background: rgb(0, 0, 0);
+  opacity: 0.33;
+  z-index: -1;
+  width: 100vw;
+  height: 100vh;
+  filter: Alpha(Opacity=33);
+  left: -1px;
+  top: -1px;
+}
+
+.popup {
+  display: inline-flex;
+  position: absolute;
+  width: 100vw;
+  height: 100vh;
+  left: -1px;
+  top: -1px;
+}
+
+.popup-close-button {
+  z-index: 1000;
+  float: right;
+  padding-left: 0.2em;
+  padding-top: 0.2em;
+  position: fixed;
+}
+
+.settings {
+  padding: none;
+  background-color: var(--primary-color);
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+.settings-theme-editor {
+  padding-inline: 5em;
+  padding-block: 2em;
+}
+
+.settings-theme-color-editors {
+  display: inline-flex;
+  flex-direction: column;
+}
+
+.color-editor {
+  border-bottom: var(--border-width) var(--border-type) var(--border-color);
+  border-right: var(--border-width) var(--border-type) var(--border-color);
+  border-left: var(--border-width) var(--border-type) var(--border-color);
+  display: inline-flex;
+  width: 100%;
+}
+
+.settings-theme-editor-title {
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+}
+
+.hex-or-text-dropdown {
+  margin-right: 0px;
+  margin-left: auto;
+}
+
+.hex-color-input {
+  width: 5em;
+  height: 1.55em;
+  border-width: 0px;
+  margin-left: 0.2em;
+  border: none;
+}
+
+.text-color-input {
+  padding: 0px;
+  margin: 0px;
+  margin-left: 0.2em;
+  border-width: 0px;
+  width: 5em;
+}
+
+.color-preview {
+  margin-left: 0.2em;
+}
+
+#color-editor-last {
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+}
+#color-editor-last .color-preview {
+  border-radius: 0 0 var(--border-radius) 0;
+}

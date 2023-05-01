@@ -5,40 +5,19 @@
         <title>PChan</title>
         <link data-trunk rel="copy-dir" href="res">
         <link data-trunk rel="copy-file" href="manifest.json">
-	<link data-trunk rel="copy-file" href="service_worker.js">
-	<link rel="manifest" href="/manifest.json"/>
-    <link rel="stylesheet" href="/res/css/style.css" />
-	<script>
-        window.onload = () => {
-            'use strict';
-            if ('serviceWorker' in navigator) {
-                navigator.serviceWorker
-                        .register('./service_worker.js').then((serviceWorkerRegistration) => {
-                            // serviceWorkerRegistration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array("BD5mCRfVrSTvzmpHYulsiKI5ogPBC9y_K-JJBVxavAqulOQP94lgFYoEfg93xy7ZPGKapn8jAyamwHukxYaQFHA")}).then(
-                            //         (pushSubscription) => {
-                            //                 // let s = JSON.stringify(pushSubscription).replace("{\"endpoint\":\"", "").replace("\",\"expirationTime\":null,\"keys\":{\"auth\":\"", "|").replace("\",\"p256dh\":\"", "|").replace("\"}}", "");
-                            //                 // console.log(s);
-                            //                 fetch('/api/v1/subscribe', {
-                            //                         method: 'post',
-                            //                         headers: { 'Content-type': 'application/json' },
-                            //                         body: JSON.stringify(pushSubscription)
-                            //                         }).then((response) => {
-                            //                                 response.text().then((text) => {
-                            //                                         console.log(text);
-                            //                                 });
-                            //                         });
-                            //         },
-                            //         (error) => {
-                            //                 // During development it often helps to log errors to the
-                            //                 // console. In a production environment it might make sense to
-                            //                 // also report information about errors back to the
-                            //                 // application server.
-                            //                 console.error(error);
-                            //         }
-                            //         );
-                    });
+        <link data-trunk rel="copy-file" href="service_worker.js">
+        <link rel="manifest" href="/manifest.json"/>
+        <link rel="stylesheet" href="/res/css/style.css" />
+        <link rel="stylesheet" href="/res/css/home.css" />
+        <link rel="stylesheet" href="/res/css/settings.css" />
+        <!-- <script>
+            window.onload = () => {
+                'use strict';
+                if ('serviceWorker' in navigator) {
+                    navigator.serviceWorker
+                        .register('./service_worker.js');
                 }
             }
-    	</script>
+    	</script> -->
     </head>
 </html>
