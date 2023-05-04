@@ -15,6 +15,15 @@ pub struct SafeBoard {
     pub discriminator: String,
 }
 
+impl From<BoardWithThreads> for SafeBoard {
+    fn from(b: BoardWithThreads) -> Self {
+        Self {
+            name: b.name,
+            discriminator: b.discriminator,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ThreadWithPosts {
     pub id: i64,

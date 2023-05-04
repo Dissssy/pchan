@@ -1,0 +1,90 @@
+.board-header {
+  display: inline-flex;
+  flex-direction: column;
+  width: 100%;
+  border-bottom: var(--border-width) var(--border-type) var(--border-color);
+}
+
+.board-select-bar {
+  display: flex;
+  width: calc(100% - calc(0.4em + var(--border-width) + var(--border-width)));
+  justify-content: center;
+  background-color: var(--primary-color);
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius);
+  margin-inline: 0.2em;
+  margin-block: 0.2em;
+}
+
+.board-select-board-name-link {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  border-right: var(--border-width) var(--border-type) var(--border-color);
+  font-weight: bold;
+}
+
+.board-select-board-name-link-selected {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background-color: var(--link-color);
+  color: var(--primary-color);
+  border-right: var(--border-width) var(--border-type) var(--border-color);
+  font-weight: bold;
+}
+
+#board-select-board-name-first {
+  border-left: var(--border-width) var(--border-type) var(--border-color);
+}
+
+#board-select-board-name-only {
+  border-left: var(--border-width) var(--border-type) var(--border-color);
+}
+
+.board-select-board-name-hover:before, .board-select-board-name-hover:after {
+  bottom: 100%;
+	left: 50%;
+	border: solid transparent;
+	content: "";
+	height: 0;
+	width: 0;
+	position: absolute;
+	pointer-events: none;
+}
+
+.board-select-board-name-hover:after {
+	border-bottom-color: var(--primary-color);
+	border-width: calc(0.38em - var(--border-width));
+	margin-left: calc(-0.38em + var(--border-width));
+}
+
+.board-select-board-name-hover:before {
+	border-bottom-color: var(--border-color);
+	border-width: 0.4em;
+	margin-left: -0.4em;
+}
+
+.board-select-board-name-hover {
+  padding-inline: 0.3em;
+  background-color: var(--primary-color);
+  color: var(--text-color);
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius);
+  display: inline-block;
+  white-space: nowrap;
+  position: absolute;
+  transform:translateY(105%);
+  font-size: 18px;
+}
+
+.board-select-board-name-container {
+  padding-inline: 0.3em;
+}
+
+
+.board-title-board-name-container {
+  display: flex;
+  justify-content: center;
+  white-space: nowrap;
+}

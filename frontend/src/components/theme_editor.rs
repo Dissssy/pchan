@@ -8,6 +8,9 @@ use super::editors::color_editor::ColorEditor;
 
 #[function_component]
 pub fn ThemeEditor() -> Html {
+    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
+        gloo::console::log!(format!("Refreshing ThemeEditor"))
+    }
     let current_theme = use_context::<UseStateHandle<Option<ThemeData>>>();
     let theme_storage = use_local_storage::<ThemeData>("theme".to_owned());
 
@@ -101,7 +104,7 @@ pub fn ThemeEditor() -> Html {
     }
 }
 
-#[derive(Clone, Default, PartialEq)]
+#[derive(Clone, Default, PartialEq, Debug)]
 pub enum Position {
     First,
     #[default]

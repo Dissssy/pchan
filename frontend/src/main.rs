@@ -11,7 +11,7 @@ use yew::prelude::*;
 use yew_hooks::use_local_storage;
 use yew_router::prelude::*;
 
-use crate::components::settings::SettingsButton;
+use crate::components::SettingsButton;
 
 #[derive(Clone, Routable, PartialEq, Debug)]
 pub enum BaseRoute {
@@ -31,12 +31,37 @@ pub enum BaseRoute {
     NotFound,
 }
 
+impl BaseRoute {
+    pub fn board_discriminator(&self) -> Option<String> {
+        match self {
+            BaseRoute::BoardPage {
+                board_discriminator,
+            } => Some(board_discriminator.clone()),
+            BaseRoute::ThreadPage {
+                board_discriminator,
+                ..
+            } => Some(board_discriminator.clone()),
+            _ => None,
+        }
+    }
+
+    pub fn thread_id(&self) -> Option<String> {
+        match self {
+            BaseRoute::ThreadPage { thread_id, .. } => Some(thread_id.clone()),
+            _ => None,
+        }
+    }
+}
+
 fn main() {
     yew::Renderer::<Root>::new().render();
 }
 
 #[function_component]
 fn Root() -> Html {
+    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
+        gloo::console::log!(format!("Refreshing Root"))
+    }
     let theme_ctx = use_state(|| None);
     {
         let theme_ctx = theme_ctx.clone();
@@ -105,11 +130,12 @@ fn switch(routes: BaseRoute) -> Html {
             }
         }
         BaseRoute::BoardPage {
-            board_discriminator,
+            board_discriminator: _,
         } => {
             html! {
-                {board_discriminator}
-                // <pages::board_page::BoardPage board_discriminator={board_discriminator} />
+                //<ContextProvider<pages::BoardContext> context={pages::BoardContext { discriminator: board_discriminator }}>
+                    <pages::board::BoardPage />
+                //</ContextProvider<pages::BoardContext>>
             }
         }
         BaseRoute::ThreadPage {
@@ -117,11 +143,14 @@ fn switch(routes: BaseRoute) -> Html {
             thread_id,
         } => {
             html! {
-                <>
-                {board_discriminator}
-                {thread_id}
-                </>
-                // <pages::thread_page::ThreadPage board_discriminator={board_discriminator} thread_id={thread_id} />
+                //<ContextProvider<pages::BoardContext> context={pages::BoardContext { discriminator: board_discriminator.clone() }}>
+                    //<ContextProvider<pages::ThreadContext> context={pages::ThreadContext { thread_id: thread_id.clone() }}>
+                    <>
+                        {board_discriminator}
+                        {thread_id}
+                    </>
+                    //</ContextProvider<pages::ThreadContext>>
+                //</ContextProvider<pages::BoardContext>>
             }
         }
         BaseRoute::NotFound => html! {

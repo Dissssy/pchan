@@ -3,6 +3,9 @@ use yew::prelude::*;
 
 #[function_component]
 pub fn SettingsButton() -> Html {
+    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
+        gloo::console::log!(format!("Refreshing SettingsButton"))
+    }
     let current_theme = use_context::<UseStateHandle<Option<ThemeData>>>();
 
     let popup = use_state(|| false);

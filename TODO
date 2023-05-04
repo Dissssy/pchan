@@ -2,11 +2,13 @@ Frontend:
     - Error handling, show error message to user
     - Truncate posts that are too long in board view
 
+    - FINISH REWRITE
+
 Backend:
     - Moderation tools
     - Prevent spam (possibly by ratelimiting post and thread endpoints):
     - Seperate login code out into its own function to simplify the OAuth flow readability
-
+    - SSE for new threads and posts!
 
 Shared:
     

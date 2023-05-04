@@ -1,11 +1,34 @@
-use common::structs::SafeBoard;
-use gloo_net::http::Request;
-use yew::UseStateHandle;
+use std::{collections::HashMap, sync::Arc};
+
+use async_lock::Mutex;
+use common::structs::{BoardWithThreads, SafeBoard};
+use typemap::{Key, TypeMap};
+use wasm_timer::Instant;
+use yew::prelude::*;
 use yew_hooks::UseLocalStorageHandle;
 
-#[derive(Debug, Clone, PartialEq)]
+mod board;
+mod token;
+
+#[derive(Clone)]
 pub struct Api {
     pub token: String,
+    pub cache: Arc<Mutex<TypeMap>>,
+}
+
+impl std::fmt::Debug for Api {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("Api")
+            .field("token", &self.token)
+            .field("cache", &"Mutex<TypeMap>")
+            .finish()
+    }
+}
+
+impl PartialEq for Api {
+    fn eq(&self, other: &Self) -> bool {
+        self.token == other.token
+    }
 }
 
 impl Api {
@@ -18,22 +41,13 @@ impl Api {
             t
         };
 
-        Ok(Self { token })
+        Ok(Self {
+            token,
+            cache: Arc::new(Mutex::new(TypeMap::new())),
+        })
     }
     async fn get_token() -> Result<String, ApiError> {
-        let token = Request::get("/api/v1/")
-            .send()
-            .await
-            .map_err(|e| match e {
-                gloo_net::Error::GlooError(e) => ApiError::Gloo(e),
-                v => ApiError::Other(v.to_string()),
-            })?
-            .json::<String>()
-            .await
-            .map_err(|e| match e {
-                gloo_net::Error::SerdeError(e) => ApiError::Serde(e.to_string()),
-                v => ApiError::Other(v.to_string()),
-            })?;
+        let token = token::get_token().await?;
         gloo::console::log!(format!("token: {}", token));
         Ok(token)
     }
@@ -43,47 +57,59 @@ impl Api {
     }
 
     // every api call is going to be called dispatch_<instruction> that takes a UseStateHandle<Result<T>> and returns a future.
-    pub fn dispatch_get_boards(
-        &self,
-        output: UseStateHandle<Option<Result<Vec<SafeBoard>, Option<ApiError>>>>,
-    ) {
-        // GET /api/v1/board -> Vec<Board>
-        let t = self.formatted_token();
-        wasm_bindgen_futures::spawn_local(async move {
-            let t = match match Request::get("/api/v1/board")
-                .header("authorization", &t)
-                .send()
-                .await
-                .map_err(|e| match e {
-                    gloo_net::Error::GlooError(e) => ApiError::Gloo(e),
-                    v => ApiError::Other(v.to_string()),
-                }) {
-                Ok(v) => v,
-                Err(e) => {
-                    output.set(Some(Err(Some(e))));
-                    return;
+    pub async fn get_boards(&self) -> Result<Vec<SafeBoard>, ApiError> {
+        // attempted cache hit
+        // attempt cache hit
+        let mut cache = self.cache.lock().await;
+        let v = {
+            match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
+                typemap::Entry::Occupied(val) => val.into_mut(),
+                typemap::Entry::Vacant(hole) => {
+                    hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                 }
             }
-            .text()
-            .await
-            .map_err(|e| match e {
-                gloo_net::Error::SerdeError(e) => ApiError::Serde(e.to_string()),
-                v => ApiError::Other(v.to_string()),
-            }) {
-                Ok(v) => v,
-                Err(e) => {
-                    output.set(Some(Err(Some(e))));
-                    return;
-                }
-            };
+        };
 
-            match serde_json::from_str(&t) {
-                Ok(v) => output.set(Some(Ok(v))),
-                Err(e) => output.set(Some(Err(Some(ApiError::Serde(format!(
-                    "{e:?} from text \"{t}\""
-                )))))),
+        if let Some(v) = v.get("").cloned() {
+            gloo::console::log!("get_boards cache hit");
+            Ok(v)
+        } else {
+            gloo::console::log!("get_boards cache miss");
+            // GET /api/v1/board -> Vec<Board>
+            let token = self.formatted_token();
+            let res = board::get_boards(&token).await;
+            if let Ok(res) = &res {
+                v.set("", res.clone());
             }
-        });
+            res
+        }
+    }
+
+    pub async fn get_board(&self, board: &str) -> Result<BoardWithThreads, ApiError> {
+        // attempt cache hit
+        let mut cache = self.cache.lock().await;
+        let v = {
+            match cache.entry::<CachedValue<BoardWithThreads>>() {
+                typemap::Entry::Occupied(val) => val.into_mut(),
+                typemap::Entry::Vacant(hole) => {
+                    hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                }
+            }
+        };
+
+        if let Some(v) = v.get(board).cloned() {
+            gloo::console::log!("get_board cache hit");
+            Ok(v)
+        } else {
+            gloo::console::log!("get_board cache miss");
+            // GET /api/v1/{} -> Board
+            let token = self.formatted_token();
+            let res = board::get_board(&token, board).await;
+            if let Ok(res) = &res {
+                v.set(board, res.clone());
+            }
+            res
+        }
     }
 }
 
@@ -93,4 +119,80 @@ pub enum ApiError {
     Serde(String),
     Other(String),
     // TODO: add error types :(
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum ApiState<T> {
+    Pending,
+    Loading,
+    Loaded(T),
+    ContextError(String),
+    Error(ApiError),
+}
+
+impl<T> ApiState<T> {
+    pub fn standard_html<F>(&self, source: &'static str, then: F) -> Html
+    where
+        F: Fn(&T) -> Html,
+    {
+        match self {
+            ApiState::Pending => {
+                html! {}
+            }
+            ApiState::Loading => {
+                html! {
+                    <crate::components::Spinner />
+                }
+            }
+            ApiState::ContextError(s) => {
+                html! {
+                    <crate::components::ContextError cause={s.clone()} source={source} />
+                }
+            }
+            ApiState::Error(e) => {
+                gloo::console::log!(format!("Error: {:?}", e));
+                html! {}
+            }
+            ApiState::Loaded(data) => then(data),
+        }
+    }
+}
+
+pub struct CachedValue<T> {
+    values: HashMap<String, (Instant, T)>,
+    ttl: std::time::Duration,
+}
+
+impl<T> Default for CachedValue<T> {
+    fn default() -> Self {
+        CachedValue {
+            values: HashMap::new(),
+            ttl: std::time::Duration::from_secs(30),
+        }
+    }
+}
+
+impl<T: 'static> Key for CachedValue<T> {
+    type Value = CachedValue<T>;
+}
+
+impl<T> CachedValue<T> {
+    pub fn new(ttl: std::time::Duration) -> Self {
+        Self {
+            values: HashMap::new(),
+            ttl,
+        }
+    }
+    pub fn get(&self, identifier: &str) -> Option<&T> {
+        if let Some((instant, value)) = self.values.get(identifier) {
+            if instant.elapsed() < self.ttl {
+                return Some(value);
+            }
+        }
+        None
+    }
+    pub fn set(&mut self, identifier: &str, value: T) {
+        self.values
+            .insert(identifier.to_string(), (Instant::now(), value));
+    }
 }
