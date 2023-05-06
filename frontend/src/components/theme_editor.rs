@@ -1,6 +1,6 @@
 use gloo_timers::callback;
 use yew::prelude::*;
-use yew_hooks::use_local_storage;
+use yew_hooks::prelude::*;
 
 use crate::theme_data::ThemeData;
 
@@ -11,9 +11,19 @@ pub fn ThemeEditor() -> Html {
     if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
         gloo::console::log!(format!("Refreshing ThemeEditor"))
     }
+
+    let emojis = use_local_storage::<bool>("emojis".to_owned());
+
+    let emoji_cycle = use_state(|| {
+        if emojis.unwrap_or(true) {
+            EmojiState::Enabled
+        } else {
+            EmojiState::Disabled
+        }
+    });
+
     let current_theme = use_context::<UseStateHandle<Option<ThemeData>>>();
     let theme_storage = use_local_storage::<ThemeData>("theme".to_owned());
-
     let refresh_val = use_state(|| true);
 
     let proc_refresh = {
@@ -57,6 +67,21 @@ pub fn ThemeEditor() -> Html {
         })
     };
 
+    let cycle_emoji = {
+        let emojis = emojis.clone();
+        let emoji_cycle = emoji_cycle.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let next = emoji_cycle.next();
+            emoji_cycle.set(next);
+            if next == EmojiState::Enabled {
+                emojis.set(true);
+            } else if next == EmojiState::Disabled {
+                emojis.set(false);
+            }
+        })
+    };
+
     html! {
         <div class="settings-theme-editor">
             <div class="settings-theme-editor-title">
@@ -97,8 +122,11 @@ pub fn ThemeEditor() -> Html {
                 }
             </div>
             <div class="settings-theme-reset">
-                <a href="#" onclick={reset_light}>{"☀️"}</a>
-                <a href="#" onclick={reset_dark}>{"🌑"}</a>
+                <a href="#" onclick={reset_light}>{ if emojis.unwrap_or(true) { "☀️" } else { "Reset To Light Theme" } }</a>
+                <span>{" | "}</span>
+                <a href="#" onclick={reset_dark}>{ if emojis.unwrap_or(true) { "🌑" } else { "Reset To Dark Theme" } }</a>
+                <span>{" | "}</span>
+                <a href="#" onclick={cycle_emoji}>{ emoji_cycle.string() }</a>
             </div>
         </div>
     }
@@ -118,6 +146,64 @@ impl Position {
             Position::First => "first",
             Position::Middle => "middle",
             Position::Last => "last",
+        }
+    }
+}
+
+#[derive(Clone, PartialEq, Debug, Copy)]
+pub enum EmojiState {
+    Enabled,
+    AreYouSure,
+    AreYouSureYoureSure,
+    AreYouSureYoureSureYoureSure,
+    AreYouSureYoureSureYoureSureYoureSure,
+    AreYouSureYoureSureYoureSureYoureSureYoureSure,
+    AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSure,
+    AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure,
+    AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure,
+    Disabled,
+}
+
+impl EmojiState {
+    pub fn next(&self) -> Self {
+        match self {
+            EmojiState::Enabled => EmojiState::AreYouSure,
+            EmojiState::AreYouSure => EmojiState::AreYouSureYoureSure,
+            EmojiState::AreYouSureYoureSure => EmojiState::AreYouSureYoureSureYoureSure,
+            EmojiState::AreYouSureYoureSureYoureSure => {
+                EmojiState::AreYouSureYoureSureYoureSureYoureSure
+            }
+            EmojiState::AreYouSureYoureSureYoureSureYoureSure => {
+                EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSure
+            }
+            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSure => {
+                EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSure
+            }
+            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSure => {
+                EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure
+            }
+            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure => {
+                EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure
+            }
+            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure => {
+                EmojiState::Disabled
+            }
+            EmojiState::Disabled => EmojiState::Enabled,
+        }
+    }
+
+    pub fn string(&self) -> &'static str {
+        match self {
+            EmojiState::Enabled => "👍",
+            EmojiState::AreYouSure => "🤔",
+            EmojiState::AreYouSureYoureSure => "😬",
+            EmojiState::AreYouSureYoureSureYoureSure => "😳",
+            EmojiState::AreYouSureYoureSureYoureSureYoureSure => "😨",
+            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSure => "😱",
+            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSure => "🤢",
+            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure => "🤮",
+            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure => "😵",
+            EmojiState::Disabled => "Emojis Disabled",
         }
     }
 }

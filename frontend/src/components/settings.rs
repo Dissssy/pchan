@@ -1,4 +1,4 @@
-use crate::{pages::settings::Settings, theme_data::ThemeData};
+use crate::{pages::Settings, theme_data::ThemeData};
 use yew::prelude::*;
 
 #[function_component]

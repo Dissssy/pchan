@@ -13,11 +13,11 @@ impl UnclaimedFiles {
     }
 
     pub async fn add_file(&mut self, file: File, token: String) -> Result<String> {
+        println!("Adding file for token: {}", token);
         for _ in 0..3 {
             let id = nanoid::nanoid!(16);
-            if !self.files.contains_key(&id) {
-                self.files
-                    .insert(token, (id.clone(), file, tokio::time::Instant::now()));
+            if let std::collections::hash_map::Entry::Vacant(e) = self.files.entry(token.clone()) {
+                e.insert((id.clone(), file, tokio::time::Instant::now()));
                 return Ok(id);
             }
             tokio::time::sleep(std::time::Duration::from_millis(100)).await;
@@ -30,6 +30,7 @@ impl UnclaimedFiles {
         createfile: &common::structs::CreateFile,
         token: String,
     ) -> Result<FileInfo> {
+        println!("Claiming file for token: {}", token);
         match self.files.remove(&token) {
             Some((tid, file, _)) => {
                 if tid != createfile.id {

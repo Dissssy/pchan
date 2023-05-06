@@ -1,6 +1,12 @@
-pub mod board;
-pub mod home;
-pub mod settings;
+mod board;
+mod home;
+mod settings;
+mod thread;
+
+pub use board::BoardPage;
+pub use home::Home;
+pub use settings::Settings;
+pub use thread::ThreadPage;
 
 // #[derive(Clone, PartialEq, Debug)]
 // pub struct BoardContext {

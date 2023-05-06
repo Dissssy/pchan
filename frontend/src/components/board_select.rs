@@ -1,10 +1,11 @@
 use yew::prelude::*;
 use yew_hooks::prelude::*;
+use yew_router::prelude::use_navigator;
 
 use crate::{
     api::ApiState,
     components::board_name::{BoardName, BoardNameType},
-    ApiContext,
+    ApiContext, BaseRoute,
 };
 
 #[function_component]
@@ -14,6 +15,7 @@ pub fn BoardSelectBar() -> Html {
     }
 
     let api_ctx = use_context::<Option<ApiContext>>();
+    let nav = use_navigator();
     let boards: UseStateHandle<ApiState<Vec<common::structs::SafeBoard>>> =
         use_state(|| ApiState::Loading);
     {
@@ -59,6 +61,21 @@ pub fn BoardSelectBar() -> Html {
                 {for boards.iter().enumerate().map(|(i, board)| html! {
                     <BoardName board={board.clone()} view={BoardNameType::Descriminator} hover={BoardNameType::Name} first={i == 0} last={i == boards.len() - 1} prefix={"board-select"} />
                 })}
+            </div>
+        }
+    }).unwrap_or_else(|e| {
+        match nav {
+            Some(nav) => {
+                nav.replace(&BaseRoute::NotFound);
+            }
+            None => {
+                gloo::console::error!("Failed to navigate to /404");
+            }
+        }
+        html! {
+            <div class={"board-page-error"}>
+                <h1>{"Error"}</h1>
+                <p>{format!("{e:?}")}</p>
             </div>
         }
     })

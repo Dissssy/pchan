@@ -1,5 +1,7 @@
 use yew::prelude::*;
+use yew_router::prelude::*;
 
+use crate::BaseRoute;
 use crate::components::{BoardName, BoardNameType};
 use crate::{api::ApiState, ApiContext};
 
@@ -9,6 +11,7 @@ pub fn Home() -> Html {
         gloo::console::log!(format!("Refreshing Home"))
     }
     let api_ctx = use_context::<Option<ApiContext>>();
+    let nav = use_navigator();
     let boards: UseStateHandle<ApiState<Vec<common::structs::SafeBoard>>> =
         use_state(|| ApiState::Pending);
     {
@@ -57,6 +60,21 @@ pub fn Home() -> Html {
                                         })}
                                     </div>
                                 </>
+                            }
+                        }).unwrap_or_else(|e| {
+                            match nav {
+                                Some(nav) => {
+                                    nav.replace(&BaseRoute::NotFound);
+                                }
+                                None => {
+                                    gloo::console::error!("Failed to navigate to /404");
+                                }
+                            }
+                            html! {
+                                <div class={"board-page-error"}>
+                                    <h1>{"Error"}</h1>
+                                    <p>{format!("{e:?}")}</p>
+                                </div>
                             }
                         })
                     }

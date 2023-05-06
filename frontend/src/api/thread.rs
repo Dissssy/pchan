@@ -1,9 +1,9 @@
 use super::ApiError;
-use common::structs::{BoardWithThreads, SafeBoard};
+use common::structs::{CreateThread, SafePost, ThreadWithPosts};
 use gloo_net::http::Request;
 
-pub async fn get_boards(token: &str) -> Result<Vec<SafeBoard>, ApiError> {
-    let res = Request::get("/api/v1/board")
+pub async fn get_thread(token: &str, board: &str, post: &str) -> Result<ThreadWithPosts, ApiError> {
+    let res = Request::get(&format!("/api/v1/board/{}/thread/{}", board, post))
         .header("authorization", token)
         .send()
         .await
@@ -24,9 +24,19 @@ pub async fn get_boards(token: &str) -> Result<Vec<SafeBoard>, ApiError> {
     })
 }
 
-pub async fn get_board(token: &str, board: &str) -> Result<BoardWithThreads, ApiError> {
-    let res = Request::get(&format!("/api/v1/board/{}", board))
+pub async fn create_thread(
+    token: &str,
+    board: &str,
+    thread: CreateThread,
+) -> Result<SafePost, ApiError> {
+    gloo::console::log!(format!(
+        "CREATING THREAD WITH /api/v1/board/{}/thread",
+        board
+    ));
+    let res = Request::post(&format!("/api/v1/board/{}/thread", board))
         .header("authorization", token)
+        .json(&thread)
+        .map_err(|e| ApiError::Serde(e.to_string()))?
         .send()
         .await
         .map_err(|e| match e {

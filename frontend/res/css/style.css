@@ -4,19 +4,9 @@
   user-select: none; /* Standard syntax */
 }
 
-*:not(#ignore-transition) {
+/* *:not(#ignore-transition) {
   transition: all var(--animation-speed);
-}
-
-.toggle-theme {
-  z-index: 1000;
-  left: 0;
-  top: 0;
-  margin: 0px;
-  padding: 0px;
-  translate: 0.12em 0.12em;
-  position: fixed;
-}
+} */
 
 .valign {
   margin: 0;

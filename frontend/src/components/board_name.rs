@@ -4,7 +4,7 @@ use yew::prelude::*;
 // use yew_router::prelude::use_navigator;
 use yew_router::prelude::*;
 
-use crate::BaseRoute;
+use crate::{components::MaybeLink, BaseRoute};
 
 #[function_component]
 pub fn BoardName(props: &Props) -> Html {
@@ -12,8 +12,22 @@ pub fn BoardName(props: &Props) -> Html {
         gloo::console::log!(format!("Refreshing BoardName: Props = {:?}", props))
     }
     let hovered = use_state(|| false);
+    let location = use_route::<BaseRoute>();
+    {
+        let location = location.clone();
+        let hovered = hovered.clone();
+        use_effect_with_deps(
+            move |_| {
+                hovered.set(false);
+                || {}
+            },
+            location,
+        );
+    }
 
-    let board_context = use_route::<BaseRoute>();
+    let (board_discriminator, is_thread) = location
+        .map(|b| (b.board_discriminator(), b.thread_id().is_some()))
+        .unwrap_or((None, false));
 
     let (mousein, mouseout) = {
         let ahovered = hovered.clone();
@@ -34,34 +48,9 @@ pub fn BoardName(props: &Props) -> Html {
             (false, false) => "board-name-middle",
         }
     );
-
-    // let on_click = {
-    //     let nav = use_navigator();
-    //     let board = props.board.clone();
-    //     Callback::from(move |e: MouseEvent| {
-    //         e.prevent_default();
-    //         if let Some(nav) = &nav {
-    //             nav.push(&BaseRoute::BoardPage {
-    //                 board_discriminator: board.discriminator.clone(),
-    //             });
-    //         } else {
-    //             log!("Error: No navigator, redirecting manually");
-    //             match web_sys::window().map(|w| {
-    //                 w.location()
-    //                     .set_href(&format!("/{}/", board.discriminator.clone()))
-    //             }) {
-    //                 Some(Ok(_)) => {}
-    //                 Some(Err(e)) => log!(format!("Error: {:?}", e)),
-    //                 None => log!("Error: No window"),
-    //             }
-    //         }
-    //     })
-    // };
-
     html! {
-        //<a onclick={on_click} draggable="false" href={format!("/{}/", props.board.discriminator.clone())} class={format!("{}-board-name-link{}", props.prefix, if board_context.map(|b| b.discriminator ) == Some(props.board.discriminator.clone()) { "-selected" } else { "" })} id={id}>
-        <Link<BaseRoute> to={BaseRoute::BoardPage { board_discriminator: props.board.discriminator.clone() }} >
-            <div class={format!("{}-board-name-link{}", props.prefix, if board_context.and_then(|b| b.board_discriminator() ) == Some(props.board.discriminator.clone()) { "-selected" } else { "" })} id={id}>
+        <MaybeLink to={BaseRoute::BoardPage { board_discriminator: props.board.discriminator.clone() }}  link={(board_discriminator != Some(props.board.discriminator.clone())) || is_thread}>
+            <div class={format!("{}-board-name-link{}", props.prefix, if board_discriminator == Some(props.board.discriminator.clone()) { "-selected" } else { "" })} id={id}>
                 <span class={format!("{}-board-name-container", props.prefix)} onmouseover={mousein} onmouseout={mouseout} >
                     {
                         match props.view {
@@ -72,8 +61,8 @@ pub fn BoardName(props: &Props) -> Html {
                     }
                 </span>
                 {
-                    if *hovered {
-                        if let Some(state) = &props.hover {
+                    match (*hovered, &props.hover) {
+                        (true, Some(state)) => {
                             html! {
                                 <div class={format!("{}-board-name-hover", props.prefix)}>
                                     {
@@ -85,15 +74,12 @@ pub fn BoardName(props: &Props) -> Html {
                                     }
                                 </div>
                             }
-                        } else {
-                            html! {}
                         }
-                    } else {
-                        html! {}
+                        _ => html! {}
                     }
                 }
             </div>
-        </Link<BaseRoute>>
+        </MaybeLink>
     }
 }
 

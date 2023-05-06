@@ -157,9 +157,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    // POST /board/{discriminator} - creates a new thread
+    // POST /board/{discriminator}/thread - creates a new thread
 
-    let postthread = warp::path!("api" / "v1" / "board" / String)
+    let postthread = warp::path!("api" / "v1" / "board" / String / "thread")
         .and(warp::post())
         .and(warp::body::json::<CreateThread>())
         .and(warp::header::<Bearer>("authorization"))
@@ -192,9 +192,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    // GET /{discriminator}/{thread_id} - returns info about the thread including a list of posts
+    // GET /{discriminator}/thread/{thread_id} - returns info about the thread including a list of posts
 
-    let getthread = warp::path!("api" / "v1" / "board" / String / i64)
+    let getthread = warp::path!("api" / "v1" / "board" / String / "thread" / i64)
         .and(warp::get())
         .and_then({
             |disc: String, thread: i64| async move {
@@ -215,14 +215,14 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    // POST /{discriminator}/{thread_id} - creates a new post in the thread
+    // POST /{discriminator}/thread/{thread_id} - creates a new post in the thread
 
-    let postinthread = warp::path!("api" / "v1" / "board" / String / i64)
+    let postinthread = warp::path!("api" / "v1" / "board" / String / "thread" / i64)
         .and(warp::post())
         .and(warp::body::json::<CreatePost>())
         .and(warp::header::<Bearer>("authorization"))
         .and_then(
-            |disc: String, thread: i64, post: CreatePost, auth: Bearer| async move {
+            |disc: String, rawthread: i64, post: CreatePost, auth: Bearer| async move {
                 if let Err(e) = verify_post(&post, None) {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
@@ -247,7 +247,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         }
                     };
                 let thread = match crate::database::Database::get_thread_from_post_number(
-                    &mut conn, board.id, thread,
+                    &mut conn, board.id, rawthread,
                 )
                 .await
                 {
@@ -429,9 +429,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    // GET / - returns the user's token
+    // GET /token - returns the user's token
 
-    let gettoken = warp::path!("api" / "v1")
+    let gettoken = warp::path!("api" / "v1" / "token")
         .and(warp::get())
         .and(warp::cookie("token"))
         .and_then({

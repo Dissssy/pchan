@@ -2,7 +2,7 @@ use super::ApiError;
 use gloo_net::http::Request;
 
 pub async fn get_token() -> Result<String, ApiError> {
-    Request::get("/api/v1/")
+    Request::get("/api/v1/token")
         .send()
         .await
         .map_err(|e| match e {

@@ -45,19 +45,20 @@ async fn main() {
     //     }
     // }
 
-    let oldroot = warp::get().and(
-        warp::fs::dir(env!("FILE_STORAGE_PATH"))
-            .or(warp::fs::dir("/git/pchan/frontend/olddist"))
-            .or(warp::fs::file("/git/pchan/frontend/olddist/index.html")),
-    );
+    // let oldroot = warp::get().and(
+    //     warp::fs::dir(env!("FILE_STORAGE_PATH"))
+    //         .or(warp::fs::dir("/git/pchan/frontend/olddist"))
+    //         .or(warp::fs::file("/git/pchan/frontend/olddist/index.html")),
+    // );
 
-    let newroot = warp::get().and(filters::is_beta()).and(
-        warp::fs::dir(env!("FILE_STORAGE_PATH"))
-            .or(warp::fs::dir("/git/pchan/frontend/dist"))
-            .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
-    );
+    let newroot = warp::get() /*.and(filters::is_beta())*/
+        .and(
+            warp::fs::dir(env!("FILE_STORAGE_PATH"))
+                .or(warp::fs::dir("/git/pchan/frontend/dist"))
+                .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
+        );
 
-    let root = newroot.or(oldroot);
+    let root = newroot/*.or(oldroot)*/;
 
     let manifest = warp::path!("manifest.json")
         .and(warp::get())

@@ -14,7 +14,7 @@ pub fn BoardTitle() -> Html {
         gloo::console::log!(format!("Refreshing BoardTitle"))
     }
     let board_ctx = use_route::<BaseRoute>();
-    // let last_board_ctx = use_state(|| None);
+    let nav = use_navigator();
     let api_ctx = use_context::<Option<ApiContext>>();
 
     let board: UseStateHandle<ApiState<BoardWithThreads>> = use_state(|| ApiState::Pending);
@@ -64,6 +64,21 @@ pub fn BoardTitle() -> Html {
     board.standard_html("BoardTitle", |board| {
         html! {
             <BoardName prefix={"board-title"} first={true} last={true} board={SafeBoard::from(board.clone())} view={BoardNameType::Both} />
+        }
+    }).unwrap_or_else(|e| {
+        match nav {
+            Some(nav) => {
+                nav.replace(&BaseRoute::NotFound);
+            }
+            None => {
+                gloo::console::error!("Failed to navigate to /404");
+            }
+        }
+        html! {
+            <div class={"board-page-error"}>
+                <h1>{"Error"}</h1>
+                <p>{format!("{e:?}")}</p>
+            </div>
         }
     })
 }

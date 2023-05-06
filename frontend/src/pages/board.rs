@@ -1,8 +1,8 @@
 use common::structs::BoardWithThreads;
 use yew::prelude::*;
-use yew_router::prelude::use_route;
+use yew_router::prelude::*;
 
-use crate::{api::ApiState, components::Header, ApiContext, BaseRoute};
+use crate::{api::ApiState, components::*, ApiContext, BaseRoute};
 
 #[function_component]
 pub fn BoardPage() -> Html {
@@ -11,6 +11,7 @@ pub fn BoardPage() -> Html {
     }
 
     let board_ctx = use_route::<BaseRoute>();
+    let nav = use_navigator();
     let api_ctx = use_context::<Option<ApiContext>>();
 
     let board: UseStateHandle<ApiState<BoardWithThreads>> = use_state(|| ApiState::Pending);
@@ -53,15 +54,37 @@ pub fn BoardPage() -> Html {
             board_ctx,
         );
     }
+    
     html! {
         <div class={"board-page"}>
             <Header />
             {
                 board.standard_html("BoardPage", |board| {
                     html! {
-                        {
-                            format!("{:?}", board.threads)
+                        <div class={"board-page-threads"}>
+                            {
+                                board.threads.iter().map(|thread| {
+                                    html! {
+                                        <Thread thread={thread.clone()} />
+                                    }
+                                }).collect::<Html>()
+                            }
+                        </div>
+                    }
+                }).unwrap_or_else(|e| {
+                    match nav {
+                        Some(nav) => {
+                            nav.replace(&BaseRoute::NotFound);
                         }
+                        None => {
+                            gloo::console::error!("Failed to navigate to /404");
+                        }
+                    }
+                    html! {
+                        <div class={"board-page-error"}>
+                            <h1>{"Error"}</h1>
+                            <p>{format!("{e:?}")}</p>
+                        </div>
                     }
                 })
             }

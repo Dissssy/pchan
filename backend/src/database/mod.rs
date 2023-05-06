@@ -18,6 +18,7 @@ use web_push::WebPushClient;
 use web_push::WebPushMessageBuilder;
 
 use crate::endpoints::api::SubscriptionData;
+use crate::schema::thread_post_number;
 use crate::schema::Banner;
 use crate::schema::Post;
 
@@ -316,6 +317,7 @@ impl Database {
         }
 
         let this_board = Self::get_board(conn, tboard.clone()).await?;
+
         let mut t = insert_into(threads)
             .values((
                 board.eq(this_board.id),
@@ -369,24 +371,37 @@ impl Database {
 
         post.content = replace_possible_profanity(post.content);
         post.author = post.author.map(replace_possible_profanity);
+        let this_post_number = Self::get_board(conn, discriminator.clone())
+            .await?
+            .post_count
+            + 1;
+        // THIS LINE, THE THREAD DOESNT EXIST LOOOL
+        let thread_post_number = match thread_post_number(tthread, conn).await {
+            Ok(v) => v,
+            Err(_) => this_post_number,
+        };
 
         let replies = post
             .content
             .split_whitespace()
-            .flat_map(|x| common::structs::Reply::from_str(x, &discriminator))
+            .flat_map(|x| {
+                common::structs::Reply::from_str(x, &discriminator, &thread_post_number.to_string())
+            })
             .collect::<Vec<common::structs::Reply>>();
-
         let mut replieses = Vec::new();
 
         for reply in replies {
-            let this_post = Self::get_post(conn, reply.board_discriminator, reply.post_number)
-                .await
-                .map(|x| x.id);
+            let this_post = Self::get_post(
+                conn,
+                reply.board_discriminator,
+                reply.post_number.parse::<i64>()?,
+            )
+            .await
+            .map(|x| x.id);
             if let Ok(this_post) = this_post {
                 replieses.push(this_post);
             }
         }
-
         let lock = crate::FS_LOCK.lock().await;
 
         let pending_file = if let Some(file) = post.file.clone() {
@@ -408,10 +423,7 @@ impl Database {
         };
 
         let t = insert_into(posts).values((
-            post_number.eq(Self::get_board(conn, discriminator.clone())
-                .await?
-                .post_count
-                + 1),
+            post_number.eq(this_post_number),
             thread.eq(tthread),
             board.eq(tboard),
             author.eq(post.author.clone()),

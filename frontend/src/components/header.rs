@@ -1,6 +1,6 @@
 use yew::prelude::*;
 
-use crate::components::{board_select::BoardSelectBar, board_title::BoardTitle};
+use crate::components::{BoardSelectBar, BoardTitle, PostBox};
 
 #[function_component]
 pub fn Header() -> Html {
@@ -14,6 +14,7 @@ pub fn Header() -> Html {
             <h1>
                 <BoardTitle/>
             </h1>
+            <PostBox/>
         </div>
     }
 }

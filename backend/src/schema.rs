@@ -204,12 +204,14 @@ impl Post {
 
         let t = get_file(conn, self.id).await;
 
+        let board_discrim = get_board_discrim(self.board, conn).await?;
+
         Ok(SafePost {
             id: self.id,
             post_number: self.post_number,
             file: t?,
-            thread: thread_post_number(self.thread, conn).await?,
-            board: self.board,
+            thread_post_number: thread_post_number(self.thread, conn).await?,
+            board_discriminator: board_discrim,
             author: self.author.clone(),
             content: self.content.clone(),
             timestamp: format!("{}", self.timestamp),
@@ -229,8 +231,11 @@ pub async fn get_reply_info(
 
     let thisboard = get_board_discrim(post.board, conn).await?;
 
+    let post_thread = thread_post_number(post.thread, conn).await?;
+
     Ok(Reply {
-        post_number: post.post_number,
+        post_number: post.post_number.to_string(),
+        thread_post_number: Some(post_thread.to_string()),
         board_discriminator: thisboard,
         external,
     })

@@ -1,0 +1,10 @@
+.thread-page {
+  width: 100%;
+}
+
+.thread-view {
+  padding: 0.4em;
+  border-bottom: var(--border-width) var(--border-type) var(--border-color);
+  display: flex;
+  flex-direction: column;
+}

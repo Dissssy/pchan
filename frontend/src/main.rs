@@ -53,6 +53,15 @@ impl BaseRoute {
     }
 }
 
+impl From<common::structs::Reply> for BaseRoute {
+    fn from(reply: common::structs::Reply) -> Self {
+        BaseRoute::ThreadPage {
+            board_discriminator: reply.board_discriminator,
+            thread_id: reply.post_number,
+        }
+    }
+}
+
 fn main() {
     yew::Renderer::<Root>::new().render();
 }
@@ -121,40 +130,31 @@ fn switch(routes: BaseRoute) -> Html {
     match routes {
         BaseRoute::Home => {
             html! {
-                <pages::home::Home/>
+                <pages::Home/>
             }
         }
         BaseRoute::Settings => {
             html! {
-                <pages::settings::Settings/>
+                <pages::Settings/>
             }
         }
         BaseRoute::BoardPage {
             board_discriminator: _,
         } => {
             html! {
-                //<ContextProvider<pages::BoardContext> context={pages::BoardContext { discriminator: board_discriminator }}>
-                    <pages::board::BoardPage />
-                //</ContextProvider<pages::BoardContext>>
+                <pages::BoardPage />
             }
         }
         BaseRoute::ThreadPage {
-            board_discriminator,
-            thread_id,
+            board_discriminator: _,
+            thread_id: _,
         } => {
             html! {
-                //<ContextProvider<pages::BoardContext> context={pages::BoardContext { discriminator: board_discriminator.clone() }}>
-                    //<ContextProvider<pages::ThreadContext> context={pages::ThreadContext { thread_id: thread_id.clone() }}>
-                    <>
-                        {board_discriminator}
-                        {thread_id}
-                    </>
-                    //</ContextProvider<pages::ThreadContext>>
-                //</ContextProvider<pages::BoardContext>>
+                <pages::ThreadPage />
             }
         }
         BaseRoute::NotFound => html! {
-           {"404"}
+            {"404"}
         },
     }
 }
