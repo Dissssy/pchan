@@ -3,9 +3,6 @@ use yew_hooks::prelude::*;
 
 #[function_component]
 pub fn Spinner() -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing Spinner"))
-    }
     let show = use_state(|| false);
     {
         let show = show.clone();

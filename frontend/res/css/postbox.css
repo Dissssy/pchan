@@ -30,22 +30,29 @@
 
 .post-box-meta a {
   text-align: center;
-  border-bottom: var(--border-width) var(--border-type) var(--border-color);
   padding: 0.2em;
 }
 
 .post-box-meta-inputs {
   display: inline-flex;
   flex-direction: row;
-  flex-basis: fit-content;
+  flex-basis: -moz-available;
+  flex-basis: -webkit-fill-available;
 }
 
 .post-box-name {
   width: 50%;
   padding: 0.2em;
-  border-bottom: var(--border-width) var(--border-type) var(--border-color);
 }
 
+.post-box-name#sloppytoppy {
+  border-top: var(--border-width) var(--border-type) var(--border-color);
+}
+
+.post-box-name#notop {
+  border-left: var(--border-width) var(--border-type) var(--border-color);
+  width: 100%;
+}
 .post-box-name input {
   width: 100%;
   box-sizing: border-box;
@@ -59,6 +66,7 @@
   padding: 0.2em;
   border-left: var(--border-width) var(--border-type) var(--border-color);
   border-bottom: var(--border-width) var(--border-type) var(--border-color);
+  border-top: var(--border-width) var(--border-type) var(--border-color);
 }
 
 .post-box-topic input {
@@ -75,6 +83,7 @@
   height: 5em;
   padding-bottom: 0.3em;
   border-bottom: var(--border-width) var(--border-type) var(--border-color);
+  border-top: var(--border-width) var(--border-type) var(--border-color);
 }
 
 .post-box-content textarea {

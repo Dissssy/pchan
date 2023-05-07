@@ -1,15 +1,12 @@
 use yew::prelude::*;
 use yew_router::prelude::*;
 
-use crate::BaseRoute;
 use crate::components::{BoardName, BoardNameType};
+use crate::BaseRoute;
 use crate::{api::ApiState, ApiContext};
 
 #[function_component]
 pub fn Home() -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing Home"))
-    }
     let api_ctx = use_context::<Option<ApiContext>>();
     let nav = use_navigator();
     let boards: UseStateHandle<ApiState<Vec<common::structs::SafeBoard>>> =
@@ -30,7 +27,10 @@ pub fn Home() -> Html {
                                 Err(e) => {
                                     boards.set(ApiState::Error(e));
                                 }
-                                Ok(theseboards) => {
+                                Ok(mut theseboards) => {
+                                    theseboards.sort_by(|a, b| {
+                                        a.name.to_lowercase().cmp(&b.name.to_lowercase())
+                                    });
                                     boards.set(ApiState::Loaded(theseboards));
                                 }
                             };

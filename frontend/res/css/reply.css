@@ -1,5 +1,25 @@
 .expanded-reply {
-  z-index: 10000;
+  z-index: 200;
   position: absolute;
   transform: translateY(1em);
+}
+
+.expanded-reply .post .post-body {
+  display: flex;
+  flex-direction: row;
+}
+
+.expanded-reply .post .post-body .post-content {
+  padding-left: 0.4em;
+}
+
+.expanded-reply .post .post-header {
+  border-radius: var(--border-radius) var(--border-radius) 0 0;
+}
+
+.expanded-reply .post .post-body {
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+  border-left: var(--border-width) var(--border-type) var(--border-color);
+  border-bottom: var(--border-width) var(--border-type) var(--border-color);
+  border-right: var(--border-width) var(--border-type) var(--border-color);
 }

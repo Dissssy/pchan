@@ -24,6 +24,7 @@
   align-items: center;
   border-inline: var(--border-width) var(--border-type) var(--border-color);
   font-weight: bold;
+  padding-block: 0.2em;
 }
 
 .board-select-board-name-link-selected {
@@ -34,6 +35,7 @@
   color: var(--primary-color);
   border-inline: var(--border-width) var(--border-type) var(--border-color);
   font-weight: bold;
+  padding-block: 0.2em;
 }
 
 #board-select-board-name-first {

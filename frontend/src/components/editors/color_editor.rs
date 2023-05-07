@@ -9,9 +9,6 @@ use crate::{
 
 #[function_component]
 pub fn ColorEditor(props: &Props) -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing ColorEditor: Props = {:?}", props))
-    }
     let theme = use_context::<UseStateHandle<Option<ThemeData>>>();
 
     let old_color = use_state(|| None);

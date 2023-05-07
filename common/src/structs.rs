@@ -159,6 +159,9 @@ impl Reply {
             )
         }
     }
+    pub fn same_board_reply_text(&self) -> String {
+        format!(">>{}", self.post_number)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

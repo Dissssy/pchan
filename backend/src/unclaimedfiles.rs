@@ -29,6 +29,7 @@ impl UnclaimedFiles {
         &mut self,
         createfile: &common::structs::CreateFile,
         token: String,
+        is_thread_post: bool,
     ) -> Result<FileInfo> {
         println!("Claiming file for token: {}", token);
         match self.files.remove(&token) {
@@ -74,7 +75,11 @@ impl UnclaimedFiles {
                     let output = tokio::process::Command::new("ffmpeg")
                         .args(["-i", &diskfilepath])
                         .args(["-r", "1"])
-                        .args(["-vf", "scale=80:-2"])
+                        .args(if is_thread_post {
+                            ["-vf", "scale=200:-2"]
+                        } else {
+                            ["-vf", "scale=80:-2"]
+                        })
                         .args(["-frames:v", "1"])
                         .arg(&thumbpath)
                         .arg("-y")

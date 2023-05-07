@@ -68,9 +68,6 @@ fn main() {
 
 #[function_component]
 fn Root() -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing Root"))
-    }
     let theme_ctx = use_state(|| None);
     {
         let theme_ctx = theme_ctx.clone();
@@ -101,6 +98,7 @@ fn Root() -> Html {
             }
         });
     }
+
     match (&*api_ctx, &*theme_ctx) {
         (Some(api_ctx), Some(_)) => {
             html! {

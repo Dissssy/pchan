@@ -1,15 +1,16 @@
-use common::structs::BoardWithThreads;
+use common::structs::{BoardWithThreads, SafePost};
 use yew::prelude::*;
 use yew_router::prelude::*;
 
-use crate::{api::ApiState, components::*, ApiContext, BaseRoute};
+use crate::{
+    api::ApiState,
+    components::*,
+    helpers::{CallbackContext, CallbackEmitterContext, SuccessfulPostContext},
+    ApiContext, BaseRoute,
+};
 
 #[function_component]
 pub fn BoardPage() -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing BoardPage"))
-    }
-
     let board_ctx = use_route::<BaseRoute>();
     let nav = use_navigator();
     let api_ctx = use_context::<Option<ApiContext>>();
@@ -54,40 +55,92 @@ pub fn BoardPage() -> Html {
             board_ctx,
         );
     }
-    
+
+    // let callback = if let Some(c) = use_context::<Option<CallbackContext>>().flatten() {
+    //     let nav = nav.clone();
+    //     let modified = c.callback.reform(move |r: common::structs::Reply| {
+    //         // we need to navigate to the new thread D:
+    //         let nav = nav.clone();
+    //         if let Some(nav) = nav {
+    //             nav.replace(&BaseRoute::ThreadPage {
+    //                 board_discriminator: r.board_discriminator.clone(),
+    //                 thread_id: r.thread_post_number.clone().unwrap(),
+    //             });
+    //         }
+    //         r
+    //     });
+    //     Some(CallbackContext { callback: modified })
+    // } else {
+    //     None
+    // };
+
+    let add_text_callback = use_state(|| None);
+
+    let set_add_text_callback = {
+        let add_text_callback = add_text_callback.clone();
+        CallbackEmitterContext {
+            callback: Callback::from(move |callback: Callback<common::structs::Reply>| {
+                add_text_callback.set(Some(CallbackContext { callback }));
+            }),
+        }
+    };
+
+    let successful_post = {
+        let nav = nav.clone();
+
+        SuccessfulPostContext {
+            callback: Callback::from(move |p: SafePost| {
+                if let Some(nav) = &nav {
+                    nav.replace(&BaseRoute::ThreadPage {
+                        board_discriminator: p.board_discriminator.clone(),
+                        thread_id: p.thread_post_number.to_string(),
+                    });
+                }
+            }),
+        }
+    };
+
     html! {
-        <div class={"board-page"}>
-            <Header />
-            {
-                board.standard_html("BoardPage", |board| {
-                    html! {
-                        <div class={"board-page-threads"}>
-                            {
-                                board.threads.iter().map(|thread| {
-                                    html! {
-                                        <Thread thread={thread.clone()} />
+        // <ContextProvider<Option<CallbackContext>> context={callback}>
+        <ContextProvider<SuccessfulPostContext> context={successful_post}>
+            <ContextProvider<CallbackEmitterContext> context={set_add_text_callback}>
+                <ContextProvider<Option<CallbackContext>> context={(*add_text_callback).clone()}>
+                    <div class={"board-page"}>
+                        <Header />
+                        {
+                            board.standard_html("BoardPage", |board| {
+                                html! {
+                                    <div class={"board-page-threads"}>
+                                        {
+                                            board.threads.iter().map(|thread| {
+                                                html! {
+                                                    <Thread thread={thread.clone()} />
+                                                }
+                                            }).collect::<Html>()
+                                        }
+                                    </div>
+                                }
+                            }).unwrap_or_else(|e| {
+                                match nav {
+                                    Some(nav) => {
+                                        nav.replace(&BaseRoute::NotFound);
                                     }
-                                }).collect::<Html>()
-                            }
-                        </div>
-                    }
-                }).unwrap_or_else(|e| {
-                    match nav {
-                        Some(nav) => {
-                            nav.replace(&BaseRoute::NotFound);
+                                    None => {
+                                        gloo::console::error!("Failed to navigate to /404");
+                                    }
+                                }
+                                html! {
+                                    <div class={"board-page-error"}>
+                                        <h1>{"Error"}</h1>
+                                        <p>{format!("{e:?}")}</p>
+                                    </div>
+                                }
+                            })
                         }
-                        None => {
-                            gloo::console::error!("Failed to navigate to /404");
-                        }
-                    }
-                    html! {
-                        <div class={"board-page-error"}>
-                            <h1>{"Error"}</h1>
-                            <p>{format!("{e:?}")}</p>
-                        </div>
-                    }
-                })
-            }
-        </div>
+                    </div>
+                </ContextProvider<Option<CallbackContext>>>
+            </ContextProvider<CallbackEmitterContext>>
+        </ContextProvider<SuccessfulPostContext>>
+        // </ContextProvider<Option<CallbackContext>>>
     }
 }

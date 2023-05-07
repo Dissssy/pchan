@@ -1,16 +1,11 @@
 use common::structs::SafeBoard;
-// use gloo::console::log;
 use yew::prelude::*;
-// use yew_router::prelude::use_navigator;
 use yew_router::prelude::*;
 
 use crate::{components::MaybeLink, BaseRoute};
 
 #[function_component]
 pub fn BoardName(props: &Props) -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing BoardName: Props = {:?}", props))
-    }
     let hovered = use_state(|| false);
     let location = use_route::<BaseRoute>();
     {

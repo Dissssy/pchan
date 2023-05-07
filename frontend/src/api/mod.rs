@@ -56,7 +56,7 @@ impl Api {
 
     async fn get_token() -> Result<String, ApiError> {
         let token = token::get_token().await?;
-        // gloo::console::log!(format!("token: {}", token));
+        //
         Ok(token)
     }
 
@@ -78,10 +78,10 @@ impl Api {
         };
 
         if let Some(v) = v.get(&ident).cloned() {
-            // gloo::console::log!("get_boards cache hit");
+            //
             Ok(v)
         } else {
-            // gloo::console::warn!("get_boards cache miss");
+            //
             // GET /api/v1/board -> Vec<Board>
             let token = self.formatted_token();
             let res = board::get_boards(&token).await;
@@ -106,10 +106,10 @@ impl Api {
         };
 
         if let Some(v) = v.get(&ident).cloned() {
-            // gloo::console::log!("get_board cache hit for", &ident);
+            //
             Ok(v)
         } else {
-            // gloo::console::warn!("get_board cache miss for", &ident);
+            //
             // GET /api/v1/{} -> Board
             let token = self.formatted_token();
             let res = board::get_board(&token, board).await;
@@ -141,6 +141,7 @@ impl Api {
     pub async fn get_thread(&self, board: &str, thread: &str) -> Result<ThreadWithPosts, ApiError> {
         let ident = format!("{}-{}", board, thread);
         // attempt cache hit
+
         let mut cache = self.cache.lock().await;
         let v = {
             match cache.entry::<CachedValue<ThreadWithPosts>>() {
@@ -152,10 +153,9 @@ impl Api {
         };
 
         if let Some(v) = v.get(&ident).cloned() {
-            // gloo::console::log!("get_thread cache hit for", &ident);
             Ok(v)
         } else {
-            // gloo::console::warn!("get_thread cache miss for", &ident);
+            //
             // GET /api/v1/{}/{} -> Thread
             let token = self.formatted_token();
             let res = thread::get_thread(&token, board, thread).await;
@@ -196,10 +196,10 @@ impl Api {
         };
 
         if let Some(v) = v.get(&ident).cloned() {
-            // gloo::console::log!("get_post cache hit for", &ident);
+            //
             Ok(v)
         } else {
-            // gloo::console::warn!("get_post cache miss for", &ident);
+            //
             // GET /api/v1/{}/{} -> Post
             let token = self.formatted_token();
             let res = post::get_post(&token, board, post).await;
@@ -218,17 +218,23 @@ impl Api {
             .append_with_blob("file", &file)
             .map_err(|e| ApiError::Other(format!("{e:?}")))?;
 
-        let res = gloo_net::http::Request::post("/api/v1/file")
+        let raw_res = gloo_net::http::Request::post("/api/v1/file")
             .header("authorization", &token)
             .body(&form_data)
             .send()
             .await
-            .map_err(|e| ApiError::Gloo(format!("{e:?}")))?
+            .map_err(|e| ApiError::Gloo(format!("{e:?}")))?;
+        let res = raw_res
             .text()
             .await
             .map_err(|e| ApiError::Gloo(format!("{e:?}")))?;
-        let file_id = serde_json::from_str::<String>(&res)
-            .map_err(|e| ApiError::Serde(format!("{e:?} SERDE ERROR FROM {res}")))?;
+        let file_id = serde_json::from_str::<String>(&res).map_err(|e| {
+            if !raw_res.ok() {
+                ApiError::Api(raw_res.status_text())
+            } else {
+                ApiError::Serde(format!("{e:?} SERDE ERROR FROM {res}"))
+            }
+        })?;
         if file_id.contains(' ') {
             Err(ApiError::Api(file_id))
         } else {
@@ -242,7 +248,28 @@ impl Api {
         thread: CreateThread,
     ) -> Result<SafePost, ApiError> {
         let token = self.formatted_token();
-        thread::create_thread(&token, board, thread).await
+        let res = thread::create_thread(&token, board, thread).await;
+        if let Ok(post) = &res {
+            {
+                // invalidate board cache
+                let mut cache = self.cache.lock().await;
+                let v = {
+                    match cache.entry::<CachedValue<BoardWithThreads>>() {
+                        typemap::Entry::Occupied(val) => val.into_mut(),
+                        typemap::Entry::Vacant(hole) => {
+                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                        }
+                    }
+                };
+                v.remove(board);
+            }
+            // now get the thread and board to cache them
+            let _ = self
+                .get_thread(board, &post.thread_post_number.to_string())
+                .await;
+            let _ = self.get_board(board).await;
+        }
+        res
     }
 
     pub async fn create_post(
@@ -252,7 +279,91 @@ impl Api {
         post: CreatePost,
     ) -> Result<SafePost, ApiError> {
         let token = self.formatted_token();
-        post::create_post(&token, board, thread, post).await
+        let res = post::create_post(&token, board, thread, post).await;
+        if res.is_ok() {
+            {
+                // invalidate thread cache
+                let mut cache = self.cache.lock().await;
+                let v = {
+                    match cache.entry::<CachedValue<ThreadWithPosts>>() {
+                        typemap::Entry::Occupied(val) => val.into_mut(),
+                        typemap::Entry::Vacant(hole) => {
+                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                        }
+                    }
+                };
+                let ident = format!("{}-{}", board, thread);
+                v.remove(&ident);
+
+                // invalidate board cache
+                let v = {
+                    match cache.entry::<CachedValue<BoardWithThreads>>() {
+                        typemap::Entry::Occupied(val) => val.into_mut(),
+                        typemap::Entry::Vacant(hole) => {
+                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                        }
+                    }
+                };
+                let ident = format!("{}", board);
+                v.remove(&ident);
+            }
+            // now get the board and thread again for the cache
+            let _ = self.get_board(board).await;
+            let _ = self.get_thread(board, thread).await;
+        }
+        res
+    }
+
+    pub async fn delete_post(&self, board: &str, post: &str) -> Result<i64, ApiError> {
+        let token = self.formatted_token();
+        let full_post = self.get_post(board, post).await?;
+        let res = post::delete_post(&token, board, post).await;
+        if res.is_ok() {
+            {
+                // remove from cache
+                let mut cache = self.cache.lock().await;
+                let v = {
+                    match cache.entry::<CachedValue<SafePost>>() {
+                        typemap::Entry::Occupied(val) => val.into_mut(),
+                        typemap::Entry::Vacant(hole) => {
+                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                        }
+                    }
+                };
+                let ident = format!("{}-{}", board, post);
+                v.remove(&ident);
+
+                // remove thread from cache
+                let v = {
+                    match cache.entry::<CachedValue<ThreadWithPosts>>() {
+                        typemap::Entry::Occupied(val) => val.into_mut(),
+                        typemap::Entry::Vacant(hole) => {
+                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                        }
+                    }
+                };
+                let ident = format!("{}-{}", board, full_post.thread_post_number);
+                v.remove(&ident);
+
+                // remove board from cache
+                let v = {
+                    match cache.entry::<CachedValue<BoardWithThreads>>() {
+                        typemap::Entry::Occupied(val) => val.into_mut(),
+                        typemap::Entry::Vacant(hole) => {
+                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                        }
+                    }
+                };
+                let ident = format!("{}", board);
+                v.remove(&ident);
+            }
+            // now get the board and thread again for the cache
+            let _ = self.get_board(board).await;
+            let _ = self
+                .get_thread(board, &full_post.thread_post_number.to_string())
+                .await;
+        }
+        res
     }
 }
 
@@ -287,10 +398,7 @@ impl<T> ApiState<T> {
             ApiState::ContextError(s) => Ok(html! {
                 <crate::components::ContextError cause={s.clone()} source={source} />
             }),
-            ApiState::Error(e) => {
-                gloo::console::log!(format!("Error: {:?}", e));
-                Err(e.clone())
-            }
+            ApiState::Error(e) => Err(e.clone()),
             ApiState::Loaded(data) => Ok(then(data)),
         }
     }
@@ -322,6 +430,11 @@ impl<T> CachedValue<T> {
         }
     }
     pub fn get(&self, identifier: &str) -> Option<&T> {
+        // gloo::console::log!(format!(
+        //     "getting \"{}\" for \"{}\"",
+        //     identifier,
+        //     std::any::type_name::<T>()
+        // ));
         if let Some((instant, value)) = self.values.get(identifier) {
             if instant.elapsed() < self.ttl {
                 return Some(value);
@@ -330,9 +443,14 @@ impl<T> CachedValue<T> {
         None
     }
     pub fn set(&mut self, identifier: &str, value: T) {
+        // gloo::console::log!(format!(
+        //     "setting \"{}\" for \"{}\"",
+        //     identifier,
+        //     std::any::type_name::<T>()
+        // ));
         match self.values.entry(identifier.to_string()) {
             collections::hash_map::Entry::Vacant(hole) => {
-                gloo::console::log!(format!("set cache for {}", identifier));
+                //
                 hole.insert((Instant::now(), value));
             }
             collections::hash_map::Entry::Occupied(mut val) => {
@@ -340,9 +458,17 @@ impl<T> CachedValue<T> {
                 if t.elapsed() < self.ttl {
                     return;
                 }
-                gloo::console::log!(format!("update cache for {}", identifier));
+                //
                 val.insert((Instant::now(), value));
             }
         }
+    }
+    pub fn remove(&mut self, identifier: &str) {
+        // gloo::console::log!(format!(
+        //     "removing \"{}\" for \"{}\"",
+        //     identifier,
+        //     std::any::type_name::<T>()
+        // ));
+        self.values.remove(identifier);
     }
 }

@@ -2,6 +2,7 @@ mod board_name;
 mod board_select;
 mod board_title;
 mod context_error;
+mod delete_button;
 mod editors;
 mod file;
 mod header;
@@ -19,6 +20,7 @@ pub use board_name::{BoardName, BoardNameType};
 pub use board_select::BoardSelectBar;
 pub use board_title::BoardTitle;
 pub use context_error::ContextError;
+pub use delete_button::DeleteButton;
 pub use editors::*;
 pub use file::File;
 pub use header::Header;
@@ -35,13 +37,30 @@ pub use thread::Thread;
 #[derive(Clone, PartialEq, Debug)]
 pub enum HoveredOrExpandedState {
     None,
-    Hovered,
+    Hovered { x: i32, y: i32, offset: OffsetType },
     // Hovered{
     //     x: i32,
     //     y: i32,
     //     screen_y: i32,
     // },
     Expanded,
+}
+
+#[derive(Clone, PartialEq, Debug, Copy)]
+pub enum OffsetType {
+    Top,
+    Center,
+    Bottom,
+}
+
+impl OffsetType {
+    pub fn percent(&self) -> String {
+        match self {
+            OffsetType::Top => "-100%".to_owned(),
+            OffsetType::Center => "-50%".to_owned(),
+            OffsetType::Bottom => "0%".to_owned(),
+        }
+    }
 }
 
 // impl HoveredOrExpandedState {

@@ -4,6 +4,7 @@ use diesel_async::pooled_connection::deadpool::Pool;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::AsyncPgConnection;
 
+use reqwest::header::HeaderValue;
 use tokio::sync::Mutex;
 use warp::Filter;
 
@@ -34,6 +35,33 @@ lazy_static::lazy_static! {
     pub static ref QUOTES: Arc<Quotes> = Arc::new(Quotes::load("./quotes.txt".to_string()).expect("Failed to load quotes"));
 }
 
+#[derive(Clone, Debug)]
+struct ArcPath(Arc<std::path::PathBuf>);
+
+#[derive(Debug)]
+pub struct File {
+    pub resp: warp::http::Response<warp::hyper::Body>,
+    #[allow(dead_code)]
+    path: ArcPath,
+}
+
+fn is_safe_mimetype(mimetype: &str) -> bool {
+    let mimetype = mimetype.to_lowercase();
+    // println!("mimetype: {}", mimetype);
+    // if the Content-Type header is not video/* audio/* or image/*, then force download. also check for svg because those can contain javascript
+    let can_contain = vec!["video/", "audio/", "image/"];
+    let overrides = vec!["svg"];
+
+    // if the mimetype contains any of the can_contain strings, then it's not bad UNLESS it also contains any of the overrides
+    can_contain.iter().any(|s| {
+        // println!("checking if {} contains {} (result: {})", mimetype, s, f);
+        mimetype.contains(s)
+    }) && !overrides.iter().any(|s| {
+        // println!("checking if {} contains {} (result: {})", mimetype, s, f);
+        mimetype.contains(s)
+    })
+}
+
 #[tokio::main]
 async fn main() {
     env_logger::init();
@@ -54,6 +82,24 @@ async fn main() {
     let newroot = warp::get() /*.and(filters::is_beta())*/
         .and(
             warp::fs::dir(env!("FILE_STORAGE_PATH"))
+                .map(|reply: warp::filters::fs::File| {
+                    // if the Content-Type header is not video/* audio/* or image/*, then force download
+                    let mut reply: File = unsafe { std::mem::transmute(reply) };
+                    if let Some(content_type) =
+                        reply.resp.headers().get(warp::http::header::CONTENT_TYPE)
+                    {
+                        let content_type = content_type.to_str().unwrap();
+                        if !is_safe_mimetype(content_type) {
+                            println!("Forcing download of file with mimetype {}", content_type);
+                            reply.resp.headers_mut().insert(
+                                warp::http::header::CONTENT_DISPOSITION,
+                                HeaderValue::from_static("attachment"),
+                            );
+                        }
+                    }
+                    let reply: warp::filters::fs::File = unsafe { std::mem::transmute(reply) };
+                    reply
+                })
                 .or(warp::fs::dir("/git/pchan/frontend/dist"))
                 .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
         );

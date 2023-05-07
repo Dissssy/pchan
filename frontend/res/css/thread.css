@@ -5,6 +5,30 @@
 .thread-view {
   padding: 0.4em;
   border-bottom: var(--border-width) var(--border-type) var(--border-color);
-  display: flex;
+  display: inline-block;
+  width: -moz-available;
+  width: -webkit-fill-available;
+}
+
+.board-page-threads {
+  display: inline-flex;
   flex-direction: column;
+  width: -moz-available;
+  width: -webkit-fill-available;
+}
+
+.thread-view-expand-button {
+  display: inline-block;
+  white-space: nowrap;
+  width: min-content;
+  padding-inline: 0.2em;
+  background-color: var(--link-color);
+  --erm: 0.2em;
+  margin-left: calc(var(--erm) + 0.15em);
+  margin-top: calc(var(--erm) + 0.25em);
+  box-shadow: var(--link-color) 0px 0px var(--erm) var(--erm);
+}
+
+.thread-view-expand-button a:link, .thread-view-expand-button a:visited {
+  color: var(--primary-color);
 }

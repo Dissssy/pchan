@@ -1,4 +1,4 @@
-use common::structs::{CreateFile, CreatePost, CreateThread};
+use common::structs::{CreateFile, CreatePost, CreateThread, Reply};
 use yew::prelude::*;
 use yew_hooks::prelude::*;
 use yew_router::prelude::*;
@@ -6,6 +6,7 @@ use yew_router::prelude::*;
 use crate::{
     api::{ApiError, ApiState},
     components::ContextError,
+    helpers::{CallbackEmitterContext, SuccessfulPostContext},
     ApiContext, BaseRoute,
 };
 
@@ -23,6 +24,7 @@ pub fn PostBox() -> Html {
     let spoiler_hovered = use_state(|| false);
 
     let post = CreatePostInfo {
+        opened: show_box,
         name: use_state(|| possible_name.as_ref().unwrap_or(&"".to_string()).clone()),
         topic: use_state(|| "".to_string()),
         content: use_state(|| "".to_string()),
@@ -32,11 +34,14 @@ pub fn PostBox() -> Html {
 
     let emojis = use_local_storage::<bool>("emojis".to_string()).unwrap_or(true);
 
+    let on_successful = use_context::<SuccessfulPostContext>();
+
     let state = use_state(|| ApiState::Pending);
     let on_click = {
         let routeinfo = routeinfo.clone();
         let post = post.clone();
         let state = state.clone();
+        let on_successful = on_successful;
         let api_ctx = api_ctx;
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
@@ -47,6 +52,7 @@ pub fn PostBox() -> Html {
             state.set(ApiState::Loading);
             let state = state.clone();
             let routeinfo = routeinfo.clone();
+            let on_successful = on_successful.clone();
             let post = post.clone();
             let api_ctx = api_ctx.clone();
             wasm_bindgen_futures::spawn_local(async move {
@@ -65,7 +71,6 @@ pub fn PostBox() -> Html {
                     } else {
                         None
                     };
-                    gloo::console::log!(format!("file: {:?}", file));
 
                     let create_post = CreatePost {
                         author: Some((*post.name).clone()).filter(|name| !name.is_empty()),
@@ -96,7 +101,13 @@ pub fn PostBox() -> Html {
                                 .await
                         }
                     } {
-                        Ok(v) => state.set(ApiState::Loaded(v)),
+                        Ok(v) => {
+                            if let Some(c) = on_successful {
+                                c.callback.emit(v.clone());
+                            }
+                            post.reset();
+                            state.set(ApiState::Loaded(v))
+                        }
                         Err(e) => state.set(ApiState::Error(e)),
                     }
                 } else {
@@ -106,6 +117,42 @@ pub fn PostBox() -> Html {
         })
     };
 
+    let emitter = use_context::<CallbackEmitterContext>();
+    {
+        let post = post.clone();
+        use_effect_with_deps(
+            move |post| {
+                if let Some(emitter) = emitter {
+                    let post = post.clone();
+                    emitter.callback.emit(Callback::from(move |s: Reply| {
+                        post.opened.set(true);
+                        let content = post.content.clone();
+                        let this_content = (*content).clone();
+                        let reply_text = s.same_board_reply_text();
+                        // if the content contains a line that is the same as the reply text, we remove it and return
+                        let new_content = content
+                            .lines()
+                            .filter(|line| line != &reply_text)
+                            .collect::<Vec<_>>()
+                            .join("\n");
+                        if new_content != this_content {
+                            content.set(new_content);
+                            return;
+                        }
+                        // if the content is empty, we can just append the reply text to the content and return
+                        if this_content.is_empty() {
+                            content.set(reply_text);
+                            return;
+                        }
+                        // otherwise, we need to add a newline and the reply text
+                        content.set(format!("{}\n{}", this_content, reply_text));
+                    }));
+                }
+            },
+            post,
+        );
+    }
+
     let on_input_name = post.name_change_callback(possible_name.clone());
     let on_input_topic = post.topic_change_callback();
     let on_input_content = post.content_change_callback();
@@ -114,81 +161,67 @@ pub fn PostBox() -> Html {
 
     match routeinfo {
         Some((Some(_), thread)) => {
-            if *show_box {
-                html! {
-                    <div class={ if thread.is_some() { "post-box-floating" } else { "post-box-centered" } }>
-                        <div class="post-box">
-                            <div class="post-box-meta">
-                                <a href="#"
-                                    onclick={ let show_box = show_box.clone(); Callback::from(move |_| show_box.set(!*show_box))}
-                                    onmouseover={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(true)) }
-                                    onmouseout={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(false)) }>
-                                    { if *close_hovered { if emojis { "🔐" } else { "Cloes" } } else if emojis { "🔓" } else { "Close" } }
-                                </a>
-                                <div class="post-box-meta-inputs">
-                                    <div class="post-box-name">
-                                        <input type="text" placeholder="Anonymous" value={possible_name.as_ref().unwrap_or(&"".to_string()).clone()} oninput={on_input_name} />
-                                    </div>
-                                    {
-                                        if thread.is_none() {
-                                            html! {
-                                                <div class="post-box-topic">
-                                                    <input type="text" placeholder="Topic (Required)" value={(*post.topic).clone()} oninput={on_input_topic} />
-                                                </div>
-                                            }
-                                        } else {
-                                            html! {}
-                                        }
-                                    }
+            html! {
+                <div class={ if thread.is_some() { "post-box-floating" } else { "post-box-centered" } }>
+                    <div class="post-box">
+                        <div class="post-box-meta">
+                            <a href="#"
+                                onclick={ let opened = post.opened.clone(); Callback::from(move |e: MouseEvent| {e.prevent_default(); opened.set(!*opened)})}
+                                onmouseover={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(true)) }
+                                onmouseout={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(false)) }>
+                                { if *post.opened { if *open_hovered { if emojis { "🔑" } else { "Open" } } else if emojis { "🔒" } else { "Open" } } else if *close_hovered { if emojis { "🔐" } else { "Cloes" } } else if emojis { "🔓" } else { "Close" } }
+                            </a>
+                            <div class="post-box-meta-inputs" style={ if *post.opened { "" } else { "display: none;" } }>
+                                <div class="post-box-name" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
+                                    <input type="text" placeholder="Anonymous" value={possible_name.as_ref().unwrap_or(&"".to_string()).clone()} oninput={on_input_name} />
                                 </div>
-                            </div>
-                            <div class="post-box-content">
-                                <textarea value={(*post.content).clone()} placeholder={ format!("Content ({})",  if thread.is_some() { if post.file.is_none() { "Or File" } else { "Optional" } } else { "Optional" })} oninput={on_input_content} />
-                            </div>
-                            <div class="post-box-file">
-                                <a href="#" title="spoiler" onclick={on_click_spoiler.clone()}
-                                    onmouseover={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(true)) }
-                                    onmouseout={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(false)) }
-                                >{ match (*post.spoiler, *spoiler_hovered) {
-                                    ( true,  true) => if emojis { "❎" } else { "UnSpoiler" }, // file is spoilered and also currently hovered
-                                    ( true, false) => if emojis { "✅" } else { "UnSpoiler" }, // file is spoilered but not hovered
-                                    (false,  true) => if emojis { "❎" } else { "Spoiler" }, // file is not spoilered but hovered
-                                    (false, false) => if emojis { "🟩" } else { "Spoiler" }, // file is not spoilered and not hovered
-                                } }</a>
-                                <input type="file" onchange={on_change_file} />
-                                <span>{format!("({})", if thread.is_some() { if post.content.is_empty() { "Or Content" } else { "Optional" } } else { "Required" })}</span>
-                            </div>
-                            <div class="post-box-submit">
-                                <a href="#" onclick={on_click.clone()}>{ if thread.is_some() { "Reply" } else { "Create Thread" } }</a>
                                 {
-                                    match &*state {
-                                        ApiState::Pending => html! {},
-                                        ApiState::Loading => html! { <div class="post-box-loading"><span>{"Loading..."}</span></div> },
-                                        ApiState::Loaded(_) => html! { <div class="post-box-success"><span>{"Success!"}</span></div> },
-                                        ApiState::Error(ApiError::Api(e)) => html! { <div class="post-box-error"><span>{e}</span></div> },
-                                        ApiState::Error(e) => {
-                                            gloo::console::error!(format!("Error: {:?}", e));
-                                            html! { <div class="post-box-error"><span>{"Unknown Error! Check console for details."}</span></div> }
+                                    if thread.is_none() {
+                                        html! {
+                                            <div class="post-box-topic">
+                                                <input type="text" placeholder="Topic (Required)" value={(*post.topic).clone()} oninput={on_input_topic} />
+                                            </div>
                                         }
-                                        ApiState::ContextError(ref e) => html! { <div class="post-box-error"><span>{"Context Error: "}{e}</span></div> },
+                                    } else {
+                                        html! {}
                                     }
                                 }
                             </div>
                         </div>
-                    </div>
-                }
-            } else {
-                html! {
-                    <div class="post-box-centered">
-                        <div class="post-box">
-                            <a href="#" onclick={Callback::from(move |_| show_box.set(!*show_box))}
-                            onmouseover={ let open_hovered = open_hovered.clone(); Callback::from(move |_| open_hovered.set(true)) }
-                            onmouseout={ let open_hovered = open_hovered.clone(); Callback::from(move |_| open_hovered.set(false)) }>
-                                { if *open_hovered { if emojis { "🔑" } else { "Open" } } else if emojis { "🔒" } else { "Open" } }
-                            </a>
+                        <div class="post-box-content" style={ if *post.opened { "" } else { "display: none;" } }>
+                            <textarea value={(*post.content).clone()} placeholder={ format!("Content ({})",  if thread.is_some() { if post.file.is_none() { "Or File" } else { "Optional" } } else { "Optional" })} oninput={on_input_content} />
+                        </div>
+                        <div class="post-box-file" style={ if *post.opened { "" } else { "display: none;" } }>
+                            <a href="#" title="spoiler" onclick={on_click_spoiler.clone()}
+                                onmouseover={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(true)) }
+                                onmouseout={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(false)) }
+                            >{ match (*post.spoiler, *spoiler_hovered) {
+                                ( true,  true) => if emojis { "❎" } else { "UnSpoiler" }, // file is spoilered and also currently hovered
+                                ( true, false) => if emojis { "✅" } else { "UnSpoiler" }, // file is spoilered but not hovered
+                                (false,  true) => if emojis { "❎" } else { "Spoiler" }, // file is not spoilered but hovered
+                                (false, false) => if emojis { "🟩" } else { "Spoiler" }, // file is not spoilered and not hovered
+                            } }</a>
+                            <input type="file" onchange={on_change_file} />
+                            <span>{format!("({})", if thread.is_some() { if post.content.is_empty() { "Or Content" } else { "Optional" } } else { "Required" })}</span>
+                        </div>
+                        <div class="post-box-submit" style={ if *post.opened { "" } else { "display: none;" } }>
+                            <a href="#" onclick={on_click.clone()}>{ if thread.is_some() { "Reply" } else { "Create Thread" } }</a>
+                            {
+                                match &*state {
+                                    ApiState::Pending => html! {},
+                                    ApiState::Loading => html! { <div class="post-box-loading"><span>{"Loading..."}</span></div> },
+                                    ApiState::Loaded(_) => html! { <div class="post-box-success"><span>{"Success!"}</span></div> },
+                                    ApiState::Error(ApiError::Api(e)) => html! { <div class="post-box-error"><span>{e}</span></div> },
+                                    ApiState::Error(e) => {
+                                        gloo::console::error!(format!("Error: {:?}", e));
+                                        html! { <div class="post-box-error"><span>{"Unknown Error! Check console for details."}</span></div> }
+                                    }
+                                    ApiState::ContextError(ref e) => html! { <div class="post-box-error"><span>{"Context Error: "}{e}</span></div> },
+                                }
+                            }
                         </div>
                     </div>
-                }
+                </div>
             }
         }
         _ => {
@@ -199,9 +232,10 @@ pub fn PostBox() -> Html {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, PartialEq)]
 pub struct CreatePostInfo {
     pub name: UseStateHandle<String>,
+    pub opened: UseStateHandle<bool>,
     pub topic: UseStateHandle<String>,
     pub content: UseStateHandle<String>,
     pub file: UseStateHandle<Option<web_sys::File>>,
@@ -257,5 +291,12 @@ impl CreatePostInfo {
             e.prevent_default();
             spoiler.set(!*spoiler);
         })
+    }
+
+    pub fn reset(&self) {
+        self.topic.set("".to_string());
+        self.content.set("".to_string());
+        self.file.set(None);
+        self.spoiler.set(false);
     }
 }

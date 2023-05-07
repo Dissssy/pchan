@@ -52,3 +52,26 @@ pub async fn create_post(
         Err(_) => ApiError::Serde(format!("{e:?} SERDE ERROR FROM {res}")),
     })
 }
+
+pub async fn delete_post(token: &str, board: &str, post: &str) -> Result<i64, ApiError> {
+    let res = Request::delete(&format!("/api/v1/board/{}/post/{}", board, post))
+        .header("authorization", token)
+        .send()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::GlooError(e) => ApiError::Gloo(e),
+            v => ApiError::Other(v.to_string()),
+        })?
+        .text()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::SerdeError(e) => ApiError::Serde(e.to_string()),
+            v => ApiError::Other(v.to_string()),
+        })?;
+
+    res.parse::<i64>()
+        .map_err(|e| match serde_json::from_str::<String>(&res) {
+            Ok(v) => ApiError::Api(v),
+            Err(_) => ApiError::Serde(format!("{e:?} PARSE ERROR FROM {res}")),
+        })
+}

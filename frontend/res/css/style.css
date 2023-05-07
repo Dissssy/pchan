@@ -22,7 +22,6 @@
   justify-content: center;
   padding: 5em;
 }
-
 body {
   color: var(--text-color);
   font-family: verdana; /* used to be sans-serif */
@@ -40,4 +39,19 @@ body {
 :visited {
   text-decoration: none;
   color: var(--link-color);
+}
+
+@media (min-width: 60em) and (max-aspect-ratio: 1/1) {
+  /* the resolution is too high and the aspect ratio is too low. increase the font size */
+  html {
+    font-size: 1.5em;
+  }
+  
+  .post-file-thumbnail img {
+    width: 15vw !important;
+  }
+  
+  .left-file .post-file .post-file-container .post-file-contents a .post-file-thumbnail img {
+    width: 25vw !important;
+  }
 }

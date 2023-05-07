@@ -10,10 +10,6 @@ use crate::{
 
 #[function_component]
 pub fn BoardSelectBar() -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing BoardSelectBar"))
-    }
-
     let api_ctx = use_context::<Option<ApiContext>>();
     let nav = use_navigator();
     let boards: UseStateHandle<ApiState<Vec<common::structs::SafeBoard>>> =
@@ -33,7 +29,12 @@ pub fn BoardSelectBar() -> Html {
                                 Err(e) => {
                                     boards.set(ApiState::Error(e));
                                 }
-                                Ok(theseboards) => {
+                                Ok(mut theseboards) => {
+                                    theseboards.sort_by(|a, b| {
+                                        a.discriminator
+                                            .to_lowercase()
+                                            .cmp(&b.discriminator.to_lowercase())
+                                    });
                                     boards.set(ApiState::Loaded(theseboards));
                                 }
                             };

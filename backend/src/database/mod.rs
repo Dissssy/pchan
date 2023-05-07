@@ -408,7 +408,11 @@ impl Database {
             let f = crate::UNCLAIMED_FILES
                 .lock()
                 .await
-                .claim_file(&file, tactual_author.clone())
+                .claim_file(
+                    &file,
+                    tactual_author.clone(),
+                    thread_post_number == this_post_number,
+                )
                 .await?;
 
             if let Some(files_check) = check_hash_against {

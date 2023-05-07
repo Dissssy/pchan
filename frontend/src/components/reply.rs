@@ -1,4 +1,4 @@
-use crate::{api::ApiState, ApiContext, components::Post, BaseRoute};
+use crate::{api::ApiState, components::Post, ApiContext, BaseRoute};
 use yew::prelude::*;
 use yew_router::prelude::use_route;
 
@@ -41,7 +41,8 @@ pub fn Reply(props: &Props) -> Html {
                         }
                     }
                 });
-            }, route
+            },
+            route,
         );
     }
 
@@ -72,7 +73,6 @@ pub fn Reply(props: &Props) -> Html {
                     }
                 }
             </>
-            
         }
     }) {
         Ok(h) => h,

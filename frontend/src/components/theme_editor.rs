@@ -8,10 +8,6 @@ use super::editors::color_editor::ColorEditor;
 
 #[function_component]
 pub fn ThemeEditor() -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing ThemeEditor"))
-    }
-
     let emojis = use_local_storage::<bool>("emojis".to_owned());
 
     let emoji_cycle = use_state(|| {
@@ -153,41 +149,29 @@ impl Position {
 #[derive(Clone, PartialEq, Debug, Copy)]
 pub enum EmojiState {
     Enabled,
-    AreYouSure,
-    AreYouSureYoureSure,
-    AreYouSureYoureSureYoureSure,
-    AreYouSureYoureSureYoureSureYoureSure,
-    AreYouSureYoureSureYoureSureYoureSureYoureSure,
-    AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSure,
-    AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure,
-    AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure,
+    Conf1,
+    Conf2,
+    Conf3,
+    Conf4,
+    Conf5,
+    Conf6,
+    Conf7,
+    Conf8,
     Disabled,
 }
 
 impl EmojiState {
     pub fn next(&self) -> Self {
         match self {
-            EmojiState::Enabled => EmojiState::AreYouSure,
-            EmojiState::AreYouSure => EmojiState::AreYouSureYoureSure,
-            EmojiState::AreYouSureYoureSure => EmojiState::AreYouSureYoureSureYoureSure,
-            EmojiState::AreYouSureYoureSureYoureSure => {
-                EmojiState::AreYouSureYoureSureYoureSureYoureSure
-            }
-            EmojiState::AreYouSureYoureSureYoureSureYoureSure => {
-                EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSure
-            }
-            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSure => {
-                EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSure
-            }
-            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSure => {
-                EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure
-            }
-            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure => {
-                EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure
-            }
-            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure => {
-                EmojiState::Disabled
-            }
+            EmojiState::Enabled => EmojiState::Conf1,
+            EmojiState::Conf1 => EmojiState::Conf2,
+            EmojiState::Conf2 => EmojiState::Conf3,
+            EmojiState::Conf3 => EmojiState::Conf4,
+            EmojiState::Conf4 => EmojiState::Conf5,
+            EmojiState::Conf5 => EmojiState::Conf6,
+            EmojiState::Conf6 => EmojiState::Conf7,
+            EmojiState::Conf7 => EmojiState::Conf8,
+            EmojiState::Conf8 => EmojiState::Disabled,
             EmojiState::Disabled => EmojiState::Enabled,
         }
     }
@@ -195,14 +179,14 @@ impl EmojiState {
     pub fn string(&self) -> &'static str {
         match self {
             EmojiState::Enabled => "👍",
-            EmojiState::AreYouSure => "🤔",
-            EmojiState::AreYouSureYoureSure => "😬",
-            EmojiState::AreYouSureYoureSureYoureSure => "😳",
-            EmojiState::AreYouSureYoureSureYoureSureYoureSure => "😨",
-            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSure => "😱",
-            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSure => "🤢",
-            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure => "🤮",
-            EmojiState::AreYouSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSureYoureSure => "😵",
+            EmojiState::Conf1 => "🤔",
+            EmojiState::Conf2 => "😬",
+            EmojiState::Conf3 => "😳",
+            EmojiState::Conf4 => "😨",
+            EmojiState::Conf5 => "😱",
+            EmojiState::Conf6 => "🤢",
+            EmojiState::Conf7 => "🤮",
+            EmojiState::Conf8 => "😵",
             EmojiState::Disabled => "Emojis Disabled",
         }
     }

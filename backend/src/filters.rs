@@ -62,18 +62,18 @@ pub fn user_agent_is_scraper() -> impl Filter<Extract = (), Error = warp::Reject
         .untuple_one()
 }
 
-pub fn is_beta() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
-    warp::cookie::cookie::<bool>("beta")
-        .and_then(|beta: bool| async move {
-            if beta {
-                Ok(())
-            } else {
-                Err(warp::reject::reject())
-            }
-        })
-        .and(warp::any())
-        .untuple_one()
-}
+// pub fn is_beta() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
+//     warp::cookie::cookie::<bool>("beta")
+//         .and_then(|beta: bool| async move {
+//             if beta {
+//                 Ok(())
+//             } else {
+//                 Err(warp::reject::reject())
+//             }
+//         })
+//         .and(warp::any())
+//         .untuple_one()
+// }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Bearer {

@@ -10,9 +10,6 @@ use crate::{
 
 #[function_component]
 pub fn BoardTitle() -> Html {
-    if *yew_hooks::use_local_storage::<bool>("verbose".to_owned()) == Some(true) {
-        gloo::console::log!(format!("Refreshing BoardTitle"))
-    }
     let board_ctx = use_route::<BaseRoute>();
     let nav = use_navigator();
     let api_ctx = use_context::<Option<ApiContext>>();
