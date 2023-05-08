@@ -1,3 +1,20 @@
 .board-page {
   width: 100%;
 }
+
+.randomized-banner-image {
+  display: inline-flex;
+  justify-content: center;
+  margin: 0.4em;
+}
+
+.randomized-banner-image img {
+  max-width: 800px;
+  max-height: 20vh;
+}
+
+.footer {
+  width: 100%;
+  display: inline-flex;
+  flex-direction: column;
+}

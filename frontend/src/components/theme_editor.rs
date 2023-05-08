@@ -118,11 +118,11 @@ pub fn ThemeEditor() -> Html {
                 }
             </div>
             <div class="settings-theme-reset">
-                <a href="#" onclick={reset_light}>{ if emojis.unwrap_or(true) { "☀️" } else { "Reset To Light Theme" } }</a>
+                <a onclick={reset_light}>{ if emojis.unwrap_or(true) { "☀️" } else { "Reset To Light Theme" } }</a>
                 <span>{" | "}</span>
-                <a href="#" onclick={reset_dark}>{ if emojis.unwrap_or(true) { "🌑" } else { "Reset To Dark Theme" } }</a>
+                <a  onclick={reset_dark}>{ if emojis.unwrap_or(true) { "🌑" } else { "Reset To Dark Theme" } }</a>
                 <span>{" | "}</span>
-                <a href="#" onclick={cycle_emoji}>{ emoji_cycle.string() }</a>
+                <a onclick={cycle_emoji}>{ emoji_cycle.string() }</a>
             </div>
         </div>
     }

@@ -58,28 +58,28 @@ pub fn DeleteButton(props: &Props) -> Html {
                 match *state {
                     DeleteState::Untouched => {
                         html! {
-                            <a href="#" onclick={on_click}>
+                            <a onclick={on_click}>
                                 {"🗑️"}
                             </a>
                         }
                     }
                     DeleteState::QuestionMark => {
                         html! {
-                            <a href="#" onclick={on_click}>
+                            <a onclick={on_click}>
                                 {"❓"}
                             </a>
                         }
                     }
                     DeleteState::Interrobang => {
                         html! {
-                            <a href="#" onclick={on_click}>
+                            <a onclick={on_click}>
                                 {"⁉️"}
                             </a>
                         }
                     }
                     DeleteState::ExclamationMark => {
                         html! {
-                            <a href="#" onclick={on_click}>
+                            <a onclick={on_click}>
                                 {"❗"}
                             </a>
                         }

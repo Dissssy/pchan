@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use serde::Deserialize;
 
@@ -64,14 +66,36 @@ pub struct ProfanityWord {
     pub severity_description: SeverityDescription,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum SeverityDescription {
     Mild,
     Severe,
     Strong,
 }
 
-#[derive(Deserialize, Debug, Clone, PartialEq)]
+impl PartialOrd for SeverityDescription {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for SeverityDescription {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        match (self, other) {
+            (Self::Mild, Self::Mild) => std::cmp::Ordering::Equal,
+            (Self::Mild, Self::Severe) => std::cmp::Ordering::Less,
+            (Self::Mild, Self::Strong) => std::cmp::Ordering::Less,
+            (Self::Severe, Self::Mild) => std::cmp::Ordering::Greater,
+            (Self::Severe, Self::Severe) => std::cmp::Ordering::Equal,
+            (Self::Severe, Self::Strong) => std::cmp::Ordering::Less,
+            (Self::Strong, Self::Mild) => std::cmp::Ordering::Greater,
+            (Self::Strong, Self::Severe) => std::cmp::Ordering::Greater,
+            (Self::Strong, Self::Strong) => std::cmp::Ordering::Equal,
+        }
+    }
+}
+
+#[derive(Deserialize, Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Category {
     #[serde(rename = "sexual anatomy / sexual acts")]
     SexualAnatomy,
@@ -95,4 +119,56 @@ pub enum Category {
     ReligiousOffense,
     #[serde(rename = "physical disability")]
     PhysicalDisability,
+}
+
+pub fn replace_possible_profanity<F>(string: String, profanity: &Profanity, f: F) -> String
+where
+    F: Fn() -> String,
+{
+    let scrunkly = profanity.check_profanity(&string);
+    let mut banned_categories = HashMap::new();
+    banned_categories.insert(Category::RacialSlurs, SeverityDescription::Mild);
+    banned_categories.insert(Category::SexualIdentity, SeverityDescription::Severe);
+
+    let mut orig_chars = string.chars().collect::<Vec<char>>();
+
+    for word in scrunkly {
+        let categories = vec![
+            Some(word.category), /* word.category_2, word.category_3 */
+        ];
+        if categories.iter().any(|x| {
+            if let Some(x) = &x {
+                banned_categories
+                    .get(x)
+                    .filter(|y| **y >= word.severity_description)
+                    .is_some()
+            } else {
+                false
+            }
+        }) {
+            let sequence = &word.word.chars().collect::<Vec<char>>();
+            // find every index of the sequence by iterating over windows of the chars vec
+            let lower_chars = orig_chars
+                .iter()
+                .collect::<String>()
+                .to_lowercase()
+                .chars()
+                .collect::<Vec<char>>();
+
+            let mut indices = Vec::new();
+            for (index, _) in lower_chars
+                .windows(sequence.len())
+                .enumerate()
+                .filter(|(_, stringy)| stringy == sequence)
+            {
+                indices.push(index);
+            }
+            // replace the range of indices with the replacement strings chars. WE NEED TO DO THIS FROM LARGEST TO SMALLEST OTHERWISE THE INDICES WILL BE WRONG
+            indices.sort_by(|a, b| b.cmp(a));
+            for index in indices {
+                orig_chars.splice(index..(index + sequence.len()), f().chars());
+            }
+        }
+    }
+    orig_chars.into_iter().collect::<String>()
 }

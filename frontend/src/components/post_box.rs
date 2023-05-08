@@ -165,7 +165,7 @@ pub fn PostBox() -> Html {
                 <div class={ if thread.is_some() { "post-box-floating" } else { "post-box-centered" } }>
                     <div class="post-box">
                         <div class="post-box-meta">
-                            <a href="#"
+                            <a
                                 onclick={ let opened = post.opened.clone(); Callback::from(move |e: MouseEvent| {e.prevent_default(); opened.set(!*opened)})}
                                 onmouseover={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(true)) }
                                 onmouseout={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(false)) }>
@@ -192,7 +192,7 @@ pub fn PostBox() -> Html {
                             <textarea value={(*post.content).clone()} placeholder={ format!("Content ({})",  if thread.is_some() { if post.file.is_none() { "Or File" } else { "Optional" } } else { "Optional" })} oninput={on_input_content} />
                         </div>
                         <div class="post-box-file" style={ if *post.opened { "" } else { "display: none;" } }>
-                            <a href="#" title="spoiler" onclick={on_click_spoiler.clone()}
+                            <a title="spoiler" onclick={on_click_spoiler.clone()}
                                 onmouseover={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(true)) }
                                 onmouseout={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(false)) }
                             >{ match (*post.spoiler, *spoiler_hovered) {
@@ -205,7 +205,7 @@ pub fn PostBox() -> Html {
                             <span>{format!("({})", if thread.is_some() { if post.content.is_empty() { "Or Content" } else { "Optional" } } else { "Required" })}</span>
                         </div>
                         <div class="post-box-submit" style={ if *post.opened { "" } else { "display: none;" } }>
-                            <a href="#" onclick={on_click.clone()}>{ if thread.is_some() { "Reply" } else { "Create Thread" } }</a>
+                            <a onclick={on_click.clone()}>{ if thread.is_some() { "Reply" } else { "Create Thread" } }</a>
                             {
                                 match &*state {
                                     ApiState::Pending => html! {},

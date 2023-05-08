@@ -137,6 +137,7 @@ pub fn BoardPage() -> Html {
                                 }
                             })
                         }
+                        <Footer />
                     </div>
                 </ContextProvider<Option<CallbackContext>>>
             </ContextProvider<CallbackEmitterContext>>

@@ -192,6 +192,8 @@
   border-right: var(--border-width) var(--border-type) var(--border-color);
   padding-inline: 0.4em;
   padding-block: 0.2em;
+  cursor: alias;
+  color: var(--secondary-text-color);
 }
 
 .post-timestamp {

@@ -442,7 +442,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     // GET /{discriminator}/banner - returns a random banner
 
-    let getbanner = warp::path!("api" / "v1" / String / "banner")
+    let getbanner = warp::path!("api" / "v1" / "board" / String / "banner")
         .and(warp::get())
         .and_then({
             |disc: String| async move {

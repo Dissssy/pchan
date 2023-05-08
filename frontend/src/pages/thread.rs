@@ -155,6 +155,7 @@ pub fn ThreadPage() -> Html {
                                 }
                             })
                         }
+                        <Footer />
                     </div>
                 </ContextProvider<Option<CallbackContext>>>
             </ContextProvider<CallbackEmitterContext>>

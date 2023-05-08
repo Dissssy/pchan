@@ -6,5 +6,6 @@ lazy_static::lazy_static!(
     pub static ref TOKEN_SALT: String = env!("TOKEN_SALT").to_owned();
     pub static ref KNOWN_SCRAPERS: Vec<&'static str> = vec!["Mozilla/5.0 (compatible; Discordbot/2.0; +https://discordapp.com)"];
     pub static ref BASE_THUMBNAIL: &'static [u8] = include_bytes!(env!("BASE_THUMBNAIL_PATH"));
+    pub static ref BASE_THUMBNAIL_LARGE: &'static [u8] = include_bytes!(env!("BASE_THUMBNAIL_LARGE_PATH"));
     pub static ref FONT: &'static [u8] = include_bytes!(env!("FONT_PATH"));
 );

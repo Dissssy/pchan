@@ -67,7 +67,7 @@ impl ThemeData {
             border_color: Color::Hex("#242424".to_string()),
             error_color: Color::Name("purple".to_string()),
             text_color: Color::Hex("#c5c8c6".to_string()),
-            secondary_text_color: Color::Hex("#000000".to_string()),
+            secondary_text_color: Color::Hex("#40dba0".to_string()),
             border_width: Size::Em(0.05),
             border_type: BorderType::Solid,
             link_color: Color::Hex("#2c7d31".to_string()),
@@ -76,7 +76,8 @@ impl ThemeData {
             post_link_invalid_color: Color::Hex("#e74c3c".to_string()),
             edge_padding: Size::Percent(2.0),
             animation_speed: Time::Ms(200.0),
-            border_radius: Size::Em(0.4),
+            // border_radius: Size::Em(0.4),
+            border_radius: Size::Em(0.3),
         }
     }
 
@@ -91,7 +92,7 @@ impl ThemeData {
             border_color: Color::Hex("#d9bfb7".to_string()),
             error_color: Color::Name("purple".to_string()),
             text_color: Color::Name("maroon".to_string()),
-            secondary_text_color: Color::Hex("#000000".to_string()),
+            secondary_text_color: Color::Hex("#d2830b".to_string()),
             border_width: Size::Em(0.05),
             border_type: BorderType::Solid,
             link_color: Color::Name("blue".to_string()),
@@ -100,7 +101,8 @@ impl ThemeData {
             post_link_invalid_color: Color::Hex("#e74c3c".to_string()),
             edge_padding: Size::Percent(2.0),
             animation_speed: Time::Ms(200.0),
-            border_radius: Size::Em(0.4),
+            // border_radius: Size::Em(0.4),
+            border_radius: Size::Em(0.3),
         }
     }
 

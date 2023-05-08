@@ -5,9 +5,9 @@ use std::{
 
 use async_lock::Mutex;
 use common::structs::{
-    BoardWithThreads, CreatePost, CreateThread, SafeBoard, SafePost, ThreadWithPosts,
+    Banner, BoardWithThreads, CreatePost, CreateThread, SafeBoard, SafePost, ThreadWithPosts,
 };
-use typemap::{Key, TypeMap};
+use typemap_ors::{Key, TypeMap};
 use wasm_timer::Instant;
 use yew::prelude::*;
 use yew_hooks::UseLocalStorageHandle;
@@ -70,8 +70,8 @@ impl Api {
         let mut cache = self.cache.lock().await;
         let v = {
             match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
-                typemap::Entry::Occupied(val) => val.into_mut(),
-                typemap::Entry::Vacant(hole) => {
+                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                typemap_ors::Entry::Vacant(hole) => {
                     hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                 }
             }
@@ -98,8 +98,8 @@ impl Api {
         let mut cache = self.cache.lock().await;
         let v = {
             match cache.entry::<CachedValue<BoardWithThreads>>() {
-                typemap::Entry::Occupied(val) => val.into_mut(),
-                typemap::Entry::Vacant(hole) => {
+                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                typemap_ors::Entry::Vacant(hole) => {
                     hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
                 }
             }
@@ -117,8 +117,8 @@ impl Api {
                 v.set(&ident, res.clone());
                 let p = {
                     match cache.entry::<CachedValue<SafePost>>() {
-                        typemap::Entry::Occupied(val) => val.into_mut(),
-                        typemap::Entry::Vacant(hole) => {
+                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                        typemap_ors::Entry::Vacant(hole) => {
                             hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
                         }
                     }
@@ -145,8 +145,8 @@ impl Api {
         let mut cache = self.cache.lock().await;
         let v = {
             match cache.entry::<CachedValue<ThreadWithPosts>>() {
-                typemap::Entry::Occupied(val) => val.into_mut(),
-                typemap::Entry::Vacant(hole) => {
+                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                typemap_ors::Entry::Vacant(hole) => {
                     hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
                 }
             }
@@ -163,8 +163,8 @@ impl Api {
                 v.set(&ident, res.clone());
                 let p = {
                     match cache.entry::<CachedValue<SafePost>>() {
-                        typemap::Entry::Occupied(val) => val.into_mut(),
-                        typemap::Entry::Vacant(hole) => {
+                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                        typemap_ors::Entry::Vacant(hole) => {
                             hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                         }
                     }
@@ -188,8 +188,8 @@ impl Api {
         let mut cache = self.cache.lock().await;
         let v = {
             match cache.entry::<CachedValue<SafePost>>() {
-                typemap::Entry::Occupied(val) => val.into_mut(),
-                typemap::Entry::Vacant(hole) => {
+                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                typemap_ors::Entry::Vacant(hole) => {
                     hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                 }
             }
@@ -255,8 +255,8 @@ impl Api {
                 let mut cache = self.cache.lock().await;
                 let v = {
                     match cache.entry::<CachedValue<BoardWithThreads>>() {
-                        typemap::Entry::Occupied(val) => val.into_mut(),
-                        typemap::Entry::Vacant(hole) => {
+                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                        typemap_ors::Entry::Vacant(hole) => {
                             hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                         }
                     }
@@ -286,8 +286,8 @@ impl Api {
                 let mut cache = self.cache.lock().await;
                 let v = {
                     match cache.entry::<CachedValue<ThreadWithPosts>>() {
-                        typemap::Entry::Occupied(val) => val.into_mut(),
-                        typemap::Entry::Vacant(hole) => {
+                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                        typemap_ors::Entry::Vacant(hole) => {
                             hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                         }
                     }
@@ -298,8 +298,8 @@ impl Api {
                 // invalidate board cache
                 let v = {
                     match cache.entry::<CachedValue<BoardWithThreads>>() {
-                        typemap::Entry::Occupied(val) => val.into_mut(),
-                        typemap::Entry::Vacant(hole) => {
+                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                        typemap_ors::Entry::Vacant(hole) => {
                             hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                         }
                     }
@@ -324,8 +324,8 @@ impl Api {
                 let mut cache = self.cache.lock().await;
                 let v = {
                     match cache.entry::<CachedValue<SafePost>>() {
-                        typemap::Entry::Occupied(val) => val.into_mut(),
-                        typemap::Entry::Vacant(hole) => {
+                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                        typemap_ors::Entry::Vacant(hole) => {
                             hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                         }
                     }
@@ -336,8 +336,8 @@ impl Api {
                 // remove thread from cache
                 let v = {
                     match cache.entry::<CachedValue<ThreadWithPosts>>() {
-                        typemap::Entry::Occupied(val) => val.into_mut(),
-                        typemap::Entry::Vacant(hole) => {
+                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                        typemap_ors::Entry::Vacant(hole) => {
                             hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                         }
                     }
@@ -348,8 +348,8 @@ impl Api {
                 // remove board from cache
                 let v = {
                     match cache.entry::<CachedValue<BoardWithThreads>>() {
-                        typemap::Entry::Occupied(val) => val.into_mut(),
-                        typemap::Entry::Vacant(hole) => {
+                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                        typemap_ors::Entry::Vacant(hole) => {
                             hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
                         }
                     }
@@ -364,6 +364,12 @@ impl Api {
                 .await;
         }
         res
+    }
+
+    pub async fn get_banner(&self, board: &str) -> Result<Banner, ApiError> {
+        let token = self.formatted_token();
+
+        board::get_banner(&token, board).await
     }
 }
 
@@ -437,6 +443,15 @@ impl<T> CachedValue<T> {
         // ));
         if let Some((instant, value)) = self.values.get(identifier) {
             if instant.elapsed() < self.ttl {
+                gloo::console::log!(format!(
+                    "retrieved \"{}\" for \"{}\" from cache",
+                    identifier,
+                    std::any::type_name::<T>()
+                        .split("::")
+                        .last()
+                        .unwrap_or("")
+                        .trim_end_matches('>')
+                ));
                 return Some(value);
             }
         }

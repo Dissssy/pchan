@@ -11,6 +11,7 @@ use diesel::ExpressionMethods;
 use diesel::PgArrayExpressionMethods;
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
+use profanity::replace_possible_profanity;
 use serde_json::json;
 use web_push::SubscriptionInfo;
 use web_push::VapidSignatureBuilder;
@@ -310,7 +311,9 @@ impl Database {
             return Err(anyhow::anyhow!("No topic provided"));
         }
 
-        thread.topic = replace_possible_profanity(thread.topic);
+        thread.topic = replace_possible_profanity(thread.topic, &crate::PROFANITY, || {
+            crate::QUOTES.random_quote()
+        });
 
         if thread.post.file.is_none() {
             return Err(anyhow::anyhow!("No file provided"));
@@ -369,8 +372,12 @@ impl Database {
             ));
         }
 
-        post.content = replace_possible_profanity(post.content);
-        post.author = post.author.map(replace_possible_profanity);
+        post.content = replace_possible_profanity(post.content, &crate::PROFANITY, || {
+            crate::QUOTES.random_quote()
+        });
+        post.author = post.author.map(|string| {
+            replace_possible_profanity(string, &crate::PROFANITY, || crate::QUOTES.random_quote())
+        });
         let this_post_number = Self::get_board(conn, discriminator.clone())
             .await?
             .post_count
@@ -690,17 +697,4 @@ impl Database {
         println!("Push notification sent!");
         Ok(())
     }
-}
-
-pub fn replace_possible_profanity(mut string: String) -> String {
-    let scrunkly = crate::PROFANITY.check_profanity(&string);
-    for word in scrunkly {
-        if word.category == profanity::Category::RacialSlurs
-            || word.category_2 == Some(profanity::Category::RacialSlurs)
-            || word.category_3 == Some(profanity::Category::RacialSlurs)
-        {
-            string = string.replace(&word.word, &crate::QUOTES.random_quote());
-        }
-    }
-    string
 }

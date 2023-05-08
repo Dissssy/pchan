@@ -13,7 +13,6 @@ impl UnclaimedFiles {
     }
 
     pub async fn add_file(&mut self, file: File, token: String) -> Result<String> {
-        println!("Adding file for token: {}", token);
         for _ in 0..3 {
             let id = nanoid::nanoid!(16);
             if let std::collections::hash_map::Entry::Vacant(e) = self.files.entry(token.clone()) {
@@ -31,7 +30,6 @@ impl UnclaimedFiles {
         token: String,
         is_thread_post: bool,
     ) -> Result<FileInfo> {
-        println!("Claiming file for token: {}", token);
         match self.files.remove(&token) {
             Some((tid, file, _)) => {
                 if tid != createfile.id {
@@ -92,14 +90,17 @@ impl UnclaimedFiles {
                         } else {
                             // FFMPEG failed to create thumbnail, manually create one with the file type printed over our default thumbnail
 
-                            let mut img =
-                                match image::load_from_memory(*crate::statics::BASE_THUMBNAIL) {
-                                    Ok(img) => img,
-                                    Err(e) => {
-                                        println!("Failed to load base thumbnail: {e:?}");
-                                        return Err(diskfilepath);
-                                    }
-                                };
+                            let mut img = match image::load_from_memory(if is_thread_post {
+                                *crate::statics::BASE_THUMBNAIL_LARGE
+                            } else {
+                                *crate::statics::BASE_THUMBNAIL
+                            }) {
+                                Ok(img) => img,
+                                Err(e) => {
+                                    println!("Failed to load base thumbnail: {e:?}");
+                                    return Err(diskfilepath);
+                                }
+                            };
 
                             let font = match rusttype::Font::try_from_vec(
                                 (*crate::statics::FONT).to_vec(),
@@ -111,14 +112,18 @@ impl UnclaimedFiles {
                                 }
                             };
 
-                            let scale = rusttype::Scale { x: 30.0, y: 30.0 };
+                            let scale = if is_thread_post {
+                                rusttype::Scale { x: 75.0, y: 75.0 }
+                            } else {
+                                rusttype::Scale { x: 30.0, y: 30.0 }
+                            };
 
                             // draw_text_mut(canvas, color, x, y, scale, font, text)
                             draw_text_mut(
                                 &mut img,
                                 image::Rgba([127, 127, 127, 255]),
-                                5,
-                                20,
+                                if is_thread_post { 13 } else { 5 },
+                                if is_thread_post { 50 } else { 20 },
                                 scale,
                                 &font,
                                 &ext,

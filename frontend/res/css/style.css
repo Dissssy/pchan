@@ -8,6 +8,11 @@
   transition: all var(--animation-speed);
 } */
 
+a:not([href]) {
+  cursor: pointer;
+  color: var(--link-color);
+}
+
 .valign {
   margin: 0;
   position: absolute;
