@@ -12,8 +12,12 @@ pub fn Settings() -> Html {
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             if let Some(the) = token.as_ref() {
-                #[cfg(web_sys_unstable_apis)]
-                web_sys::Clipboard::write_with_string(the).unwrap();
+                let _ = web_sys::window()
+                    .unwrap()
+                    .navigator()
+                    .clipboard()
+                    .unwrap()
+                    .write_text(the);
             }
         })
     };

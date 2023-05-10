@@ -88,7 +88,7 @@ pub fn ThemeEditor() -> Html {
                     if *refresh_val {
                         html! {
                                 <>
-                                    <ColorEditor label="Primary Color" field="primary_color" position={Position::First}/>
+                                    <ColorEditor label="Primary Color" field="primary_color" position={Position::First} />
                                     <ColorEditor label="Secondary Color" field="secondary_color" />
                                     <ColorEditor label="Border Color" field="border_color" />
                                     <ColorEditor label="Text Color" field="text_color" />
@@ -97,7 +97,7 @@ pub fn ThemeEditor() -> Html {
                                     <ColorEditor label="Bluetext Color" field="bluetext_color" />
                                     <ColorEditor label="Peetext Color" field="peetext_color" />
                                     <ColorEditor label="Topic Color" field="topic_color" />
-                                    <ColorEditor label="Error Color" field="error_color" />
+                                    <ColorEditor label="Error Color" field="error_color" position={Position::Last} />
                                     //<SizeEditor label="Border Width" field="border_width" />
                                     //<BorderTypeEditor label="Border Type" field="border_type" />
                                     // <ColorEditor label="Post Link Valid Color" field="post_link_valid_color" />
