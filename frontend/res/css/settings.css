@@ -50,6 +50,7 @@
 .settings-theme-color-editors {
   display: inline-flex;
   flex-direction: column;
+  width: 100%;
 }
 
 .color-editor {
@@ -68,16 +69,12 @@
   width: 100%;
 }
 
-.hex-or-text-dropdown {
-  margin-right: 0px;
-  margin-left: auto;
-}
-
 .hex-color-input {
   width: 5em;
   height: 1.55em;
   border-width: 0px;
-  margin-left: 0.2em;
+  margin-left: auto;
+  box-sizing: border-box;
   border: none;
 }
 

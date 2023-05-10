@@ -76,7 +76,6 @@ impl ThemeData {
             post_link_invalid_color: Color::Hex("#e74c3c".to_string()),
             edge_padding: Size::Percent(2.0),
             animation_speed: Time::Ms(200.0),
-            // border_radius: Size::Em(0.4),
             border_radius: Size::Em(0.3),
         }
     }
@@ -101,7 +100,6 @@ impl ThemeData {
             post_link_invalid_color: Color::Hex("#e74c3c".to_string()),
             edge_padding: Size::Percent(2.0),
             animation_speed: Time::Ms(200.0),
-            // border_radius: Size::Em(0.4),
             border_radius: Size::Em(0.3),
         }
     }

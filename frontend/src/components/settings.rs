@@ -1,10 +1,8 @@
-use crate::{pages::Settings, theme_data::ThemeData};
+use crate::{pages::Settings, ThemeData};
 use yew::prelude::*;
 
 #[function_component]
 pub fn SettingsButton() -> Html {
-    let current_theme = use_context::<UseStateHandle<Option<ThemeData>>>();
-
     let popup = use_state(|| false);
 
     let on_click = {
@@ -14,6 +12,8 @@ pub fn SettingsButton() -> Html {
             popup.set(!*popup);
         })
     };
+
+    let theme = use_context::<ThemeData>();
 
     html! {
         <div class="toggle-theme">
@@ -43,7 +43,7 @@ pub fn SettingsButton() -> Html {
                     :root {{
                         {}
                     }}
-                    ", current_theme.as_ref().and_then(|theme| theme.as_ref().map(|theme| theme.to_css_str())).unwrap_or_default())
+                    ", theme.as_ref().map(|theme| theme.css()).unwrap_or_default())
                 }
             </style>
         </div>
