@@ -5,7 +5,7 @@ use yew_router::prelude::*;
 use crate::{
     api::ApiState,
     components::*,
-    helpers::{CallbackContext, CallbackEmitterContext, SuccessfulPostContext},
+    helpers::{SuccessfulPostContext},
     ApiContext, BaseRoute,
 };
 
@@ -99,17 +99,6 @@ pub fn ThreadPage() -> Html {
         );
     }
 
-    let add_text_callback = use_state(|| None);
-
-    let set_add_text_callback = {
-        let add_text_callback = add_text_callback.clone();
-        CallbackEmitterContext {
-            callback: Callback::from(move |callback: Callback<common::structs::Reply>| {
-                add_text_callback.set(Some(CallbackContext { callback }));
-            }),
-        }
-    };
-
     let on_successful_post = {
         let manual_refresh_callback = manual_refresh_callback;
         let scroll_to_bottom = scroll_to_bottom;
@@ -127,38 +116,34 @@ pub fn ThreadPage() -> Html {
 
     html! {
         <ContextProvider<SuccessfulPostContext> context={on_successful_post}>
-            <ContextProvider<CallbackEmitterContext> context={set_add_text_callback}>
-                <ContextProvider<Option<CallbackContext>> context={(*add_text_callback).clone()}>
-                    <div class={"thread-page"}>
-                        <Header />
-                        {
-                            thread.standard_html("ThreadPage", |thread| {
-                                html! {
-                                    <div class={"thread-page-threads"}>
-                                        <Thread thread={thread.clone()} />
-                                    </div>
-                                }
-                            }).unwrap_or_else(|e| {
-                                match nav {
-                                    Some(nav) => {
-                                        nav.replace(&BaseRoute::NotFound);
-                                    }
-                                    None => {
-                                        gloo::console::error!("Failed to navigate to /404");
-                                    }
-                                }
-                                html! {
-                                    <div class={"thread-page-error"}>
-                                        <h1>{"Error"}</h1>
-                                        <p>{format!("{e:?}")}</p>
-                                    </div>
-                                }
-                            })
+            <div class={"thread-page"}>
+                <Header />
+                {
+                    thread.standard_html("ThreadPage", |thread| {
+                        html! {
+                            <div class={"thread-page-threads"}>
+                                <Thread thread={thread.clone()} />
+                            </div>
                         }
-                        <Footer />
-                    </div>
-                </ContextProvider<Option<CallbackContext>>>
-            </ContextProvider<CallbackEmitterContext>>
+                    }).unwrap_or_else(|e| {
+                        match nav {
+                            Some(nav) => {
+                                nav.replace(&BaseRoute::NotFound);
+                            }
+                            None => {
+                                gloo::console::error!("Failed to navigate to /404");
+                            }
+                        }
+                        html! {
+                            <div class={"thread-page-error"}>
+                                <h1>{"Error"}</h1>
+                                <p>{format!("{e:?}")}</p>
+                            </div>
+                        }
+                    })
+                }
+                <Footer />
+            </div>
         </ContextProvider<SuccessfulPostContext>>
     }
 }

@@ -1,3 +1,5 @@
+use std::fmt::{Display, Formatter};
+
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
 
@@ -51,10 +53,52 @@ pub struct SafePost {
     pub file: Option<FileInfo>,
     pub thread_post_number: i64,
     pub board_discriminator: String,
-    pub author: Option<String>,
+    pub author: User,
     pub content: String,
     pub timestamp: String,
     pub replies: Vec<Reply>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum User {
+    Anonymous,
+    Named(String),
+    Mod(String),
+}
+
+impl From<Option<String>> for User {
+    fn from(s: Option<String>) -> Self {
+        match s {
+            Some(s) => {
+                let split = s
+                    .trim()
+                    .split(env!("SUPER_SECRET_MOD_USERNAME"))
+                    .collect::<Vec<&str>>();
+                if split.len() > 1 {
+                    let finale = split.join("");
+                    let finale = finale.trim();
+                    if finale.is_empty() {
+                        Self::Mod(finale.to_string())
+                    } else {
+                        Self::Mod("Anonymous".to_string())
+                    }
+                } else {
+                    Self::Named(s)
+                }
+            }
+            None => Self::Anonymous,
+        }
+    }
+}
+
+impl Display for User {
+    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Anonymous => write!(f, "Anonymous"),
+            Self::Named(s) => write!(f, "{}", s),
+            Self::Mod(s) => write!(f, "{} <MOD>", s),
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

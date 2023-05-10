@@ -657,7 +657,7 @@ impl Database {
 
             let payload = serde_json::to_string(&json!({
                 "title": "New post in a thread you're watching!",
-                "body": &format!("{}: {}", post.author.unwrap_or("Anonymous".to_owned()), post.content),
+                "body": &format!("{}: {}", post.author, post.content),
             })).unwrap();
 
             for (token, user) in users {

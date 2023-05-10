@@ -25,7 +25,7 @@ pub fn SettingsButton() -> Html {
                             <div class="popup-blur" id="ignore-transition" onclick={on_click.clone()}/>
                             <div class="popup" id="ignore-transition">
                                 <div class="popup-content">
-                                    <a href="/" class="popup-close-button" onclick={on_click.clone()}>{"❌"}</a>
+                                    <a href="/" class="popup-close-button" onclick={on_click.clone()}>{"󱧼"}</a>
                                     <Settings />
                                 </div>
                             </div>
@@ -34,7 +34,7 @@ pub fn SettingsButton() -> Html {
                 } else {
                     // show the <Settings /> component as a link
                     html! {
-                        <a href="/settings" onclick={on_click} >{"⚙️"}</a>
+                        <a href="/settings" onclick={on_click} >{"󱧽"}</a>
                     }
                 }
             }

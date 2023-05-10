@@ -153,7 +153,7 @@ fn switch(routes: BaseRoute) -> Html {
             }
         }
         BaseRoute::NotFound => html! {
-            {"404"}
+            <pages::NotFound />
         },
     }
 }

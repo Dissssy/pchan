@@ -6,8 +6,8 @@ use yew_router::prelude::*;
 
 use crate::{
     api::Api,
-    components::{ContextError, Post, Spinner},
-    ApiContext, BaseRoute,
+    components::{ContextError, Post, Spinner, PostBox},
+    ApiContext, BaseRoute, helpers::{CallbackEmitterContext, CallbackContext},
 };
 
 #[function_component]
@@ -15,6 +15,17 @@ pub fn Thread(props: &Props) -> Html {
     let api_ctx = use_context::<Option<ApiContext>>().flatten();
     let pending = use_state(|| false);
     let state = use_state(|| props.thread.clone_with_handle(pending.clone()));
+    
+    let add_text_callback = use_state(|| None);
+
+    let set_add_text_callback = {
+        let add_text_callback = add_text_callback.clone();
+        CallbackEmitterContext {
+            callback: Callback::from(move |callback: Callback<common::structs::Reply>| {
+                add_text_callback.set(Some(CallbackContext { callback }));
+            }),
+        }
+    };
 
     if let Some(board_discriminator) =
         use_route::<BaseRoute>().and_then(|r| r.board_discriminator())
@@ -45,37 +56,44 @@ pub fn Thread(props: &Props) -> Html {
                 })
             };
 
+            
+
             html! {
-                <div class="thread-view">
-                    <Post post={state.parent_post().clone()} topic={ state.topic() } />
-                    {
-                        if let Some(text) = state.button_text() {
-                            html! {
-                                <div class="thread-view-expand-button">
-                                    <a href={format!("/{}/{}", board_discriminator, state.parent_post().post_number)} onclick={expand} disabled={state.pending()}>{ text }</a>
-                                    {
-                                        if state.pending() {
-                                            html! {
-                                                <Spinner />
+                <ContextProvider<CallbackEmitterContext> context={set_add_text_callback}>
+                    <ContextProvider<Option<CallbackContext>> context={(*add_text_callback).clone()}>
+                        <div class="thread-view">
+                            <PostBox override_thread={props.thread.parent_post().thread_post_number.to_string()}/>
+                            <Post post={state.parent_post().clone()} topic={ state.topic() } />
+                            {
+                                if let Some(text) = state.button_text() {
+                                    html! {
+                                        <div class="thread-view-expand-button">
+                                            <a href={format!("/{}/{}", board_discriminator, state.parent_post().post_number)} onclick={expand} disabled={state.pending()}>{ text }</a>
+                                            {
+                                                if state.pending() {
+                                                    html! {
+                                                        <Spinner />
+                                                    }
+                                                } else {
+                                                    html! {}
+                                                }
                                             }
-                                        } else {
-                                            html! {}
-                                        }
+                                        </div>
                                     }
-                                </div>
+                                } else {
+                                    html! {}
+                                }
                             }
-                        } else {
-                            html! {}
-                        }
-                    }
-                    {
-                        for state.posts().iter().map(|post| {
-                            html! {
-                                <Post post={post.clone()} />
+                            {
+                                for state.posts().iter().map(|post| {
+                                    html! {
+                                        <Post post={post.clone()} />
+                                    }
+                                })
                             }
-                        })
-                    }
-                </div>
+                        </div>
+                    </ContextProvider<Option<CallbackContext>>>
+                </ContextProvider<CallbackEmitterContext>>
             }
         } else {
             html! {
@@ -158,6 +176,13 @@ impl ThreadState {
         match self {
             ThreadState::Expandable(thread) => thread.thread.topic.clone(),
             ThreadState::Full(thread) => thread.topic.clone(),
+        }
+    }
+
+    pub fn show_post_box(&self) -> bool {
+        match self {
+            ThreadState::Expandable(_) => true,
+            ThreadState::Full(_) => false,
         }
     }
 

@@ -11,10 +11,20 @@ use crate::{
 };
 
 #[function_component]
-pub fn PostBox() -> Html {
+pub fn PostBox(props: &Props) -> Html {
     let possible_name = use_local_storage::<String>("name".to_string());
-    let routeinfo =
-        use_route::<BaseRoute>().map(|route| (route.board_discriminator(), route.thread_id()));
+    let routeinfo = use_route::<BaseRoute>().map(|route| {
+        (
+            route.board_discriminator(),
+            match route.thread_id() {
+                Some(id) => ThreadType::RealThread(id),
+                None => match &props.override_thread {
+                    Some(id) => ThreadType::FakeThread(id.clone()),
+                    None => ThreadType::None,
+                },
+            },
+        )
+    });
     let api_ctx = use_context::<Option<ApiContext>>().flatten();
 
     let show_box = use_state(|| false);
@@ -78,7 +88,7 @@ pub fn PostBox() -> Html {
                         file,
                     };
 
-                    match match routeinfo {
+                    match match routeinfo.map(|(board, thread)| (board, thread.id())) {
                         None => {
                             state.set(ApiState::ContextError("BaseRoute".to_string()));
                             return;
@@ -162,14 +172,14 @@ pub fn PostBox() -> Html {
     match routeinfo {
         Some((Some(_), thread)) => {
             html! {
-                <div class={ if thread.is_some() { "post-box-floating" } else { "post-box-centered" } }>
+                <div class={thread.class()}>
                     <div class="post-box">
                         <div class="post-box-meta">
                             <a
                                 onclick={ let opened = post.opened.clone(); Callback::from(move |e: MouseEvent| {e.prevent_default(); opened.set(!*opened)})}
                                 onmouseover={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(true)) }
                                 onmouseout={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(false)) }>
-                                { if *post.opened { if *open_hovered { if emojis { "🔑" } else { "Open" } } else if emojis { "🔒" } else { "Open" } } else if *close_hovered { if emojis { "🔐" } else { "Cloes" } } else if emojis { "🔓" } else { "Close" } }
+                                { if *post.opened { if *open_hovered { if emojis { "󱀈" } else { "Open" } } else if emojis { "󱀈" } else { "Open" } } else if *close_hovered { if emojis { "󱀉" } else { "Cloes" } } else if emojis { "󱀉" } else { "Close" } }
                             </a>
                             <div class="post-box-meta-inputs" style={ if *post.opened { "" } else { "display: none;" } }>
                                 <div class="post-box-name" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
@@ -196,10 +206,10 @@ pub fn PostBox() -> Html {
                                 onmouseover={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(true)) }
                                 onmouseout={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(false)) }
                             >{ match (*post.spoiler, *spoiler_hovered) {
-                                ( true,  true) => if emojis { "❎" } else { "UnSpoiler" }, // file is spoilered and also currently hovered
-                                ( true, false) => if emojis { "✅" } else { "UnSpoiler" }, // file is spoilered but not hovered
-                                (false,  true) => if emojis { "❎" } else { "Spoiler" }, // file is not spoilered but hovered
-                                (false, false) => if emojis { "🟩" } else { "Spoiler" }, // file is not spoilered and not hovered
+                                ( true,  true) => if emojis { "󰀨" } else { "UnSpoiler" }, // file is spoilered and also currently hovered
+                                ( true, false) => if emojis { "󰀨" } else { "UnSpoiler" }, // file is spoilered but not hovered
+                                (false,  true) => if emojis { "" } else { "Spoiler" }, // file is not spoilered but hovered
+                                (false, false) => if emojis { "" } else { "Spoiler" }, // file is not spoilered and not hovered
                             } }</a>
                             <input type="file" onchange={on_change_file} />
                             <span>{format!("({})", if thread.is_some() { if post.content.is_empty() { "Or Content" } else { "Optional" } } else { "Required" })}</span>
@@ -230,6 +240,11 @@ pub fn PostBox() -> Html {
             }
         }
     }
+}
+
+#[derive(Clone, PartialEq, Properties)]
+pub struct Props {
+    pub override_thread: Option<String>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -298,5 +313,43 @@ impl CreatePostInfo {
         self.content.set("".to_string());
         self.file.set(None);
         self.spoiler.set(false);
+    }
+}
+
+#[derive(Clone, PartialEq)]
+enum ThreadType {
+    RealThread(String),
+    FakeThread(String),
+    None,
+}
+
+impl ThreadType {
+    pub fn id(&self) -> Option<String> {
+        match self {
+            ThreadType::RealThread(id) => Some(id.clone()),
+            ThreadType::FakeThread(id) => Some(id.clone()),
+            ThreadType::None => None,
+        }
+    }
+    pub fn is_some(&self) -> bool {
+        match self {
+            ThreadType::RealThread(_) => true,
+            ThreadType::FakeThread(_) => true,
+            ThreadType::None => false,
+        }
+    }
+    pub fn is_none(&self) -> bool {
+        match self {
+            ThreadType::RealThread(_) => false,
+            ThreadType::FakeThread(_) => false,
+            ThreadType::None => true,
+        }
+    }
+    pub fn class(&self) -> String {
+        match self {
+            ThreadType::RealThread(_) => "post-box-floating".to_string(),
+            ThreadType::FakeThread(_) => "post-box-inline".to_string(),
+            ThreadType::None => "post-box-centered".to_string(),
+        }
     }
 }

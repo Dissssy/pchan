@@ -115,17 +115,17 @@ pub fn File(props: &Props) -> Html {
                         {
                             match *file_state {
                                 HoveredOrExpandedState::None => {
-                                    (if emojis { "📁" } else { "Expand" }).to_owned()
+                                    (if emojis { "" } else { "Expand" }).to_owned()
                                 }
                                 HoveredOrExpandedState::Hovered {
                                     x: _,
                                     y: _,
                                     offset: _,
                                 } => {
-                                    (if emojis { "📂" } else { "Hovered" }).to_owned()
+                                    (if emojis { "" } else { "Hovered" }).to_owned()
                                 }
                                 HoveredOrExpandedState::Expanded { x: _, y: _, offset: _ } => {
-                                    (if emojis { "📄" } else { "Expanded" }).to_owned()
+                                    (if emojis { "" } else { "Expanded" }).to_owned()
                                 }
                             }
                             // if !(*file_state == HoveredOrExpandedState::None)  {
@@ -137,7 +137,7 @@ pub fn File(props: &Props) -> Html {
                     </a>
                 </span>
                 <span class="post-hash" title={format!("Hash: {}", props.file.hash.clone())}>
-                    { if emojis { "#️⃣" } else { "Hash" }}
+                    { if emojis { "" } else { "Hash" }}
                 </span>
                 {
                     if props.file.path.contains("/audio/") || props.file.path.contains("/video/") {
@@ -145,8 +145,8 @@ pub fn File(props: &Props) -> Html {
                             <span class="might-have-sound-indicator" >
                                 {
                                     match (emojis, props.file.path.contains("/audio/")) {
-                                        (true, true) => "🔊",
-                                        (true, false) => "🎥",
+                                        (true, true) => "",
+                                        (true, false) => "󰸬",
                                         (false, true) => "Audio",
                                         (false, false) => "Video",
                                     }

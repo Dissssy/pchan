@@ -33,6 +33,7 @@ lazy_static::lazy_static! {
     pub static ref MANUAL_FILE_TRIM: Arc<Mutex<bool>> = Arc::new(Mutex::new(false));
     pub static ref FS_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
     pub static ref QUOTES: Arc<Quotes> = Arc::new(Quotes::load("./quotes.txt".to_string()).expect("Failed to load quotes"));
+    pub static ref RATELIMIT: Arc<Mutex<HashMap<String, tokio::time::Instant>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
 #[derive(Clone, Debug)]
@@ -126,6 +127,8 @@ async fn main() {
     let routes = endpoints::other_endpoints()
         .or(endpoints::api::priveleged_api_endpoints())
         .or(filters::valid_token()
+            .map(|_| { /*println!("valid token");*/ })
+            .untuple_one()
             .and(endpoints::api::api_endpoints().or(root))
             .or(unauthorized)
             .or(manifest)

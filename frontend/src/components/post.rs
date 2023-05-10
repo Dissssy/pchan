@@ -1,4 +1,4 @@
-use common::structs::SafePost;
+use common::structs::{SafePost, User};
 use yew::prelude::*;
 use yew_router::prelude::use_route;
 
@@ -63,7 +63,11 @@ pub fn Post(props: &Props) -> Html {
             <div class={ if props.topic.is_some() { "parent-post" } else { "post" } } id={ if props.invert { "invert" } else { "normal" }} >
                 <div class="post-header">
                     <DeleteButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
-                    <span class="post-author">{ props.post.author.clone().unwrap_or("Anonymous".to_string()) }</span>
+                    <span class="post-author">{ match &props.post.author {
+                        User::Anonymous => { html! { <>{"Anonymous"}</> } }
+                        User::Named(name) => { html! { <>{name}</> } }
+                        User::Mod(name) => { html! { <span class="post-author-admin">{format!("{} ## MOD", name)}</span> } }
+                    } }</span>
                     {
                         if let Some(on_click) = &*on_click {
                             html! {

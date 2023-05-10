@@ -90,19 +90,19 @@ pub fn ThemeEditor() -> Html {
                                 <>
                                     <ColorEditor label="Primary Color" field="primary_color" position={Position::First}/>
                                     <ColorEditor label="Secondary Color" field="secondary_color" />
-                                    <ColorEditor label="Topic Color" field="topic_color" />
-                                    <ColorEditor label="Bluetext Color" field="bluetext_color" />
-                                    <ColorEditor label="Peetext Color" field="peetext_color" />
                                     <ColorEditor label="Border Color" field="border_color" />
-                                    <ColorEditor label="Error Color" field="error_color" />
                                     <ColorEditor label="Text Color" field="text_color" />
                                     <ColorEditor label="Secondary Text Color" field="secondary_text_color" />
+                                    <ColorEditor label="Link Color" field="link_color" />
+                                    <ColorEditor label="Bluetext Color" field="bluetext_color" />
+                                    <ColorEditor label="Peetext Color" field="peetext_color" />
+                                    <ColorEditor label="Topic Color" field="topic_color" />
+                                    <ColorEditor label="Error Color" field="error_color" />
                                     //<SizeEditor label="Border Width" field="border_width" />
                                     //<BorderTypeEditor label="Border Type" field="border_type" />
-                                    <ColorEditor label="Link Color" field="link_color" />
-                                    <ColorEditor label="Post Link Valid Color" field="post_link_valid_color" />
-                                    <ColorEditor label="Post Link Unloaded Color" field="post_link_unloaded_color" />
-                                    <ColorEditor label="Post Link Invalid Color" field="post_link_invalid_color" position={Position::Last}/>
+                                    // <ColorEditor label="Post Link Valid Color" field="post_link_valid_color" />
+                                    // <ColorEditor label="Post Link Unloaded Color" field="post_link_unloaded_color" />
+                                    // <ColorEditor label="Post Link Invalid Color" field="post_link_invalid_color" position={Position::Last}/>
                                     //<SizeEditor label="Edge Padding" field="edge_padding" />
                                     //<TimeEditor label="Animation Speed" field="animation_speed" />
                                     //<SizeEditor label="Border Radius" field="border_radius" />
@@ -118,9 +118,9 @@ pub fn ThemeEditor() -> Html {
                 }
             </div>
             <div class="settings-theme-reset">
-                <a onclick={reset_light}>{ if emojis.unwrap_or(true) { "☀️" } else { "Reset To Light Theme" } }</a>
+                <a onclick={reset_light}>{ if emojis.unwrap_or(true) { "" } else { "Reset To Light Theme" } }</a>
                 <span>{" | "}</span>
-                <a  onclick={reset_dark}>{ if emojis.unwrap_or(true) { "🌑" } else { "Reset To Dark Theme" } }</a>
+                <a  onclick={reset_dark}>{ if emojis.unwrap_or(true) { "" } else { "Reset To Dark Theme" } }</a>
                 <span>{" | "}</span>
                 <a onclick={cycle_emoji}>{ emoji_cycle.string() }</a>
             </div>
@@ -178,15 +178,15 @@ impl EmojiState {
 
     pub fn string(&self) -> &'static str {
         match self {
-            EmojiState::Enabled => "👍",
-            EmojiState::Conf1 => "🤔",
-            EmojiState::Conf2 => "😬",
-            EmojiState::Conf3 => "😳",
-            EmojiState::Conf4 => "😨",
-            EmojiState::Conf5 => "😱",
-            EmojiState::Conf6 => "🤢",
-            EmojiState::Conf7 => "🤮",
-            EmojiState::Conf8 => "😵",
+            EmojiState::Enabled => "",
+            EmojiState::Conf1 => "",
+            EmojiState::Conf2 => "",
+            EmojiState::Conf3 => "",
+            EmojiState::Conf4 => "",
+            EmojiState::Conf5 => "",
+            EmojiState::Conf6 => "",
+            EmojiState::Conf7 => "󰞧",
+            EmojiState::Conf8 => "󰮢󰮢󰮢󰮢󰮢󰮢",
             EmojiState::Disabled => "Emojis Disabled",
         }
     }

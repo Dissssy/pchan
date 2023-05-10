@@ -1,9 +1,9 @@
-use crate::filters::Bearer;
+use crate::filters::{Bearer, Ratelimited};
 use crate::unclaimedfiles::File;
 use common::structs::{CreatePost, CreateThread, FileInfo, SafeBoard};
 use common::{hash_with_salt, structs::CreateBoard};
 use serde::{Deserialize, Serialize};
-use warp::Filter;
+use warp::{Filter, Rejection};
 
 use crate::filters::priveleged_endpoint;
 
@@ -462,18 +462,6 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    // GET /from_token_to_internal_id/{token} - hashes {token} with the TOKEN_SALT and returns it
-
-    let getinternalid = warp::path!("api" / "v1" / "from_token_to_internal_id" / String)
-        .and(warp::get())
-        .and_then({
-            |token: String| async move {
-                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                    &common::hash_with_salt(&token, &crate::statics::TOKEN_SALT),
-                ))
-            }
-        });
-
     // POST /subscribe - sets the user's push notification url
 
     let subscribble = warp::path!("api" / "v1" / "subscribe")
@@ -499,18 +487,34 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    getpost
-        .or(subscribble)
-        .or(getinternalid)
-        .or(getbanner)
-        .or(deletepost)
-        .or(postinthread)
-        .or(getthread)
-        .or(postthread)
-        .or(getboard)
-        .or(getboards)
-        .or(uploadfile)
-        .or(gettoken)
+    crate::filters::ratelimit()
+        .and(
+            getpost
+                .or(subscribble)
+                .or(getbanner)
+                .or(deletepost)
+                .or(postinthread)
+                .or(getthread)
+                .or(postthread)
+                .or(getboard)
+                .or(getboards)
+                .or(uploadfile)
+                .or(gettoken),
+        )
+        .recover(|err: Rejection| async move {
+            if let Some(r) = err.find::<Ratelimited>() {
+                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&format!(
+                    "You are being ratelimited. Try again in {} seconds.",
+                    r.seconds
+                )))
+            } else if err.is_not_found() {
+                return Err(err);
+            } else {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &format!("Internal server error: {:?}", err),
+                ));
+            }
+        })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

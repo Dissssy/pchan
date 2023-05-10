@@ -31,3 +31,11 @@
 .thread-view-expand-button a:link, .thread-view-expand-button a:visited {
   color: var(--primary-color);
 }
+
+.post-box-inline {
+  float: right;
+}
+
+.post-box-inline .post-box-meta {
+  flex-direction: row-reverse;
+}

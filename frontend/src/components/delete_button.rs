@@ -59,45 +59,45 @@ pub fn DeleteButton(props: &Props) -> Html {
                     DeleteState::Untouched => {
                         html! {
                             <a onclick={on_click}>
-                                {"🗑️"}
+                                {""}
                             </a>
                         }
                     }
                     DeleteState::QuestionMark => {
                         html! {
                             <a onclick={on_click}>
-                                {"❓"}
+                                {"󱈸"}
                             </a>
                         }
                     }
                     DeleteState::Interrobang => {
                         html! {
                             <a onclick={on_click}>
-                                {"⁉️"}
+                                {""}
                             </a>
                         }
                     }
                     DeleteState::ExclamationMark => {
                         html! {
                             <a onclick={on_click}>
-                                {"❗"}
+                                {""}
                             </a>
                         }
                     }
                     DeleteState::Pending => {
                         html! {
-                            <>{"⏳"}</>
+                            <>{""}</>
                         }
                     }
                     DeleteState::Complete(None) => {
                         html! {
-                            <>{"✅"}</>
+                            <>{""}</>
                         }
                     }
                     DeleteState::Complete(Some(ref err)) => {
                         html! {
                             <span title={err.clone()}>
-                                {"❌"}
+                                {""}
                             </span>
                         }
                     }

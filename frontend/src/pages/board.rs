@@ -5,7 +5,7 @@ use yew_router::prelude::*;
 use crate::{
     api::ApiState,
     components::*,
-    helpers::{CallbackContext, CallbackEmitterContext, SuccessfulPostContext},
+    helpers::{SuccessfulPostContext},
     ApiContext, BaseRoute,
 };
 
@@ -74,24 +74,13 @@ pub fn BoardPage() -> Html {
     //     None
     // };
 
-    let add_text_callback = use_state(|| None);
-
-    let set_add_text_callback = {
-        let add_text_callback = add_text_callback.clone();
-        CallbackEmitterContext {
-            callback: Callback::from(move |callback: Callback<common::structs::Reply>| {
-                add_text_callback.set(Some(CallbackContext { callback }));
-            }),
-        }
-    };
-
     let successful_post = {
         let nav = nav.clone();
 
         SuccessfulPostContext {
             callback: Callback::from(move |p: SafePost| {
                 if let Some(nav) = &nav {
-                    nav.replace(&BaseRoute::ThreadPage {
+                    nav.push(&BaseRoute::ThreadPage {
                         board_discriminator: p.board_discriminator.clone(),
                         thread_id: p.thread_post_number.to_string(),
                     });
@@ -103,8 +92,8 @@ pub fn BoardPage() -> Html {
     html! {
         // <ContextProvider<Option<CallbackContext>> context={callback}>
         <ContextProvider<SuccessfulPostContext> context={successful_post}>
-            <ContextProvider<CallbackEmitterContext> context={set_add_text_callback}>
-                <ContextProvider<Option<CallbackContext>> context={(*add_text_callback).clone()}>
+            // <ContextProvider<CallbackEmitterContext> context={set_add_text_callback}>
+            //     <ContextProvider<Option<CallbackContext>> context={(*add_text_callback).clone()}>
                     <div class={"board-page"}>
                         <Header />
                         {
@@ -139,8 +128,8 @@ pub fn BoardPage() -> Html {
                         }
                         <Footer />
                     </div>
-                </ContextProvider<Option<CallbackContext>>>
-            </ContextProvider<CallbackEmitterContext>>
+            //     </ContextProvider<Option<CallbackContext>>>
+            // </ContextProvider<CallbackEmitterContext>>
         </ContextProvider<SuccessfulPostContext>>
         // </ContextProvider<Option<CallbackContext>>>
     }

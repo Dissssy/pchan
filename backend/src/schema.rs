@@ -212,7 +212,7 @@ impl Post {
             file: t?,
             thread_post_number: thread_post_number(self.thread, conn).await?,
             board_discriminator: board_discrim,
-            author: self.author.clone(),
+            author: self.author.clone().into(),
             content: self.content.clone(),
             timestamp: format!("{}", self.timestamp),
             replies: newreplies,

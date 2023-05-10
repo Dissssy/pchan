@@ -1,7 +1,7 @@
 .post, .parent-post {
   border-radius: var(--border-radius);
-  width: min-content;
   height: min-content;
+  width: fit-content;
   display: flow-root;
 }
 
@@ -12,6 +12,7 @@
 
 .parent-post .post-header {
   border-radius: var(--border-radius);
+  width: min-content;
 }
 
 .post-media-video {
@@ -30,16 +31,16 @@
 }
 
 .post-body {
-  display: inline-flex;
-  flex-direction: column;
+  display: block;
   padding: 0.25em;
+  border-radius: 0 0 var(--border-radius) var(--border-radius);
+  width: fit-content;
+  width: 100%;
   border-left: var(--border-width) var(--border-type) var(--border-color);
   border-bottom: var(--border-width) var(--border-type) var(--border-color);
   border-right: var(--border-width) var(--border-type) var(--border-color);
-  border-radius: 0 0 var(--border-radius) var(--border-radius);
-  width: -moz-available;
-  width: -webkit-fill-available;
   height: min-content;
+  box-sizing: border-box;
 }
 
 .left-file {
@@ -60,6 +61,7 @@
   border: var(--border-width) var(--border-type) var(--border-color);
   width: -moz-available;
   width: -webkit-fill-available;
+  box-sizing: border-box;
 }
 
 .post-file * {
@@ -134,6 +136,10 @@
   height: min-content;
   /*! position: none; */
   z-index: 0;
+  backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
+  color: var(--link-color);
+  padding-inline: 0.1em;
+  border-radius: 0 0 0 var(--border-radius);
 }
 
 .might-have-sound-indicator {
@@ -144,11 +150,15 @@
   grid-column-start: 1;
   grid-column-end: 1;
   margin: 0;
-  margin-bottom: 0.15em;
+  margin-bottom: 0;
   margin-top: auto;
   width: min-content;
   height: min-content;
   z-index: 0;
+  backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
+  color: var(--link-color);
+  padding-inline: 0.1em;
+  border-radius: 0 var(--border-radius) 0 0;
 }
 
 .post-expand {
@@ -160,6 +170,11 @@
   grid-column-end: 1;
   margin: 0;
   z-index: 0;
+  width: min-content;
+  backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
+  color: var(--link-color);
+  padding-inline: 0.1em;
+  border-radius: 0 0 var(--border-radius) 0;
 }
 
 .post-expand a {
@@ -168,16 +183,15 @@
   pointer-events: all;
 }
 
--media-container {
-  width: 100%;
-  height: 100%;
-}
-
 .post-author {
   display: inline-flex;
   border-right: var(--border-width) var(--border-type) var(--border-color);
   padding-inline: 0.4em;
   padding-block: 0.2em;
+}
+
+.post-author-admin {
+  color: var(--error-color);
 }
 
 .post-header-delete-button {
