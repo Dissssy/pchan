@@ -140,7 +140,7 @@ where
             if let Some(x) = &x {
                 banned_categories
                     .get(x)
-                    .filter(|y| **y >= word.severity_description)
+                    .filter(|y| **y <= word.severity_description)
                     .is_some()
             } else {
                 false

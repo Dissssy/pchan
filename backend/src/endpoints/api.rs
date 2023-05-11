@@ -3,7 +3,7 @@ use crate::unclaimedfiles::File;
 use common::structs::{CreatePost, CreateThread, FileInfo, SafeBoard};
 use common::{hash_with_salt, structs::CreateBoard};
 use serde::{Deserialize, Serialize};
-use warp::{Filter, Rejection};
+use warp::{Filter, Rejection, Reply};
 
 use crate::filters::priveleged_endpoint;
 
@@ -275,16 +275,21 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut conn,
                     board.id,
                     disc,
-                    thread.id,
+                    thread.thread_post.post_number,
                     post,
                     auth.token,
                     Some(files),
                 )
                 .await
                 {
-                    Ok(post) => {
-                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&post))
-                    }
+                    Ok(post) => match post.safe(&mut conn).await {
+                        Ok(post) => Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&post),
+                        ),
+                        Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&e.to_string()),
+                        ),
+                    },
                     Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
                     )),
@@ -503,16 +508,23 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         )
         .recover(|err: Rejection| async move {
             if let Some(r) = err.find::<Ratelimited>() {
-                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&format!(
-                    "You are being ratelimited. Try again in {} seconds.",
-                    r.seconds
-                )))
+                Ok::<warp::reply::Response, warp::reject::Rejection>(
+                    warp::reply::json(&format!(
+                        "You are being ratelimited. Try again in {} seconds.",
+                        r.seconds
+                    ))
+                    .into_response(),
+                )
             } else if err.is_not_found() {
                 return Err(err);
             } else {
-                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                    &format!("Internal server error: {:?}", err),
-                ));
+                return Ok::<warp::reply::Response, warp::reject::Rejection>(
+                    warp::reply::with_status(
+                        warp::reply::json(&format!("error: {:?}", err)),
+                        warp::http::StatusCode::IM_A_TEAPOT,
+                    )
+                    .into_response(),
+                );
             }
         })
 }
@@ -544,19 +556,19 @@ impl SubscriptionData {
         )
     }
 
-    pub fn from_database_string(s: &str) -> Option<Self> {
-        let mut split = s.split('|');
-        let endpoint = split.next()?.to_string();
-        let p256dh = split.next()?.to_string();
-        let auth = split.next()?.to_string();
-        if split.next().is_some() {
-            return None;
-        }
-        Some(Self {
-            endpoint,
-            keys: SubscriptionKeys { p256dh, auth },
-        })
-    }
+    // pub fn from_database_string(s: &str) -> Option<Self> {
+    //     let mut split = s.split('|');
+    //     let endpoint = split.next()?.to_string();
+    //     let p256dh = split.next()?.to_string();
+    //     let auth = split.next()?.to_string();
+    //     if split.next().is_some() {
+    //         return None;
+    //     }
+    //     Some(Self {
+    //         endpoint,
+    //         keys: SubscriptionKeys { p256dh, auth },
+    //     })
+    // }
 }
 
 fn verify_post(post: &CreatePost, topic: Option<&String>) -> anyhow::Result<()> {

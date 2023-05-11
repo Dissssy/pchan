@@ -2,12 +2,7 @@ use common::structs::{BoardWithThreads, SafePost};
 use yew::prelude::*;
 use yew_router::prelude::*;
 
-use crate::{
-    api::ApiState,
-    components::*,
-    helpers::{SuccessfulPostContext},
-    ApiContext, BaseRoute,
-};
+use crate::{api::ApiState, components::*, helpers::SuccessfulPostContext, ApiContext, BaseRoute};
 
 #[function_component]
 pub fn BoardPage() -> Html {
@@ -38,6 +33,9 @@ pub fn BoardPage() -> Html {
                                             board.set(ApiState::Error(e));
                                         }
                                         Ok(thisboard) => {
+                                            gloo::console::log!(
+                                                serde_json::to_string(&thisboard).unwrap()
+                                            );
                                             board.set(ApiState::Loaded(thisboard));
                                         }
                                     };

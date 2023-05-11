@@ -12,13 +12,12 @@ pub fn Settings() -> Html {
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             if let Some(the) = token.as_ref() {
-                let _ = web_sys::window()
-                    .unwrap()
-                    .navigator()
-                    .clipboard()
-                    .unwrap()
-                    .write_text(the);
-            }
+                if let Some(window) = web_sys::window() {
+                    if let Some(clip) = window.navigator().clipboard() {
+                        let _ = clip.write_text(the);
+                    }
+                }
+            };
         })
     };
 

@@ -8,7 +8,7 @@ use yew::prelude::*;
 use yew_hooks::{use_local_storage, UseLocalStorageHandle};
 use yew_router::prelude::*;
 
-use crate::components::{FeedbackButton, SettingsButton};
+use crate::components::SettingsButton;
 
 #[derive(Clone, Routable, PartialEq, Debug)]
 pub enum BaseRoute {
@@ -115,7 +115,7 @@ fn Root() -> Html {
                     <ContextProvider<ThemeData> context={theme_data}>
                         <BrowserRouter>
                             <SettingsButton/>
-                            <FeedbackButton/>
+                            // <FeedbackButton/>
                             <Switch<BaseRoute> render={switch} />
                         </BrowserRouter>
                     </ContextProvider<ThemeData>>

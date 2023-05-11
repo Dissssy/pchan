@@ -12,13 +12,13 @@ use diesel::PgArrayExpressionMethods;
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
 use profanity::replace_possible_profanity;
-use serde_json::json;
-use web_push::SubscriptionInfo;
-use web_push::VapidSignatureBuilder;
-use web_push::WebPushClient;
-use web_push::WebPushMessageBuilder;
+// use serde_json::json;
+// use web_push::SubscriptionInfo;
+// use web_push::VapidSignatureBuilder;
+// use web_push::WebPushClient;
+// use web_push::WebPushMessageBuilder;
 
-use crate::endpoints::api::SubscriptionData;
+// use crate::endpoints::api::SubscriptionData;
 use crate::schema::thread_post_number;
 use crate::schema::Banner;
 use crate::schema::Post;
@@ -122,6 +122,21 @@ impl Database {
             .await
     }
 
+    pub async fn get_raw_thread(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        discriminator: String,
+        number: i64,
+    ) -> Result<crate::schema::Thread> {
+        use crate::schema::threads::dsl::*;
+        let tpost = Self::get_raw_post(conn, discriminator.clone(), number).await?;
+        let this_board = Self::get_board(conn, discriminator).await?;
+        Ok(threads
+            .filter(board.eq(this_board.id))
+            .filter(post_id.eq(tpost.id))
+            .first::<crate::schema::Thread>(&mut *conn)
+            .await?)
+    }
+
     // pub async fn get_post_from_id(
     //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     //     id: i64,
@@ -165,7 +180,7 @@ impl Database {
             return Err(anyhow!("Not authorized to delete post"));
         }
 
-        let tthread = Self::get_thread(conn, discriminator, number).await;
+        let tthread = Self::get_raw_thread(conn, discriminator, number).await;
         let id = tpost.id;
         match (tadmin, tauthor, tthread, tpost) {
             // if the user is an admin they can delete a post
@@ -261,7 +276,7 @@ impl Database {
     ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
         let this_board = Self::get_board(conn, discriminator.clone()).await?;
-        let this_post = Self::get_post(conn, discriminator, number).await?;
+        let this_post = Self::get_raw_post(conn, discriminator, number).await?;
         let results = threads
             .filter(board.eq(this_board.id))
             .filter(post_id.eq(this_post.id))
@@ -289,14 +304,14 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         bboard: i64,
         number: i64,
-    ) -> Result<SafePost> {
+    ) -> Result<crate::schema::Post> {
         use crate::schema::posts::dsl::*;
         let results = posts
             .filter(board.eq(bboard))
             .filter(post_number.eq(number))
             .first::<crate::schema::Post>(&mut *conn)
             .await?;
-        results.safe(conn).await
+        Ok(results)
     }
 
     pub async fn create_thread(
@@ -358,11 +373,11 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tboard: i64,
         discriminator: String,
-        tthread: i64,
+        thread_post_num: i64,
         mut post: CreatePost,
         tactual_author: String,
         check_hash_against: Option<Vec<FileInfo>>,
-    ) -> Result<SafePost> {
+    ) -> Result<crate::schema::Post> {
         use crate::schema::posts::dsl::*;
 
         post.content = post.content.trim().to_owned();
@@ -383,7 +398,7 @@ impl Database {
             .post_count
             + 1;
         // THIS LINE, THE THREAD DOESNT EXIST LOOOL
-        let thread_post_number = match thread_post_number(tthread, conn).await {
+        let thread_post_number = match thread_post_number(thread_post_num, conn).await {
             Ok(v) => v,
             Err(_) => this_post_number,
         };
@@ -398,7 +413,7 @@ impl Database {
         let mut replieses = Vec::new();
 
         for reply in replies {
-            let this_post = Self::get_post(
+            let this_post = Self::get_raw_post(
                 conn,
                 reply.board_discriminator,
                 reply.post_number.parse::<i64>()?,
@@ -435,7 +450,7 @@ impl Database {
 
         let t = insert_into(posts).values((
             post_number.eq(this_post_number),
-            thread.eq(tthread),
+            thread.eq(thread_post_num),
             board.eq(tboard),
             author.eq(post.author.clone()),
             content.eq(post.content.clone()),
@@ -459,15 +474,16 @@ impl Database {
             .execute(conn)
             .await?;
 
-        let safe = p.safe(conn).await?;
+        // let safe = p.safe(conn).await?;
 
-        if let Err(e) =
-            crate::database::Database::dispatch_push_notifications(tthread, safe.clone()).await
-        {
-            println!("Error dispatching push notification handler: {:?}", e);
-        }
+        // if let Err(e) =
+        //     crate::database::Database::dispatch_push_notifications(thread_post_num, safe.clone())
+        //         .await
+        // {
+        //     println!("Error dispatching push notification handler: {:?}", e);
+        // }
 
-        Ok(safe)
+        Ok(p)
     }
 
     pub async fn get_all_files(
@@ -620,81 +636,82 @@ impl Database {
         Ok(())
     }
 
-    pub async fn get_subscribed_users(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        thread_id: i64,
-    ) -> Result<Vec<(String, SubscriptionData)>> {
-        use crate::schema::members::dsl::*;
-        let users = members
-            .filter(watching.contains(vec![thread_id]))
-            .load::<crate::schema::Member>(conn)
-            .await?;
+    // pub async fn get_subscribed_users(
+    //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    //     thread_id: i64,
+    // ) -> Result<Vec<(String, SubscriptionData)>> {
+    //     use crate::schema::members::dsl::*;
+    //     let users = members
+    //         .filter(watching.contains(vec![thread_id]))
+    //         .load::<crate::schema::Member>(conn)
+    //         .await?;
 
-        Ok(users
-            .into_iter()
-            .flat_map(|s| {
-                // map from Member to (token, SubscriptionData)
-                s.push_notif_url.and_then(|url| {
-                    SubscriptionData::from_database_string(&url).map(|x| (s.token_hash, x))
-                })
-            })
-            .collect::<Vec<(String, SubscriptionData)>>())
-    }
+    //     Ok(users
+    //         .into_iter()
+    //         .flat_map(|s| {
+    //             // map from Member to (token, SubscriptionData)
+    //             s.push_notif_url.and_then(|url| {
+    //                 SubscriptionData::from_database_string(&url).map(|x| (s.token_hash, x))
+    //             })
+    //         })
+    //         .collect::<Vec<(String, SubscriptionData)>>())
+    // }
 
-    pub async fn dispatch_push_notifications(thread_id: i64, post: SafePost) -> Result<()> {
-        tokio::task::spawn(async move {
-            let mut conn = crate::POOL.get().await.unwrap_or_else(|_| {
-                eprintln!("Failed to get connection from pool!");
-                panic!()
-            });
-            let users = match Self::get_subscribed_users(&mut conn, thread_id).await {
-                Ok(x) => x,
-                Err(e) => {
-                    eprintln!("Failed to get subscribed users: {}", e);
-                    return;
-                }
-            };
+    // pub async fn dispatch_push_notifications(thread_id: i64, post: SafePost) -> Result<()> {
+    //     tokio::task::spawn(async move {
+    //         let mut conn = crate::POOL.get().await.unwrap_or_else(|_| {
+    //             eprintln!("Failed to get connection from pool!");
+    //             panic!()
+    //         });
+    //         let users = match Self::get_subscribed_users(&mut conn, thread_id).await {
+    //             Ok(x) => x,
+    //             Err(e) => {
+    //                 eprintln!("Failed to get subscribed users: {}", e);
+    //                 return;
+    //             }
+    //         };
 
-            let payload = serde_json::to_string(&json!({
-                "title": "New post in a thread you're watching!",
-                "body": &format!("{}: {}", post.author, post.content),
-            })).unwrap();
+    //         let payload = serde_json::to_string(&json!({
+    //             "title": "New post in a thread you're watching!",
+    //             "body": &format!("{}: {}", post.author, post.content),
+    //         }))
+    //         .unwrap();
 
-            for (token, user) in users {
-                // TODO: send push notifications to users :D
-                // if failed to send call set_user_push_url with None
-                if let Err(e) = Database::push(&user, payload.as_bytes()).await {
-                    eprintln!("Failed to send push notification: {}", e);
-                    Self::set_user_push_url(&mut conn, token, None)
-                        .await
-                        .unwrap_or(());
-                }
-            }
-        });
-        Ok(())
-    }
+    //         for (token, user) in users {
+    //             // TODO: send push notifications to users :D
+    //             // if failed to send call set_user_push_url with None
+    //             if let Err(e) = Database::push(&user, payload.as_bytes()).await {
+    //                 eprintln!("Failed to send push notification: {}", e);
+    //                 Self::set_user_push_url(&mut conn, token, None)
+    //                     .await
+    //                     .unwrap_or(());
+    //             }
+    //         }
+    //     });
+    //     Ok(())
+    // }
 
-    pub async fn push(user: &SubscriptionData, payload: &[u8]) -> Result<()> {
-        let subscription_info = SubscriptionInfo::new(
-            user.endpoint.clone(),
-            user.keys.p256dh.clone(),
-            user.keys.auth.clone(),
-        );
+    // pub async fn push(user: &SubscriptionData, payload: &[u8]) -> Result<()> {
+    //     let subscription_info = SubscriptionInfo::new(
+    //         user.endpoint.clone(),
+    //         user.keys.p256dh.clone(),
+    //         user.keys.auth.clone(),
+    //     );
 
-        let sig_builder = VapidSignatureBuilder::from_base64(
-            env!("VAPID_PRIVATE_KEY"),
-            web_push::URL_SAFE_NO_PAD,
-            &subscription_info,
-        )?;
+    //     let sig_builder = VapidSignatureBuilder::from_base64(
+    //         env!("VAPID_PRIVATE_KEY"),
+    //         web_push::URL_SAFE_NO_PAD,
+    //         &subscription_info,
+    //     )?;
 
-        let mut builder = WebPushMessageBuilder::new(&subscription_info)?;
-        builder.set_payload(web_push::ContentEncoding::Aes128Gcm, payload);
-        builder.set_vapid_signature(sig_builder.build()?);
+    //     let mut builder = WebPushMessageBuilder::new(&subscription_info)?;
+    //     builder.set_payload(web_push::ContentEncoding::Aes128Gcm, payload);
+    //     builder.set_vapid_signature(sig_builder.build()?);
 
-        let client = WebPushClient::new()?;
+    //     let client = WebPushClient::new()?;
 
-        client.send(builder.build()?).await?;
-        println!("Push notification sent!");
-        Ok(())
-    }
+    //     client.send(builder.build()?).await?;
+    //     println!("Push notification sent!");
+    //     Ok(())
+    // }
 }

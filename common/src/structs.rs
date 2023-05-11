@@ -5,7 +5,6 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BoardWithThreads {
-    pub id: i64,
     pub name: String,
     pub discriminator: String,
     pub threads: Vec<ThreadWithLazyPosts>,
@@ -28,7 +27,6 @@ impl From<BoardWithThreads> for SafeBoard {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ThreadWithPosts {
-    pub id: i64,
     pub board: i64,
     pub thread_post: SafePost,
     pub post_count: i64,
@@ -38,7 +36,6 @@ pub struct ThreadWithPosts {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ThreadWithLazyPosts {
-    pub id: i64,
     pub board: i64,
     pub thread_post: SafePost,
     pub post_count: i64,
@@ -48,7 +45,6 @@ pub struct ThreadWithLazyPosts {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct SafePost {
-    pub id: i64,
     pub post_number: i64,
     pub file: Option<FileInfo>,
     pub thread_post_number: i64,

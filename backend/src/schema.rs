@@ -44,7 +44,6 @@ impl Board {
             bthreads.push(thread.with_lazy_posts(conn).await?);
         }
         Ok(BoardWithThreads {
-            id: self.id,
             name: self.name.clone(),
             discriminator: self.discriminator.clone(),
             threads: bthreads,
@@ -105,7 +104,6 @@ impl Thread {
             .first::<Post>(conn)
             .await?;
         Ok(ThreadWithPosts {
-            id: self.id,
             board: self.board,
             post_count,
             topic: self.topic.clone(),
@@ -141,7 +139,6 @@ impl Thread {
             .first::<Post>(conn)
             .await?;
         Ok(ThreadWithLazyPosts {
-            id: self.id,
             board: self.board,
             post_count,
             topic: self.topic.clone(),
@@ -207,7 +204,6 @@ impl Post {
         let board_discrim = get_board_discrim(self.board, conn).await?;
 
         Ok(SafePost {
-            id: self.id,
             post_number: self.post_number,
             file: t?,
             thread_post_number: thread_post_number(self.thread, conn).await?,

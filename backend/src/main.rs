@@ -76,8 +76,8 @@ async fn main() {
 
     // let oldroot = warp::get().and(
     //     warp::fs::dir(env!("FILE_STORAGE_PATH"))
-    //         .or(warp::fs::dir("/git/pchan/frontend/olddist"))
-    //         .or(warp::fs::file("/git/pchan/frontend/olddist/index.html")),
+    //         .or(warp::fs::dir("/git/pchan-dev/frontend/olddist"))
+    //         .or(warp::fs::file("/git/pchan-dev/frontend/olddist/index.html")),
     // );
 
     let newroot = warp::get() /*.and(filters::is_beta())*/
@@ -101,28 +101,40 @@ async fn main() {
                     let reply: warp::filters::fs::File = unsafe { std::mem::transmute(reply) };
                     reply
                 })
-                .or(warp::fs::dir("/git/pchan/frontend/dist"))
-                .or(warp::fs::file("/git/pchan/frontend/dist/index.html")),
+                .or(warp::fs::dir(env!("DISTRIBUTION_PATH")))
+                .or(warp::fs::file(format!(
+                    "{}/index.html",
+                    env!("DISTRIBUTION_PATH")
+                ))),
         );
 
     let root = newroot/*.or(oldroot)*/;
 
     let manifest = warp::path!("manifest.json")
         .and(warp::get())
-        .and(warp::fs::file("/git/pchan/frontend/dist/manifest.json"));
+        .and(warp::fs::file(format!(
+            "{}/manifest.json",
+            env!("DISTRIBUTION_PATH")
+        )));
 
     let icon = warp::path!("res" / "icon-256.png")
         .and(warp::get())
-        .and(warp::fs::file("/git/pchan/frontend/dist/res/icon-256.png"));
+        .and(warp::fs::file(format!(
+            "{}/res/icon-256.png",
+            env!("DISTRIBUTION_PATH")
+        )));
 
     let unauthorized = warp::path!("unauthorized")
         .and(warp::get())
-        .and(warp::fs::file(
-            "/git/pchan/frontend/tempdist/unauthorized.html",
-        ));
+        .and(warp::fs::file(format!(
+            "{}/unauthorized.html",
+            env!("DISTRIBUTION_PATH")
+        )));
 
-    let is_scraper =
-        user_agent_is_scraper().and(warp::fs::file("/git/pchan/frontend/tempdist/scraping.html"));
+    let is_scraper = user_agent_is_scraper().and(warp::fs::file(format!(
+        "{}/scraping.html",
+        env!("DISTRIBUTION_PATH")
+    )));
 
     let routes = endpoints::other_endpoints()
         .or(endpoints::api::priveleged_api_endpoints())
@@ -153,7 +165,10 @@ async fn main() {
     let (sendkill, kill) = tokio::sync::oneshot::channel::<()>();
     let (killreply, killrecv) = tokio::sync::oneshot::channel::<()>();
     let (_, server) = warp::serve(is_scraper.or(routes)).bind_with_graceful_shutdown(
-        ([0, 0, 0, 0], 16835),
+        (
+            [0, 0, 0, 0],
+            env!("PORT").parse::<u16>().expect("PORT must be a number"),
+        ),
         async {
             let _ = kill.await;
             let _ = killreply.send(());
