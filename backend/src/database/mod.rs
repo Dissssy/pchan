@@ -285,34 +285,34 @@ impl Database {
         results.with_posts(conn).await
     }
 
-    pub async fn get_thread_from_post_number(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        bboard: i64,
-        number: i64,
-    ) -> Result<ThreadWithPosts> {
-        use crate::schema::threads::dsl::*;
-        let this_post = Self::get_post_from_post_number(conn, bboard, number).await?;
-        let results = threads
-            .filter(board.eq(bboard))
-            .filter(post_id.eq(this_post.id))
-            .first::<crate::schema::Thread>(&mut *conn)
-            .await?;
-        results.with_posts(conn).await
-    }
+    // pub async fn get_thread_from_post_number(
+    //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    //     bboard: i64,
+    //     number: i64,
+    // ) -> Result<ThreadWithPosts> {
+    //     use crate::schema::threads::dsl::*;
+    //     let this_post = Self::get_post_from_post_number(conn, bboard, number).await?;
+    //     let results = threads
+    //         .filter(board.eq(bboard))
+    //         .filter(post_id.eq(this_post.id))
+    //         .first::<crate::schema::Thread>(&mut *conn)
+    //         .await?;
+    //     results.with_posts(conn).await
+    // }
 
-    pub async fn get_post_from_post_number(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        bboard: i64,
-        number: i64,
-    ) -> Result<crate::schema::Post> {
-        use crate::schema::posts::dsl::*;
-        let results = posts
-            .filter(board.eq(bboard))
-            .filter(post_number.eq(number))
-            .first::<crate::schema::Post>(&mut *conn)
-            .await?;
-        Ok(results)
-    }
+    // pub async fn get_post_from_post_number(
+    //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    //     bboard: i64,
+    //     number: i64,
+    // ) -> Result<crate::schema::Post> {
+    //     use crate::schema::posts::dsl::*;
+    //     let results = posts
+    //         .filter(board.eq(bboard))
+    //         .filter(post_number.eq(number))
+    //         .first::<crate::schema::Post>(&mut *conn)
+    //         .await?;
+    //     Ok(results)
+    // }
 
     pub async fn create_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
@@ -373,7 +373,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tboard: i64,
         discriminator: String,
-        thread_post_num: i64,
+        tthread: i64,
         mut post: CreatePost,
         tactual_author: String,
         check_hash_against: Option<Vec<FileInfo>>,
@@ -398,7 +398,7 @@ impl Database {
             .post_count
             + 1;
         // THIS LINE, THE THREAD DOESNT EXIST LOOOL
-        let thread_post_number = match thread_post_number(thread_post_num, conn).await {
+        let thread_post_number = match thread_post_number(tthread, conn).await {
             Ok(v) => v,
             Err(_) => this_post_number,
         };
@@ -450,7 +450,7 @@ impl Database {
 
         let t = insert_into(posts).values((
             post_number.eq(this_post_number),
-            thread.eq(thread_post_num),
+            thread.eq(tthread),
             board.eq(tboard),
             author.eq(post.author.clone()),
             content.eq(post.content.clone()),
@@ -477,7 +477,7 @@ impl Database {
         // let safe = p.safe(conn).await?;
 
         // if let Err(e) =
-        //     crate::database::Database::dispatch_push_notifications(thread_post_num, safe.clone())
+        //     crate::database::Database::dispatch_push_notifications(tthread safe.clone())
         //         .await
         // {
         //     println!("Error dispatching push notification handler: {:?}", e);

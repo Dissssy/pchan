@@ -246,8 +246,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     };
-                let thread = match crate::database::Database::get_thread_from_post_number(
-                    &mut conn, board.id, rawthread,
+                let thread = match crate::database::Database::get_raw_thread(
+                    &mut conn,
+                    disc.clone(),
+                    rawthread,
                 )
                 .await
                 {
@@ -258,6 +260,16 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
+                let tid = thread.id;
+                let thread = match thread.with_posts(&mut conn).await {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&e.to_string()),
+                        );
+                    }
+                };
+
                 let mut files = thread
                     .posts
                     .iter()
@@ -275,7 +287,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut conn,
                     board.id,
                     disc,
-                    thread.thread_post.post_number,
+                    tid,
                     post,
                     auth.token,
                     Some(files),
