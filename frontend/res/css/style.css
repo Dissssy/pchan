@@ -41,6 +41,11 @@ a:not([href]) {
   src: url("/res/fonts/ArimoNerdFont-Regular.ttf");
 }
 
+@font-face {
+  font-family: "Code";
+  src: url("/res/fonts/Beech.ttf");
+}
+
 body {
   color: var(--text-color);
   /* font-family: verdana; used to be sans-serif */

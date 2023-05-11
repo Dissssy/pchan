@@ -3,7 +3,12 @@
   flex-direction: column;
   background-color: var(--primary-color);
   border: var(--border-width) var(--border-type) var(--border-color);
+  max-width: 25em;
   border-radius: var(--border-radius);
+}
+
+textarea, input {
+  font-family: "ArimoNF";
 }
 
 .post-box-centered {
@@ -53,9 +58,33 @@
   border-left: var(--border-width) var(--border-type) var(--border-color);
   width: 100%;
 }
+
 .post-box-name input {
   width: 100%;
   box-sizing: border-box;
+  border: var(--border-width) var(--border-type) var(--border-color);
+  background-color: var(--secondary-color);
+  color: var(--text-color);
+}
+
+
+.post-box-code {
+  width: 6em;
+  padding: 0.2em;
+}
+
+.post-box-code#sloppytoppy {
+  border-top: var(--border-width) var(--border-type) var(--border-color);
+}
+
+.post-box-code#notop {
+  border-left: var(--border-width) var(--border-type) var(--border-color);
+}
+
+.post-box-code input {
+  width: 100%;
+  box-sizing: border-box;
+  font-family: "Code";
   border: var(--border-width) var(--border-type) var(--border-color);
   background-color: var(--secondary-color);
   color: var(--text-color);

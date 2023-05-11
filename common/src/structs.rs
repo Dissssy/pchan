@@ -62,24 +62,19 @@ pub enum User {
     Mod(String),
 }
 
-impl From<Option<String>> for User {
-    fn from(s: Option<String>) -> Self {
+impl User {
+    pub fn with_code(s: Option<String>, code: Option<String>) -> Self {
         match s {
             Some(s) => {
-                let split = s
-                    .trim()
-                    .split(env!("SUPER_SECRET_MOD_USERNAME"))
-                    .collect::<Vec<&str>>();
-                if split.len() > 1 {
-                    let finale = split.join("");
-                    let finale = finale.trim();
-                    if finale.is_empty() {
-                        Self::Mod(finale.to_string())
-                    } else {
-                        Self::Mod("Anonymous".to_string())
+                match code {
+                    Some(code) => {
+                        if code == env!("SUPER_SECRET_MOD_CODE") {
+                            Self::Mod(s)
+                        } else {
+                            Self::Named(s)
+                        }
                     }
-                } else {
-                    Self::Named(s)
+                    None => Self::Named(s),
                 }
             }
             None => Self::Anonymous,
@@ -116,6 +111,7 @@ pub struct CreatePost {
     pub file: Option<CreateFile>,
     pub content: String,
     pub author: Option<String>,
+    pub code: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

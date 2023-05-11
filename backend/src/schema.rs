@@ -151,6 +151,7 @@ impl Thread {
 diesel::table! {
     posts (id) {
         id -> BigInt,
+        code -> Nullable<Text>,
         post_number -> BigInt,
         thread -> BigInt,
         board -> BigInt,
@@ -165,6 +166,7 @@ diesel::table! {
 #[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Post {
     pub id: i64,
+    pub code: Option<String>,
     pub post_number: i64,
     pub thread: i64,
     pub board: i64,
@@ -208,7 +210,7 @@ impl Post {
             file: t?,
             thread_post_number: thread_post_number(self.thread, conn).await?,
             board_discriminator: board_discrim,
-            author: self.author.clone().into(),
+            author: User::with_code(self.author.clone(), self.code.clone()),
             content: self.content.clone(),
             timestamp: format!("{}", self.timestamp),
             replies: newreplies,

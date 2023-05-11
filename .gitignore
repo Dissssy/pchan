@@ -4,10 +4,6 @@ target
 depricated
 frontend/dist
 frontend/olddist
-frontend/res/*.png
-frontend/res/*.svg
-frontend/res/spoilers
-frontend/res/banners
 Cargo.lock
 backend/migrations
 backend/auth.bin.gz
@@ -22,3 +18,4 @@ frontend/src-old
 backend/thumb_large.png
 profanity/src/testing.rs
 backend/.env
+frontend/res

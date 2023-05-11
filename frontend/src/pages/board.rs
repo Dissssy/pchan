@@ -33,9 +33,6 @@ pub fn BoardPage() -> Html {
                                             board.set(ApiState::Error(e));
                                         }
                                         Ok(thisboard) => {
-                                            gloo::console::log!(
-                                                serde_json::to_string(&thisboard).unwrap()
-                                            );
                                             board.set(ApiState::Loaded(thisboard));
                                         }
                                     };

@@ -450,6 +450,7 @@ impl Database {
 
         let t = insert_into(posts).values((
             post_number.eq(this_post_number),
+            code.eq(post.code),
             thread.eq(tthread),
             board.eq(tboard),
             author.eq(post.author.clone()),

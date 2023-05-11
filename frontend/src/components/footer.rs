@@ -9,6 +9,7 @@ pub fn Footer() -> Html {
     html! {
         <div class="footer">
             <BannerAd />
+            // <img src="/res/rapidssl.gif" />
         </div>
     }
 }

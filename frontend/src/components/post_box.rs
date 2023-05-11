@@ -13,6 +13,7 @@ use crate::{
 #[function_component]
 pub fn PostBox(props: &Props) -> Html {
     let possible_name = use_local_storage::<String>("name".to_string());
+    let possible_code = use_local_storage::<String>("code".to_string());
     let routeinfo = use_route::<BaseRoute>().map(|route| {
         (
             route.board_discriminator(),
@@ -36,6 +37,7 @@ pub fn PostBox(props: &Props) -> Html {
     let post = CreatePostInfo {
         opened: show_box,
         name: use_state(|| possible_name.as_ref().unwrap_or(&"".to_string()).clone()),
+        code: use_state(|| possible_code.as_ref().unwrap_or(&"".to_string()).clone()),
         topic: use_state(|| "".to_string()),
         content: use_state(|| "".to_string()),
         file: use_state(|| None),
@@ -85,6 +87,7 @@ pub fn PostBox(props: &Props) -> Html {
                     let create_post = CreatePost {
                         author: Some((*post.name).clone()).filter(|name| !name.is_empty()),
                         content: (*post.content).clone(),
+                        code: Some((*post.code).clone()).filter(|code| !code.is_empty()),
                         file,
                     };
 
@@ -185,6 +188,9 @@ pub fn PostBox(props: &Props) -> Html {
                                 <div class="post-box-name" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
                                     <input type="text" placeholder="Anonymous" value={possible_name.as_ref().unwrap_or(&"".to_string()).clone()} oninput={on_input_name} />
                                 </div>
+                                <div class="post-box-code" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
+                                    <input type="text" placeholder="secret code" value={post.upper_code_val()} oninput={post.code_change_callback()} />
+                                </div>
                                 {
                                     if thread.is_none() {
                                         html! {
@@ -249,8 +255,9 @@ pub struct Props {
 
 #[derive(Clone, PartialEq)]
 pub struct CreatePostInfo {
-    pub name: UseStateHandle<String>,
     pub opened: UseStateHandle<bool>,
+    pub name: UseStateHandle<String>,
+    pub code: UseStateHandle<String>,
     pub topic: UseStateHandle<String>,
     pub content: UseStateHandle<String>,
     pub file: UseStateHandle<Option<web_sys::File>>,
@@ -258,6 +265,20 @@ pub struct CreatePostInfo {
 }
 
 impl CreatePostInfo {
+    pub fn upper_code_val(&self) -> String {
+        self.code.to_uppercase()
+    }
+
+    pub fn code_change_callback(&self) -> Callback<InputEvent> {
+        let code = self.code.clone();
+        Callback::from(move |e: InputEvent| {
+            if let Some(value) = crate::helpers::on_input_to_string(e).map(|s| s.value()) {
+                gloo::console::log!(&value);
+                code.set(value);
+            }
+        })
+    }
+
     pub fn name_change_callback(
         &self,
         name_storage: UseLocalStorageHandle<String>,

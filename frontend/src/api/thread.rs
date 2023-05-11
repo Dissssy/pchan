@@ -29,10 +29,6 @@ pub async fn create_thread(
     board: &str,
     thread: CreateThread,
 ) -> Result<SafePost, ApiError> {
-    gloo::console::log!(format!(
-        "CREATING THREAD WITH /api/v1/board/{}/thread",
-        board
-    ));
     let res = Request::post(&format!("/api/v1/board/{}/thread", board))
         .header("authorization", token)
         .json(&thread)
