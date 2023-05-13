@@ -28,7 +28,7 @@ pub fn BoardPage() -> Html {
                                 if let Some(Some(boardinf)) =
                                     board_ctx.map(|b| b.board_discriminator())
                                 {
-                                    match api.get_board(&boardinf).await {
+                                    match api.get_board(&boardinf, false).await {
                                         Err(e) => {
                                             board.set(ApiState::Error(e));
                                         }
@@ -93,6 +93,11 @@ pub fn BoardPage() -> Html {
                         <Header />
                         {
                             board.standard_html("BoardPage", |board| {
+                                if let Some(window) = web_sys::window() {
+                                    if let Some(document) = window.document() {
+                                        document.set_title(&format!("{}/{}/ - {}", crate::PREFIX, board.discriminator, board.name));
+                                    }
+                                }
                                 html! {
                                     <div class={"board-page-threads"}>
                                         {
@@ -105,6 +110,11 @@ pub fn BoardPage() -> Html {
                                     </div>
                                 }
                             }).unwrap_or_else(|e| {
+                                if let Some(window) = web_sys::window() {
+                                    if let Some(document) = window.document() {
+                                        document.set_title(&format!("{}Error", crate::PREFIX));
+                                    }
+                                }
                                 match nav {
                                     Some(nav) => {
                                         nav.replace(&BaseRoute::NotFound);

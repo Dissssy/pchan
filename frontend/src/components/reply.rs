@@ -37,7 +37,7 @@ pub fn Reply(props: &Props) -> Html {
                             }
                             Ok(api) => {
                                 match api
-                                    .get_post(&reply.board_discriminator, &reply.post_number)
+                                    .get_post(&reply.board_discriminator, &reply.post_number, false)
                                     .await
                                 {
                                     Err(e) => {

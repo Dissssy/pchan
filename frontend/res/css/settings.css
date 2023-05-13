@@ -2,7 +2,7 @@
 .popup-blur {
   position: fixed;
   background-color: rgba(0, 0, 0, 0);
-  backdrop-filter: blur(0.1em);
+  backdrop-filter: blur(0.1rem);
   z-index: 1000;
   left: 0;
   top: 0;
@@ -24,15 +24,15 @@
 .toggle-theme {
   z-index: 1;
   position: fixed;
-  right: 1em;
-  top: 0.45em;
+  right: 1rem;
+  top: 0.45rem;
 }
 
 .popup-close-button {
   z-index: 1;
   position: absolute;
-  right: 1em;
-  top: 0.45em;
+  right: 1rem;
+  top: 0.45rem;
 }
 
 .settings {
@@ -43,8 +43,8 @@
 }
 
 .settings-theme-editor {
-  padding-inline: 5em;
-  padding-block: 2em;
+  padding-inline: 5rem;
+  padding-block: 2rem;
 }
 
 .settings-theme-color-editors {
@@ -70,8 +70,8 @@
 }
 
 .hex-color-input {
-  width: 5em;
-  height: 1.55em;
+  width: 5rem;
+  height: 1.55rem;
   border-width: 0px;
   margin-left: auto;
   box-sizing: border-box;
@@ -81,14 +81,14 @@
 .text-color-input {
   padding: 0px;
   margin: 0px;
-  margin-left: 0.2em;
+  margin-left: 0.2rem;
   border-width: 0px;
-  width: 5em;
+  width: 5rem;
 }
 
 .color-preview {
-  margin-left: 0.2em;
-  padding-inline: 0.4em;
+  margin-left: 0.2rem;
+  padding-inline: 0.4rem;
 }
 
 #color-editor-last {

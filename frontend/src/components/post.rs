@@ -14,6 +14,8 @@ pub fn Post(props: &Props) -> Html {
         .map(|b| b.thread_id().is_some())
         .unwrap_or(false);
 
+    let timezone = use_context::<UseStateHandle<chrono_tz::Tz>>();
+
     let on_click = use_state(|| None);
     let callback = use_context::<Option<CallbackContext>>().flatten();
 
@@ -79,7 +81,7 @@ pub fn Post(props: &Props) -> Html {
                             }
                         }
                     }
-                    <span class="post-timestamp">{ props.post.timestamp.clone() }</span>
+                    <span class="post-timestamp">{ if let Some(timezone) = timezone { props.post.timestamp.with_timezone(&*timezone).format("%Y-%m-%d %H:%M:%S %Z").to_string() } else { props.post.timestamp.format("%Y-%m-%d %H:%M:%S %Z").to_string() } }</span>
                     {
                         if let Some(ref t) = props.topic {
                             html! {

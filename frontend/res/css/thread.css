@@ -3,7 +3,7 @@
 }
 
 .thread-view {
-  padding: 0.4em;
+  padding: 0.4rem;
   border-bottom: var(--border-width) var(--border-type) var(--border-color);
   display: inline-block;
   width: -moz-available;
@@ -21,11 +21,11 @@
   display: inline-block;
   white-space: nowrap;
   width: min-content;
-  padding-inline: 0.2em;
+  padding-inline: 0.2rem;
   background-color: var(--link-color);
   border-radius: var(--border-radius);
   border: var(--border-width) var(--border-type) var(--border-color);
-  margin-top: 0.4em;
+  margin-top: 0.4rem;
 }
 
 .thread-view-expand-button a:link, .thread-view-expand-button a:visited {
@@ -38,4 +38,22 @@
 
 .post-box-inline .post-box-meta {
   flex-direction: row-reverse;
+}
+
+.thread-reload-button {
+  display: flex;
+  justify-content: center;
+  padding-top: 0.2em;
+  padding-bottom: 0.1em;
+  font-size: 2em;
+  font-family: "Code";
+  animation: glow;
+  color: #fff;
+  -webkit-animation: glow var(--speed) ease-in-out infinite alternate;
+  -moz-animation: glow var(--speed) ease-in-out infinite alternate;
+  animation: glow var(--speed) ease-in-out infinite alternate;
+}
+
+.thread-reload-button span {
+  cursor: pointer;
 }

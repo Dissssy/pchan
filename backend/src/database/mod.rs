@@ -448,6 +448,10 @@ impl Database {
             None
         };
 
+        if !Self::is_admin(conn, tactual_author.clone(), tboard).await? {
+            post.code = None;
+        }
+
         let t = insert_into(posts).values((
             post_number.eq(this_post_number),
             code.eq(post.code),

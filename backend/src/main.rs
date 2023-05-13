@@ -36,15 +36,6 @@ lazy_static::lazy_static! {
     pub static ref RATELIMIT: Arc<Mutex<HashMap<String, tokio::time::Instant>>> = Arc::new(Mutex::new(HashMap::new()));
 }
 
-#[derive(Clone, Debug)]
-struct ArcPath(Arc<std::path::PathBuf>);
-
-#[derive(Debug)]
-pub struct File {
-    pub resp: warp::http::Response<warp::hyper::Body>,
-    #[allow(dead_code)]
-    path: ArcPath,
-}
 
 fn is_safe_mimetype(mimetype: &str) -> bool {
     let mimetype = mimetype.to_lowercase();
@@ -84,22 +75,21 @@ async fn main() {
         .and(
             warp::fs::dir(env!("FILE_STORAGE_PATH"))
                 .map(|reply: warp::filters::fs::File| {
-                    // if the Content-Type header is not video/* audio/* or image/*, then force download
-                    let mut reply: File = unsafe { std::mem::transmute(reply) };
+                    use warp::Reply;
+                    let mut resp = reply.into_response();
                     if let Some(content_type) =
-                        reply.resp.headers().get(warp::http::header::CONTENT_TYPE)
+                        resp.headers().get(warp::http::header::CONTENT_TYPE)
                     {
                         let content_type = content_type.to_str().unwrap();
                         if !is_safe_mimetype(content_type) {
                             println!("Forcing download of file with mimetype {}", content_type);
-                            reply.resp.headers_mut().insert(
+                            resp.headers_mut().insert(
                                 warp::http::header::CONTENT_DISPOSITION,
                                 HeaderValue::from_static("attachment"),
                             );
                         }
                     }
-                    let reply: warp::filters::fs::File = unsafe { std::mem::transmute(reply) };
-                    reply
+                    resp
                 })
                 .or(warp::fs::dir(env!("DISTRIBUTION_PATH")))
                 .or(warp::fs::file(format!(

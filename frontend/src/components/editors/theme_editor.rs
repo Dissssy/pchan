@@ -4,7 +4,7 @@ use yew_hooks::prelude::*;
 
 use crate::ThemeData;
 
-use super::editors::color_editor::ColorEditor;
+use super::color_editor::ColorEditor;
 
 #[function_component]
 pub fn ThemeEditor() -> Html {

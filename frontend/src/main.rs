@@ -28,6 +28,8 @@ pub enum BaseRoute {
     NotFound,
 }
 
+pub static PREFIX: &str = "";
+
 impl BaseRoute {
     pub fn board_discriminator(&self) -> Option<String> {
         match self {
@@ -108,18 +110,45 @@ fn Root() -> Html {
         });
     }
 
+    let favicon = use_state(|| "/res/favicon.ico".to_string());
+
+    let reset_favicon = {
+        let favicon = favicon.clone();
+        Callback::from(move |_| {
+            if *favicon != "/res/favicon.ico" {
+                favicon.set("/res/favicon.ico".to_string());
+            }
+        })
+    };
+
+    let current_timezone = use_local_storage::<String>("timezone".to_owned());
+
+    let timezone = use_state(|| {
+        (*current_timezone)
+            .clone()
+            .and_then(|tz| serde_json::from_str::<chrono_tz::Tz>(&tz).ok())
+            .unwrap_or(chrono_tz::Tz::US__Eastern)
+    });
+
     match &*api_ctx {
         Some(api_ctx) => {
             html! {
-                <ContextProvider<Option<ApiContext>> context={api_ctx.clone()}>
-                    <ContextProvider<ThemeData> context={theme_data}>
-                        <BrowserRouter>
-                            <SettingsButton/>
-                            // <FeedbackButton/>
-                            <Switch<BaseRoute> render={switch} />
-                        </BrowserRouter>
-                    </ContextProvider<ThemeData>>
-                </ContextProvider<Option<ApiContext>>>
+                <div class="everything" onmousemove={reset_favicon}>
+                    <ContextProvider<UseStateHandle<chrono_tz::Tz>> context={timezone.clone()}>
+                        <ContextProvider<Option<ApiContext>> context={api_ctx.clone()}>
+                            <ContextProvider<ThemeData> context={theme_data}>
+                                <ContextProvider<Favicon> context={Favicon { favicon: favicon.clone(), } }>
+                                    <link rel="icon" type="image/x-icon" href={(*favicon).clone()} />
+                                    <BrowserRouter>
+                                        <SettingsButton/>
+                                        // <FeedbackButton/>
+                                        <Switch<BaseRoute> render={switch} />
+                                    </BrowserRouter>
+                                </ContextProvider<Favicon>>
+                            </ContextProvider<ThemeData>>
+                        </ContextProvider<Option<ApiContext>>>
+                    </ContextProvider<UseStateHandle<chrono_tz::Tz>>>
+                </div>
             }
         }
         _ => html! {
@@ -132,6 +161,11 @@ fn Root() -> Html {
             //</div>
         },
     }
+}
+
+#[derive(Clone, PartialEq)]
+pub struct Favicon {
+    pub favicon: UseStateHandle<String>,
 }
 
 fn switch(routes: BaseRoute) -> Html {

@@ -4,6 +4,13 @@
   user-select: none; /* Standard syntax */
 }
 
+.everything {
+  padding: 0em;
+  margin: 0em;
+  width: 100%;
+  height: 100%;
+}
+
 /* *:not(#ignore-transition) {
   transition: all var(--animation-speed);
 } */
@@ -18,7 +25,7 @@ a:not([href]) {
 }
 
 .home-title p {
-  margin-block: 0.2em;
+  margin-block: 0.2rem;
 }
 
 .valign {
@@ -33,7 +40,7 @@ a:not([href]) {
 .halign {
   display: flex;
   justify-content: center;
-  padding: 5em;
+  padding: 5rem;
 }
 
 @font-face {
@@ -46,6 +53,10 @@ a:not([href]) {
   src: url("/res/fonts/Beech.ttf");
 }
 
+.gibberish {
+  font-family: "Code";
+}
+
 body {
   color: var(--text-color);
   /* font-family: verdana; used to be sans-serif */
@@ -54,6 +65,9 @@ body {
   margin: 0 !important;
   padding: 0 !important;
   display: flex;
+  --default: 0.125em;
+  --added: 0.005em;
+  --speed: 2s;
 }
 
 :link {
@@ -66,10 +80,10 @@ body {
   color: var(--link-color);
 }
 
-@media (min-width: 60em) and (max-aspect-ratio: 1/1) {
+@media (min-width: 60rem) and (max-aspect-ratio: 1/1) {
   /* the resolution is too high and the aspect ratio is too low. increase the font size */
   html {
-    font-size: 1.5em;
+    font-size: 1.5rem;
   }
   
   .post-file-thumbnail img {

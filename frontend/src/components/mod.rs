@@ -16,7 +16,6 @@ mod reply;
 mod richtext;
 mod settings;
 mod spinner;
-mod theme_editor;
 mod thread;
 
 pub use banner_ad::BannerAd;
@@ -27,6 +26,8 @@ pub use context_error::ContextError;
 pub use delete_button::DeleteButton;
 pub use editors::*;
 // pub use feedback::FeedbackButton;
+pub use editors::theme_editor::ThemeEditor;
+pub use editors::timezone_editor::TimezoneEditor;
 pub use file::File;
 pub use footer::Footer;
 pub use header::Header;
@@ -37,7 +38,6 @@ pub use reply::Reply;
 pub use richtext::RichText;
 pub use settings::SettingsButton;
 pub use spinner::Spinner;
-pub use theme_editor::ThemeEditor;
 pub use thread::Thread;
 
 #[derive(Clone, PartialEq, Debug)]

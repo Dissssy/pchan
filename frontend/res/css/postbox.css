@@ -3,7 +3,7 @@
   flex-direction: column;
   background-color: var(--primary-color);
   border: var(--border-width) var(--border-type) var(--border-color);
-  max-width: 25em;
+  max-width: 25rem;
   border-radius: var(--border-radius);
 }
 
@@ -14,12 +14,12 @@ textarea, input {
 .post-box-centered {
   display: flex;
   justify-content: center;
-  margin-bottom: 2em;
+  margin-bottom: 2rem;
 }
 
 .post-box-floating {
   position: fixed;
-  right: 0.4em;
+  right: 0.4rem;
   top: 50%;
   transform: translateY(-50%);
 }
@@ -35,7 +35,7 @@ textarea, input {
 
 .post-box-meta a {
   text-align: center;
-  padding: 0.2em;
+  padding: 0.2rem;
 }
 
 .post-box-meta-inputs {
@@ -47,7 +47,8 @@ textarea, input {
 
 .post-box-name {
   width: 50%;
-  padding: 0.2em;
+  padding: 0.2rem;
+  border-right: var(--border-width) var(--border-type) var(--border-color);
 }
 
 .post-box-name#sloppytoppy {
@@ -55,7 +56,6 @@ textarea, input {
 }
 
 .post-box-name#notop {
-  border-left: var(--border-width) var(--border-type) var(--border-color);
   width: 100%;
 }
 
@@ -69,8 +69,8 @@ textarea, input {
 
 
 .post-box-code {
-  width: 6em;
-  padding: 0.2em;
+  width: 6rem;
+  padding: 0.2rem;
 }
 
 .post-box-code#sloppytoppy {
@@ -78,7 +78,7 @@ textarea, input {
 }
 
 .post-box-code#notop {
-  border-left: var(--border-width) var(--border-type) var(--border-color);
+  border-right: var(--border-width) var(--border-type) var(--border-color);
 }
 
 .post-box-code input {
@@ -92,9 +92,8 @@ textarea, input {
 
 .post-box-topic {
   width: 50%;
-  padding: 0.2em;
+  padding: 0.2rem;
   border-left: var(--border-width) var(--border-type) var(--border-color);
-  border-bottom: var(--border-width) var(--border-type) var(--border-color);
   border-top: var(--border-width) var(--border-type) var(--border-color);
 }
 
@@ -107,10 +106,10 @@ textarea, input {
 }
 
 .post-box-content {
-  padding: 0.2em;
+  padding: 0.2rem;
   width: auto;
-  height: 5em;
-  padding-bottom: 0.3em;
+  height: 5rem;
+  padding-bottom: 0.3rem;
   border-bottom: var(--border-width) var(--border-type) var(--border-color);
   border-top: var(--border-width) var(--border-type) var(--border-color);
 }
@@ -145,14 +144,14 @@ textarea, input {
 }
 
 .post-box-file * {
-  padding: 0.2em;
+  padding: 0.2rem;
   white-space: nowrap;
 }
 
 .post-box-submit {
   width: 100%;
   display: inline-flex;
-  padding: 0.2em;
+  padding: 0.2rem;
   justify-content: center;
 }
 
@@ -166,7 +165,7 @@ textarea, input {
 .post-box-submit * span {
   background-color: var(--border-color);
   border: var(--primary-color);
-  padding-inline: 0.2em;
+  padding-inline: 0.2rem;
   border-radius: var(--border-radius);
   width: min-content;
   white-space: nowrap;

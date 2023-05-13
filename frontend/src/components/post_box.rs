@@ -167,6 +167,7 @@ pub fn PostBox(props: &Props) -> Html {
     }
 
     let on_input_name = post.name_change_callback(possible_name.clone());
+    let on_input_code = post.code_change_callback(possible_code.clone());
     let on_input_topic = post.topic_change_callback();
     let on_input_content = post.content_change_callback();
     let on_change_file = post.file_change_callback();
@@ -189,7 +190,7 @@ pub fn PostBox(props: &Props) -> Html {
                                     <input type="text" placeholder="Anonymous" value={possible_name.as_ref().unwrap_or(&"".to_string()).clone()} oninput={on_input_name} />
                                 </div>
                                 <div class="post-box-code" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
-                                    <input type="text" placeholder="secret code" value={post.upper_code_val()} oninput={post.code_change_callback()} />
+                                    <input type="text" placeholder="secret code" value={post.upper_code_val()} oninput={on_input_code} />
                                 </div>
                                 {
                                     if thread.is_none() {
@@ -269,16 +270,6 @@ impl CreatePostInfo {
         self.code.to_uppercase()
     }
 
-    pub fn code_change_callback(&self) -> Callback<InputEvent> {
-        let code = self.code.clone();
-        Callback::from(move |e: InputEvent| {
-            if let Some(value) = crate::helpers::on_input_to_string(e).map(|s| s.value()) {
-                gloo::console::log!(&value);
-                code.set(value);
-            }
-        })
-    }
-
     pub fn name_change_callback(
         &self,
         name_storage: UseLocalStorageHandle<String>,
@@ -288,6 +279,19 @@ impl CreatePostInfo {
             if let Some(value) = crate::helpers::on_input_to_string(e).map(|s| s.value()) {
                 name_storage.set(value.clone());
                 name.set(value);
+            }
+        })
+    }
+
+    pub fn code_change_callback(
+        &self,
+        code_storage: UseLocalStorageHandle<String>,
+    ) -> Callback<InputEvent> {
+        let code = self.code.clone();
+        Callback::from(move |e: InputEvent| {
+            if let Some(value) = crate::helpers::on_input_to_string(e).map(|s| s.value()) {
+                code_storage.set(value.clone());
+                code.set(value);
             }
         })
     }

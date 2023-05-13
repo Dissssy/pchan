@@ -1,4 +1,5 @@
 use anyhow::Result;
+use chrono::TimeZone;
 use common::structs::*;
 use deadpool::managed::Object;
 use diesel::dsl::count;
@@ -212,7 +213,7 @@ impl Post {
             board_discriminator: board_discrim,
             author: User::with_code(self.author.clone(), self.code.clone()),
             content: self.content.clone(),
-            timestamp: format!("{}", self.timestamp),
+            timestamp: TimeZone::from_utc_datetime(&chrono::Utc, &self.timestamp),
             replies: newreplies,
         })
     }

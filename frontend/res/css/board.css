@@ -5,7 +5,7 @@
 .randomized-banner-image {
   display: inline-flex;
   justify-content: center;
-  margin: 0.4em;
+  margin: 0.4rem;
 }
 
 .randomized-banner-image img {

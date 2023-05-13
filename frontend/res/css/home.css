@@ -13,7 +13,7 @@
     flex-direction: column;
     text-align: center;
     border-bottom: var(--border-width) var(--border-type) var(--border-color);
-    border-radius: var(--border-radius) var(--border-radius) 0em 0em;
+    border-radius: var(--border-radius) var(--border-radius) 0rem 0rem;
 }
 
 .home-board-list {
@@ -24,7 +24,7 @@
 
 
 #home-board-name-only {
-    border-radius: 0em 0em var(--border-radius) var(--border-radius);
+    border-radius: 0rem 0rem var(--border-radius) var(--border-radius);
 }
 
 @media (min-aspect-ratio: 1/1) {
@@ -32,14 +32,14 @@
         flex-direction: row;
     }
     #home-board-name-first {
-        border-radius: 0em 0em 0em var(--border-radius);
+        border-radius: 0rem 0rem 0rem var(--border-radius);
         border-right: var(--border-width) var(--border-type) var(--border-color);
     }
     #home-board-name-middle {
         border-right: var(--border-width) var(--border-type) var(--border-color);
     }
     #home-board-name-last {
-        border-radius: 0em 0em var(--border-radius) 0em;
+        border-radius: 0rem 0rem var(--border-radius) 0rem;
     }
 }
 
@@ -48,7 +48,7 @@
         flex-direction: column;
     }
     #home-board-name-last {
-        border-radius: 0em 0em var(--border-radius) var(--border-radius);
+        border-radius: 0rem 0rem var(--border-radius) var(--border-radius);
     }
     #home-board-name-middle {
         border-bottom: var(--border-width) var(--border-type) var(--border-color);
@@ -60,8 +60,8 @@
 
 .home-board-name-link {
     white-space: nowrap;
-    padding-inline: 0.5em;
-    padding-block: 0.35em;
+    padding-inline: 0.5rem;
+    padding-block: 0.35rem;
     color: var(--link-color);
 }
 

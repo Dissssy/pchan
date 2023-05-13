@@ -6,8 +6,9 @@ use yew_router::prelude::*;
 
 use crate::{
     api::Api,
-    components::{ContextError, Post, Spinner, PostBox},
-    ApiContext, BaseRoute, helpers::{CallbackEmitterContext, CallbackContext},
+    components::{ContextError, Post, PostBox, Spinner},
+    helpers::{CallbackContext, CallbackEmitterContext},
+    ApiContext, BaseRoute,
 };
 
 #[function_component]
@@ -15,7 +16,24 @@ pub fn Thread(props: &Props) -> Html {
     let api_ctx = use_context::<Option<ApiContext>>().flatten();
     let pending = use_state(|| false);
     let state = use_state(|| props.thread.clone_with_handle(pending.clone()));
-    
+
+    if let Some(refresh) = &props.refresh {
+        if let Some((window, x, y)) = &**refresh {
+            refresh.set(None);
+            state.set(props.thread.clone_with_handle(pending.clone()));
+            let (window, x, y) = (window.clone(), x.to_owned(), y.to_owned());
+            gloo_timers::callback::Timeout::new(10, move || match (x, y) {
+                (Some(x), Some(y)) => {
+                    window.scroll_to_with_x_and_y(x, y);
+                }
+                _ => {
+                    gloo::console::log!("No scroll position to restore");
+                }
+            })
+            .forget();
+        }
+    }
+
     let add_text_callback = use_state(|| None);
 
     let set_add_text_callback = {
@@ -55,8 +73,6 @@ pub fn Thread(props: &Props) -> Html {
                     }
                 })
             };
-
-            
 
             html! {
                 <ContextProvider<CallbackEmitterContext> context={set_add_text_callback}>
@@ -110,7 +126,10 @@ pub fn Thread(props: &Props) -> Html {
 #[derive(Properties, Clone, PartialEq)]
 pub struct Props {
     pub thread: ThreadState,
+    pub refresh: Option<Refresher>,
 }
+
+pub type Refresher = UseStateHandle<Option<(web_sys::Window, Option<f64>, Option<f64>)>>;
 
 #[derive(Clone, PartialEq)]
 pub enum ThreadState {
@@ -247,7 +266,11 @@ impl ExpandableThread {
         self.expanded = !self.expanded;
         if self.expanded && self.full_thread.is_none() {
             match api
-                .get_thread(board, &self.thread.thread_post.post_number.to_string())
+                .get_thread(
+                    board,
+                    &self.thread.thread_post.post_number.to_string(),
+                    false,
+                )
                 .await
             {
                 Ok(t) => self.full_thread = Some(t),

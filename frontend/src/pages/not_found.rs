@@ -7,6 +7,12 @@ use crate::{api::ApiState, ApiContext};
 
 #[function_component]
 pub fn NotFound() -> Html {
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            document.set_title(&format!("{}Not Found", crate::PREFIX));
+        }
+    }
+
     let api_ctx = use_context::<Option<ApiContext>>();
     let nav = use_navigator();
     let boards: UseStateHandle<ApiState<Vec<common::structs::SafeBoard>>> =
@@ -23,7 +29,7 @@ pub fn NotFound() -> Html {
                             boards.set(ApiState::Error(e));
                         }
                         Ok(api) => {
-                            match api.get_boards().await {
+                            match api.get_boards(false).await {
                                 Err(e) => {
                                     boards.set(ApiState::Error(e));
                                 }
@@ -43,6 +49,7 @@ pub fn NotFound() -> Html {
             });
         }
     }
+
     html! {
         <div class="valign">
             <div class="halign">

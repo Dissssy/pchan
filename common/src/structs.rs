@@ -51,7 +51,7 @@ pub struct SafePost {
     pub board_discriminator: String,
     pub author: User,
     pub content: String,
-    pub timestamp: String,
+    pub timestamp: chrono::DateTime<chrono::Utc>,
     pub replies: Vec<Reply>,
 }
 
@@ -65,18 +65,16 @@ pub enum User {
 impl User {
     pub fn with_code(s: Option<String>, code: Option<String>) -> Self {
         match s {
-            Some(s) => {
-                match code {
-                    Some(code) => {
-                        if code == env!("SUPER_SECRET_MOD_CODE") {
-                            Self::Mod(s)
-                        } else {
-                            Self::Named(s)
-                        }
+            Some(s) => match code {
+                Some(code) => {
+                    if code == env!("SUPER_SECRET_MOD_CODE") {
+                        Self::Mod(s)
+                    } else {
+                        Self::Named(s)
                     }
-                    None => Self::Named(s),
                 }
-            }
+                None => Self::Named(s),
+            },
             None => Self::Anonymous,
         }
     }

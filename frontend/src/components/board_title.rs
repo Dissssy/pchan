@@ -34,7 +34,7 @@ pub fn BoardTitle() -> Html {
                                 if let Some(Some(boardinf)) =
                                     board_ctx.map(|b| b.board_discriminator())
                                 {
-                                    match api.get_board(&boardinf).await {
+                                    match api.get_board(&boardinf, false).await {
                                         Err(e) => {
                                             board.set(ApiState::Error(e));
                                         }

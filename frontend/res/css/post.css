@@ -7,7 +7,7 @@
 
 .parent-post .post-body {
   border: none;
-  padding: 0.4em;
+  padding: 0.4rem;
 }
 
 .parent-post .post-header {
@@ -20,7 +20,7 @@
 }
 
 .post {  
-  margin-block: 0.4em;
+  margin-block: 0.4rem;
   background-color: var(--primary-color);
   height: min-content;
 }
@@ -32,7 +32,7 @@
 
 .post-body {
   display: block;
-  padding: 0.25em;
+  padding: 0.25rem;
   border-radius: 0 0 var(--border-radius) var(--border-radius);
   width: fit-content;
   width: 100%;
@@ -47,8 +47,8 @@
   height: min-content !important;
   width: min-content;
   float: left;
-  padding: 0.4em;
-  margin-right: 0.4em;
+  padding: 0.4rem;
+  margin-right: 0.4rem;
   border: var(--border-width) var(--border-type) var(--border-color);
   border-radius: var(--border-radius);
 }
@@ -89,7 +89,7 @@
 
 
 .post-file {
-  padding-bottom: 0.1em;
+  padding-bottom: 0.1rem;
   height: min-content !important;
 }
 
@@ -138,7 +138,7 @@
   z-index: 0;
   backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
   color: var(--link-color);
-  padding-inline: 0.1em;
+  padding-inline: 0.1rem;
   border-radius: 0 0 0 var(--border-radius);
 }
 
@@ -157,7 +157,7 @@
   z-index: 0;
   backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
   color: var(--link-color);
-  padding-inline: 0.1em;
+  padding-inline: 0.1rem;
   border-radius: 0 var(--border-radius) 0 0;
 }
 
@@ -173,7 +173,7 @@
   width: min-content;
   backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
   color: var(--link-color);
-  padding-inline: 0.1em;
+  padding-inline: 0.1rem;
   border-radius: 0 0 var(--border-radius) 0;
 }
 
@@ -186,8 +186,8 @@
 .post-author {
   display: inline-flex;
   border-right: var(--border-width) var(--border-type) var(--border-color);
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+  padding-inline: 0.4rem;
+  padding-block: 0.2rem;
 }
 
 .post-author-admin {
@@ -197,37 +197,37 @@
 .post-header-delete-button {
   display: inline-flex;
   border-right: var(--border-width) var(--border-type) var(--border-color);
-  padding-inline: 0.1em;
-  padding-block: 0.1em;
+  padding-inline: 0.1rem;
+  padding-block: 0.1rem;
 }
 
 .post-number {
   display: inline-flex;
   border-right: var(--border-width) var(--border-type) var(--border-color);
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+  padding-inline: 0.4rem;
+  padding-block: 0.2rem;
   cursor: alias;
   color: var(--secondary-text-color);
 }
 
 .post-timestamp {
   display: inline-flex;
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+  padding-inline: 0.4rem;
+  padding-block: 0.2rem;
 }
 
 .post-topic {
   display: inline-flex;
   border-left: var(--border-width) var(--border-type) var(--border-color);
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+  padding-inline: 0.4rem;
+  padding-block: 0.2rem;
 }
 
 .post-header-reply {
   display: inline-flex;
   border-left: var(--border-width) var(--border-type) var(--border-color);
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+  padding-inline: 0.4rem;
+  padding-block: 0.2rem;
 }
 
 .post-media-error {
@@ -244,11 +244,11 @@
 .floating-image .post-media-error {
   position: fixed;
   animation: blurin 500ms;
-  padding-inline: 0.2em;
+  padding-inline: 0.2rem;
   border: var(--border-width) var(--border-type) var(--border-color);
   border-radius: var(--border-radius);
-  right: 2em;
-  bottom: 0.2em;
+  right: 2rem;
+  bottom: 0.2rem;
   background-color: var(--error-color);
 }
 
@@ -263,4 +263,32 @@
 
 .floating-image  .post-media-error a:link, .floating-image  .post-media-error a:visited {
   color: var(--primary-color);
+}
+
+.spoiler {
+  font-family: "Code";
+  color: #fff;
+  text-transform: uppercase;
+  -webkit-animation: glow var(--speed) ease-in-out infinite alternate;
+  -moz-animation: glow var(--speed) ease-in-out infinite alternate;
+  animation: glow var(--speed) ease-in-out infinite alternate;
+  cursor: help;
+}
+
+.spoiler-shown {
+  color: #000;
+  -webkit-animation: glow calc(var(--speed) * 5) ease-in-out infinite alternate;
+  -moz-animation: glow calc(var(--speed) * 5) ease-in-out infinite alternate;
+  animation: glow calc(var(--speed) * 5) ease-in-out infinite alternate;
+  cursor: help;
+}
+
+@keyframes glow {
+  from {
+    text-shadow: 0 0 var(--default) #fff, 0 0 calc(var(--default) + var(--added)) #fff, 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color);
+  }
+  to {
+    text-shadow: 0 0 calc(var(--default) + var(--added)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 7)) var(--link-color);
+    filter: brightness(75%);
+  }
 }

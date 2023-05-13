@@ -1,10 +1,15 @@
 use yew::prelude::*;
 use yew_hooks::use_local_storage;
 
-use crate::components::ThemeEditor;
+use crate::components::{ThemeEditor, TimezoneEditor};
 
 #[function_component]
 pub fn Settings() -> Html {
+    if let Some(window) = web_sys::window() {
+        if let Some(document) = window.document() {
+            document.set_title(&format!("{}Settings", crate::PREFIX));
+        }
+    }
     let token = use_local_storage::<String>("token".to_string());
 
     let on_click = {
@@ -26,6 +31,7 @@ pub fn Settings() -> Html {
             <div class="halign">
                 <div class="settings">
                     <ThemeEditor />
+                    <TimezoneEditor />
                     {
                         if token.is_some() {
                             html! {

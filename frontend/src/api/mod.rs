@@ -64,10 +64,12 @@ impl Api {
         format!("Bearer {}", self.token)
     }
 
-    pub async fn get_boards(&self) -> Result<Vec<SafeBoard>, ApiError> {
+    pub async fn get_boards(&self, override_cache: bool) -> Result<Vec<SafeBoard>, ApiError> {
         let ident = "".to_owned();
         // attempt cache hit
-        let v: Option<Vec<SafeBoard>> = {
+        let v: Option<Vec<SafeBoard>> = if override_cache {
+            None
+        } else {
             let mut cache = self.cache.lock().await;
             match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
                 typemap_ors::Entry::Occupied(val) => val.get().get(&ident).cloned(),
@@ -99,10 +101,16 @@ impl Api {
         }
     }
 
-    pub async fn get_board(&self, board: &str) -> Result<BoardWithThreads, ApiError> {
+    pub async fn get_board(
+        &self,
+        board: &str,
+        override_cache: bool,
+    ) -> Result<BoardWithThreads, ApiError> {
         let ident = format!("{}", board);
         // attempt cache hit
-        let v = {
+        let v = if override_cache {
+            None
+        } else {
             let mut cache = self.cache.lock().await;
             match cache.entry::<CachedValue<BoardWithThreads>>() {
                 typemap_ors::Entry::Occupied(val) => val.get().get(&ident).cloned(),
@@ -155,11 +163,18 @@ impl Api {
         }
     }
 
-    pub async fn get_thread(&self, board: &str, thread: &str) -> Result<ThreadWithPosts, ApiError> {
+    pub async fn get_thread(
+        &self,
+        board: &str,
+        thread: &str,
+        override_cache: bool,
+    ) -> Result<ThreadWithPosts, ApiError> {
         let ident = format!("{}-{}", board, thread);
         // attempt cache hit
 
-        let v = {
+        let v = if override_cache {
+            None
+        } else {
             let mut cache = self.cache.lock().await;
             match cache.entry::<CachedValue<ThreadWithPosts>>() {
                 typemap_ors::Entry::Occupied(val) => val.into_mut().get(&ident).cloned(),
@@ -209,10 +224,17 @@ impl Api {
         }
     }
 
-    pub async fn get_post(&self, board: &str, post: &str) -> Result<SafePost, ApiError> {
+    pub async fn get_post(
+        &self,
+        board: &str,
+        post: &str,
+        override_cache: bool,
+    ) -> Result<SafePost, ApiError> {
         let ident = format!("{}-{}", board, post);
         // attempt cache hit
-        let v = {
+        let v = if override_cache {
+            None
+        } else {
             let mut cache = self.cache.lock().await;
             match cache.entry::<CachedValue<SafePost>>() {
                 typemap_ors::Entry::Occupied(val) => val.into_mut().get(&ident).cloned(),
@@ -287,24 +309,10 @@ impl Api {
         let token = self.formatted_token();
         let res = thread::create_thread(&token, board, thread).await;
         if let Ok(post) = &res {
-            {
-                // invalidate board cache
-                let mut cache = self.cache.lock().await;
-                let v = {
-                    match cache.entry::<CachedValue<BoardWithThreads>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        }
-                    }
-                };
-                v.remove(board);
-            }
-            // now get the thread and board to cache them
             let _ = self
-                .get_thread(board, &post.thread_post_number.to_string())
+                .get_thread(board, &post.thread_post_number.to_string(), true)
                 .await;
-            let _ = self.get_board(board).await;
+            let _ = self.get_board(board, true).await;
         }
         res
     }
@@ -318,86 +326,20 @@ impl Api {
         let token = self.formatted_token();
         let res = post::create_post(&token, board, thread, post).await;
         if res.is_ok() {
-            {
-                // invalidate thread cache
-                let mut cache = self.cache.lock().await;
-                let v = {
-                    match cache.entry::<CachedValue<ThreadWithPosts>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        }
-                    }
-                };
-                let ident = format!("{}-{}", board, thread);
-                v.remove(&ident);
-
-                // invalidate board cache
-                let v = {
-                    match cache.entry::<CachedValue<BoardWithThreads>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        }
-                    }
-                };
-                let ident = format!("{}", board);
-                v.remove(&ident);
-            }
-            // now get the board and thread again for the cache
-            let _ = self.get_board(board).await;
-            let _ = self.get_thread(board, thread).await;
+            let _ = self.get_board(board, true).await;
+            let _ = self.get_thread(board, thread, true).await;
         }
         res
     }
 
     pub async fn delete_post(&self, board: &str, post: &str) -> Result<i64, ApiError> {
         let token = self.formatted_token();
-        let full_post = self.get_post(board, post).await?;
+        let full_post = self.get_post(board, post, true).await?;
         let res = post::delete_post(&token, board, post).await;
         if res.is_ok() {
-            {
-                // remove from cache
-                let mut cache = self.cache.lock().await;
-                let v = {
-                    match cache.entry::<CachedValue<SafePost>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        }
-                    }
-                };
-                let ident = format!("{}-{}", board, post);
-                v.remove(&ident);
-
-                // remove thread from cache
-                let v = {
-                    match cache.entry::<CachedValue<ThreadWithPosts>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        }
-                    }
-                };
-                let ident = format!("{}-{}", board, full_post.thread_post_number);
-                v.remove(&ident);
-
-                // remove board from cache
-                let v = {
-                    match cache.entry::<CachedValue<BoardWithThreads>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        }
-                    }
-                };
-                let ident = format!("{}", board);
-                v.remove(&ident);
-            }
-            // now get the board and thread again for the cache
-            let _ = self.get_board(board).await;
+            let _ = self.get_board(board, true).await;
             let _ = self
-                .get_thread(board, &full_post.thread_post_number.to_string())
+                .get_thread(board, &full_post.thread_post_number.to_string(), true)
                 .await;
         }
         res

@@ -25,7 +25,7 @@ pub fn BoardSelectBar() -> Html {
                             boards.set(ApiState::Error(e));
                         }
                         Ok(api) => {
-                            match api.get_boards().await {
+                            match api.get_boards(false).await {
                                 Err(e) => {
                                     boards.set(ApiState::Error(e));
                                 }
