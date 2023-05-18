@@ -1,5 +1,6 @@
 use std::{
     collections::{self, HashMap},
+    fmt::Display,
     sync::Arc,
 };
 
@@ -7,19 +8,21 @@ use async_lock::Mutex;
 use common::structs::{
     Banner, BoardWithThreads, CreatePost, CreateThread, SafeBoard, SafePost, ThreadWithPosts,
 };
+use gloo_net::http::Request;
+use serde::{de::DeserializeOwned, Serialize};
 use typemap_ors::{Key, TypeMap};
 use wasm_timer::Instant;
 use yew::prelude::*;
 use yew_hooks::UseLocalStorageHandle;
 
-mod board;
-mod post;
-mod thread;
+// mod board;
+// mod post;
+// mod thread;
 mod token;
 
 #[derive(Clone)]
 pub struct Api {
-    pub token: String,
+    pub token: AttrValue,
     pub cache: Arc<Mutex<TypeMap>>,
 }
 
@@ -41,10 +44,10 @@ impl PartialEq for Api {
 impl Api {
     pub async fn new(token: UseLocalStorageHandle<String>) -> Result<Self, ApiError> {
         let token = if let Some(token) = &*token {
-            token.clone()
+            AttrValue::from(token.clone())
         } else {
             let t = Self::get_token().await?;
-            token.set(t.clone());
+            token.set(t.to_string());
             t
         };
 
@@ -54,7 +57,7 @@ impl Api {
         })
     }
 
-    async fn get_token() -> Result<String, ApiError> {
+    async fn get_token() -> Result<AttrValue, ApiError> {
         let token = token::get_token().await?;
         //
         Ok(token)
@@ -87,7 +90,7 @@ impl Api {
             //
             // GET /api/v1/board -> Vec<Board>
             let token = self.formatted_token();
-            let res = board::get_boards(&token).await;
+            let res = standard_get::<Vec<SafeBoard>>("/api/v1/board", &token).await;
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
@@ -103,7 +106,7 @@ impl Api {
 
     pub async fn get_board(
         &self,
-        board: &str,
+        board: impl Display + ToString + Copy,
         override_cache: bool,
     ) -> Result<BoardWithThreads, ApiError> {
         let ident = format!("{}", board);
@@ -128,7 +131,8 @@ impl Api {
             //
             // GET /api/v1/{} -> Board
             let token = self.formatted_token();
-            let res = board::get_board(&token, board).await;
+            let res =
+                standard_get::<BoardWithThreads>(&format!("/api/v1/board/{}", board), &token).await;
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 let v = {
@@ -165,8 +169,8 @@ impl Api {
 
     pub async fn get_thread(
         &self,
-        board: &str,
-        thread: &str,
+        board: impl Display + ToString + Copy,
+        thread: impl Display + ToString + Copy,
         override_cache: bool,
     ) -> Result<ThreadWithPosts, ApiError> {
         let ident = format!("{}-{}", board, thread);
@@ -191,7 +195,11 @@ impl Api {
             //
             // GET /api/v1/{}/{} -> Thread
             let token = self.formatted_token();
-            let res = thread::get_thread(&token, board, thread).await;
+            let res = standard_get::<ThreadWithPosts>(
+                &format!("/api/v1/board/{}/thread/{}", board, thread),
+                &token,
+            )
+            .await;
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 let v = {
@@ -226,8 +234,8 @@ impl Api {
 
     pub async fn get_post(
         &self,
-        board: &str,
-        post: &str,
+        board: impl Display + ToString + Copy,
+        post: impl Display + ToString + Copy,
         override_cache: bool,
     ) -> Result<SafePost, ApiError> {
         let ident = format!("{}-{}", board, post);
@@ -246,13 +254,12 @@ impl Api {
         };
 
         if let Some(v) = v {
-            //
             Ok(v)
         } else {
-            //
-            // GET /api/v1/{}/{} -> Post
             let token = self.formatted_token();
-            let res = post::get_post(&token, board, post).await;
+            let res =
+                standard_get::<SafePost>(&format!("/api/v1/board/{}/post/{}", board, post), &token)
+                    .await;
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 let v = {
@@ -269,45 +276,52 @@ impl Api {
         }
     }
 
-    pub async fn create_file(&self, file: web_sys::File) -> Result<String, ApiError> {
+    pub async fn create_file(&self, file: web_sys::File) -> Result<AttrValue, ApiError> {
         let token = self.formatted_token();
-        let form_data = web_sys::FormData::new().map_err(|e| ApiError::Other(format!("{e:?}")))?;
+        let form_data = web_sys::FormData::new()
+            .map_err(|e| ApiError::Other(AttrValue::from(format!("{e:?}"))))?;
 
         form_data
             .append_with_blob("file", &file)
-            .map_err(|e| ApiError::Other(format!("{e:?}")))?;
+            .map_err(|e| ApiError::Other(AttrValue::from(format!("{e:?}"))))?;
 
         let raw_res = gloo_net::http::Request::post("/api/v1/file")
             .header("authorization", &token)
             .body(&form_data)
             .send()
             .await
-            .map_err(|e| ApiError::Gloo(format!("{e:?}")))?;
+            .map_err(|e| ApiError::Gloo(AttrValue::from(format!("{e:?}"))))?;
         let res = raw_res
             .text()
             .await
-            .map_err(|e| ApiError::Gloo(format!("{e:?}")))?;
+            .map_err(|e| ApiError::Gloo(AttrValue::from(format!("{e:?}"))))?;
         let file_id = serde_json::from_str::<String>(&res).map_err(|e| {
             if !raw_res.ok() {
-                ApiError::Api(raw_res.status_text())
+                ApiError::Api(AttrValue::from(raw_res.status_text()))
             } else {
-                ApiError::Serde(format!("{e:?} SERDE ERROR FROM {res}"))
+                ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}")))
             }
         })?;
         if file_id.contains(' ') {
-            Err(ApiError::Api(file_id))
+            Err(ApiError::Api(AttrValue::from(file_id)))
         } else {
-            Ok(file_id)
+            Ok(AttrValue::from(file_id))
         }
     }
 
     pub async fn create_thread(
         &self,
-        board: &str,
+        board: impl Display + ToString + Copy,
         thread: CreateThread,
     ) -> Result<SafePost, ApiError> {
         let token = self.formatted_token();
-        let res = thread::create_thread(&token, board, thread).await;
+        // let res = thread::create_thread(&token, board, thread).await;
+        let res = standard_post::<SafePost, CreateThread>(
+            &format!("/api/v1/board/{}/thread", board),
+            &token,
+            &thread,
+        )
+        .await;
         if let Ok(post) = &res {
             let _ = self
                 .get_thread(board, &post.thread_post_number.to_string(), true)
@@ -319,12 +333,18 @@ impl Api {
 
     pub async fn create_post(
         &self,
-        board: &str,
-        thread: &str,
+        board: impl Display + ToString + Copy,
+        thread: impl Display + ToString + Copy,
         post: CreatePost,
     ) -> Result<SafePost, ApiError> {
         let token = self.formatted_token();
-        let res = post::create_post(&token, board, thread, post).await;
+        // let res = post::create_post(&token, board, thread, post).await;
+        let res = standard_post::<SafePost, CreatePost>(
+            &format!("/api/v1/board/{}/thread/{}", board, thread),
+            &token,
+            &post,
+        )
+        .await;
         if res.is_ok() {
             let _ = self.get_board(board, true).await;
             let _ = self.get_thread(board, thread, true).await;
@@ -332,10 +352,16 @@ impl Api {
         res
     }
 
-    pub async fn delete_post(&self, board: &str, post: &str) -> Result<i64, ApiError> {
+    pub async fn delete_post(
+        &self,
+        board: impl Display + ToString + Copy,
+        post: impl Display + ToString + Copy,
+    ) -> Result<i64, ApiError> {
         let token = self.formatted_token();
         let full_post = self.get_post(board, post, true).await?;
-        let res = post::delete_post(&token, board, post).await;
+        // let res = post::delete_post(&token, board, post).await;
+        let res =
+            standard_delete::<i64>(&format!("/api/v1/board/{}/post/{}", board, post), &token).await;
         if res.is_ok() {
             let _ = self.get_board(board, true).await;
             let _ = self
@@ -345,19 +371,20 @@ impl Api {
         res
     }
 
-    pub async fn get_banner(&self, board: &str) -> Result<Banner, ApiError> {
+    pub async fn get_banner(&self, board: impl Display + ToString) -> Result<Banner, ApiError> {
         let token = self.formatted_token();
 
-        board::get_banner(&token, board).await
+        // board::get_banner(&token, board).await
+        standard_get(&format!("/api/v1/board/{}/banner", board), &token).await
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ApiError {
-    Gloo(String),
-    Serde(String),
-    Api(String),
-    Other(String),
+    Gloo(AttrValue),
+    Serde(AttrValue),
+    Api(AttrValue),
+    Other(AttrValue),
     // TODO: add error types :(
 }
 
@@ -366,7 +393,7 @@ pub enum ApiState<T> {
     Pending,
     Loading,
     Loaded(T),
-    ContextError(String),
+    ContextError(AttrValue),
     Error(ApiError),
 }
 
@@ -381,7 +408,7 @@ impl<T> ApiState<T> {
                 <crate::components::Spinner />
             }),
             ApiState::ContextError(s) => Ok(html! {
-                <crate::components::ContextError cause={s.clone()} source={source} />
+                <crate::components::ContextError cause={s} source={source} />
             }),
             ApiState::Error(e) => Err(e.clone()),
             ApiState::Loaded(data) => Ok(then(data)),
@@ -414,13 +441,13 @@ impl<T> CachedValue<T> {
             ttl,
         }
     }
-    pub fn get(&self, identifier: &str) -> Option<&T> {
+    pub fn get(&self, identifier: impl Display + ToString) -> Option<&T> {
         // gloo::console::log!(format!(
         //     "getting \"{}\" for \"{}\"",
         //     identifier,
         //     std::any::type_name::<T>()
         // ));
-        if let Some((instant, value)) = self.values.get(identifier) {
+        if let Some((instant, value)) = self.values.get(&identifier.to_string()) {
             if instant.elapsed() < self.ttl {
                 gloo::console::log!(format!(
                     "retrieved \"{}\" for \"{}\" from cache",
@@ -436,7 +463,7 @@ impl<T> CachedValue<T> {
         }
         None
     }
-    pub fn set(&mut self, identifier: &str, value: T) {
+    pub fn set(&mut self, identifier: impl Display + ToString + Copy, value: T) {
         // gloo::console::log!(format!(
         //     "setting \"{}\" for \"{}\"",
         //     identifier,
@@ -465,4 +492,82 @@ impl<T> CachedValue<T> {
         // ));
         self.values.remove(identifier);
     }
+}
+
+pub async fn standard_get<T>(path: &str, token: &str) -> Result<T, ApiError>
+where
+    T: DeserializeOwned,
+{
+    let res = Request::get(path)
+        .header("authorization", token)
+        .send()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?
+        .text()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?;
+
+    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
+        Ok(v) => ApiError::Api(AttrValue::from(v)),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}"))),
+    })
+}
+
+pub async fn standard_delete<T>(path: &str, token: &str) -> Result<T, ApiError>
+where
+    T: DeserializeOwned,
+{
+    let res = Request::delete(path)
+        .header("authorization", token)
+        .send()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?
+        .text()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?;
+
+    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
+        Ok(v) => ApiError::Api(AttrValue::from(v)),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}"))),
+    })
+}
+
+pub async fn standard_post<T, E>(path: &str, token: &str, data: &E) -> Result<T, ApiError>
+where
+    T: DeserializeOwned,
+    E: Serialize,
+{
+    let res = Request::post(path)
+        .header("authorization", token)
+        .json(data)
+        .map_err(|e| ApiError::Serde(AttrValue::from(e.to_string())))?
+        .send()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?
+        .text()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?;
+
+    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
+        Ok(v) => ApiError::Api(AttrValue::from(v)),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}"))),
+    })
 }

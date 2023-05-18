@@ -23,13 +23,10 @@ pub fn DeleteButton(props: &Props) -> Html {
             wasm_bindgen_futures::spawn_local(async move {
                 let del = match &api_ctx {
                     Some(api_ctx) => match &api_ctx.api {
-                        Ok(api) => {
-                            api.delete_post(&board_discriminator, &post_number.to_string())
-                                .await
-                        }
-                        Err(e) => Err(ApiError::Other(format!("{e:?}"))),
+                        Ok(api) => api.delete_post(&board_discriminator, &post_number).await,
+                        Err(e) => Err(ApiError::Other(AttrValue::from(format!("{e:?}")))),
                     },
-                    _ => Err(ApiError::Other("No API context".to_string())),
+                    _ => Err(ApiError::Other(AttrValue::from("No API context"))),
                 };
                 match del {
                     Ok(_) => {

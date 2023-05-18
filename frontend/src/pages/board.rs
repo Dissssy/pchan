@@ -37,12 +37,14 @@ pub fn BoardPage() -> Html {
                                         }
                                     };
                                 } else {
-                                    board.set(ApiState::ContextError("BoardContext".to_string()));
+                                    board.set(ApiState::ContextError(AttrValue::from(
+                                        "BoardContext",
+                                    )));
                                 }
                             }
                         },
                         _ => {
-                            board.set(ApiState::ContextError("ApiContext".to_string()));
+                            board.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                         }
                     }
                 });

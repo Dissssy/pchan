@@ -44,7 +44,7 @@ pub fn ColorEditor(props: &Props) -> Html {
 
 #[derive(Clone, Properties, PartialEq)]
 pub struct Props {
-    pub label: String,
+    pub label: AttrValue,
     pub field: UseLocalStorageHandle<String>,
     pub position: Option<Position>,
 }

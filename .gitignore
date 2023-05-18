@@ -22,3 +22,5 @@ frontend/res
 frontend/favicon.ico
 frontend/res/fonts
 frontend/unauthorized.html
+frontend/src/api/old
+build.sh

@@ -30,15 +30,15 @@ pub fn RichText(props: &Props) -> Html {
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct Props {
-    pub content: String,
-    pub board: String,
-    pub thread_post_number: String,
+    pub content: AttrValue,
+    pub board: AttrValue,
+    pub thread_post_number: AttrValue,
     pub invert: bool,
 }
 
 pub struct RichTextContent {
-    pub class: String,
-    pub string: String,
+    pub class: AttrValue,
+    pub string: AttrValue,
 }
 
 lazy_static::lazy_static! {
@@ -46,8 +46,8 @@ lazy_static::lazy_static! {
         |s| {
             if s.starts_with('>') {
                 Some(RichTextContent {
-                    class: "bluetext".to_string(),
-                    string: s.to_string(),
+                    class: AttrValue::from("bluetext"),
+                    string: AttrValue::from(s.to_owned()),
                 })
             } else {
                 None
@@ -56,8 +56,8 @@ lazy_static::lazy_static! {
         |s| {
             if s.starts_with('<') {
                 Some(RichTextContent {
-                    class: "peetext".to_string(),
-                    string: s.to_string(),
+                    class: AttrValue::from("peetext"),
+                    string: AttrValue::from(s.to_owned()),
                 })
             } else {
                 None
@@ -65,8 +65,8 @@ lazy_static::lazy_static! {
         },
         |s| {
             s.strip_prefix(r#"./*"#).and_then(|s| s.strip_suffix(r#"*\."#)).map(|s| RichTextContent {
-                class: "gibberish".to_string(),
-                string: s.to_lowercase(),
+                class: AttrValue::from("gibberish"),
+                string: AttrValue::from(s.to_owned()),
             })
         },
     ];
@@ -96,7 +96,7 @@ fn RichLine(props: &RichLineProps) -> Html {
         }
         (_, Some(richtextinfo)) => {
             html! {
-                <span class={richtextinfo.class}><SpoilableText content={richtextinfo.string} /></span>
+                <span class={richtextinfo.class.to_string()}><SpoilableText content={richtextinfo.string} /></span>
             }
         }
         _ => {
@@ -109,9 +109,9 @@ fn RichLine(props: &RichLineProps) -> Html {
 
 #[derive(Clone, PartialEq, Properties)]
 struct RichLineProps {
-    pub line: String,
-    pub board: String,
-    pub thread_post_number: String,
+    pub line: AttrValue,
+    pub board: AttrValue,
+    pub thread_post_number: AttrValue,
     pub invert: bool,
 }
 
@@ -121,8 +121,9 @@ pub fn SpoilableText(props: &SpoilableProps) -> Html {
     let mut splits = props.content.split("||");
 
     let first = splits.next().unwrap_or_default();
-    let following = splits.map(|s| s.to_string()).collect::<Vec<String>>();
-
+    let following = splits
+        .map(|s| AttrValue::from(s.to_owned()))
+        .collect::<Vec<AttrValue>>();
 
     html! {
         <>
@@ -134,16 +135,16 @@ pub fn SpoilableText(props: &SpoilableProps) -> Html {
                     if let Some(next) = s.get(1) {
                         html! {
                             <>
-                                <SpoiledText content={s.get(0).unwrap_or(&"this shouldn't happen".to_string()).clone()} />
+                                <SpoiledText content={s.get(0).unwrap_or(&AttrValue::from("this shouldn't happen")).clone()} />
                                 {next}
                             </>
                         }
                     } else {
                         html! {
-                            <>{format!("||{}", s.get(0).unwrap_or(&"this shouldn't happen".to_string()))}</>
+                            <>{format!("||{}", s.get(0).unwrap_or(&AttrValue::from("this shouldn't happen")))}</>
                         }
                     }
-                    
+
                 }).collect::<Html>()
             }
         </>
@@ -152,13 +153,11 @@ pub fn SpoilableText(props: &SpoilableProps) -> Html {
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct SpoilableProps {
-    pub content: String,
+    pub content: AttrValue,
 }
-
 
 #[function_component]
 pub fn SpoiledText(props: &SpoilableProps) -> Html {
-
     let shown = use_state(|| false);
 
     let on_click = {

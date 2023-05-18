@@ -37,12 +37,14 @@ pub fn BannerAd() -> Html {
                                         }
                                     };
                                 } else {
-                                    banner.set(ApiState::ContextError("BoardContext".to_string()));
+                                    banner.set(ApiState::ContextError(AttrValue::from(
+                                        "BoardContext",
+                                    )));
                                 }
                             }
                         },
                         _ => {
-                            banner.set(ApiState::ContextError("ApiContext".to_string()));
+                            banner.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                         }
                     }
                 });

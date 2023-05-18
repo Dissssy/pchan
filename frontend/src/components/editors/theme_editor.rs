@@ -146,12 +146,13 @@ pub enum Position {
 }
 
 impl Position {
-    pub fn get_id(&self) -> &str {
+    pub fn get_id(&self) -> AttrValue {
         match self {
             Position::First => "first",
             Position::Middle => "middle",
             Position::Last => "last",
         }
+        .into()
     }
 }
 
@@ -185,7 +186,7 @@ impl EmojiState {
         }
     }
 
-    pub fn string(&self) -> &'static str {
+    pub fn string(&self) -> AttrValue {
         match self {
             EmojiState::Enabled => "",
             EmojiState::Conf1 => "",
@@ -198,5 +199,6 @@ impl EmojiState {
             EmojiState::Conf8 => "󰮢󰮢󰮢󰮢󰮢󰮢",
             EmojiState::Disabled => "Emojis Disabled",
         }
+        .into()
     }
 }

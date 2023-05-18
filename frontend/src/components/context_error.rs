@@ -11,6 +11,6 @@ pub fn ContextError(props: &Props) -> Html {
 
 #[derive(Clone, Properties, PartialEq)]
 pub struct Props {
-    pub cause: String,
-    pub source: String,
+    pub cause: AttrValue,
+    pub source: AttrValue,
 }

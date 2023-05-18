@@ -39,6 +39,7 @@ pub use richtext::RichText;
 pub use settings::SettingsButton;
 pub use spinner::Spinner;
 pub use thread::Thread;
+use yew::AttrValue;
 
 #[derive(Clone, PartialEq, Debug)]
 pub enum HoveredOrExpandedState {
@@ -60,12 +61,13 @@ pub enum OffsetType {
 }
 
 impl OffsetType {
-    pub fn percent(&self) -> String {
+    pub fn percent(&self) -> AttrValue {
         match self {
-            OffsetType::Top => "-100%".to_owned(),
-            OffsetType::Center => "-50%".to_owned(),
-            OffsetType::Bottom => "0%".to_owned(),
+            OffsetType::Top => "-100%",
+            OffsetType::Center => "-50%",
+            OffsetType::Bottom => "0%",
         }
+        .into()
     }
 }
 

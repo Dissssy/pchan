@@ -41,7 +41,7 @@ pub fn BoardSelectBar() -> Html {
                         }
                     },
                     _ => {
-                        boards.set(ApiState::ContextError("ApiContext".to_string()));
+                        boards.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                     }
                 }
             });

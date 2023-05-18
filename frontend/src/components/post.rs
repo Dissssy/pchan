@@ -151,5 +151,5 @@ pub struct Props {
     pub post: SafePost,
     #[prop_or_default]
     pub invert: bool,
-    pub topic: Option<String>,
+    pub topic: Option<AttrValue>,
 }

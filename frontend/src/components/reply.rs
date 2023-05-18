@@ -50,7 +50,7 @@ pub fn Reply(props: &Props) -> Html {
                             }
                         },
                         _ => {
-                            post.set(ApiState::ContextError("ApiContext".to_string()));
+                            post.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                         }
                     }
                 });
@@ -166,7 +166,7 @@ pub fn Reply(props: &Props) -> Html {
         html! {
             <ContextProvider<Option<ParentOffset>> context={*passdown_offset}>
                 <a href={format!("/{}/thread/{}", props.reply.board_discriminator, post.thread_post_number)} onclick={on_click.clone()} onmousemove={on_hover.clone()} onmouseleave={on_mouseoff.clone()}>
-                    <span class="post-reply">{props.reply.text(props.thread_post_number.clone())}</span>
+                    <span class="post-reply">{props.reply.text(props.thread_post_number.to_string())}</span>
                 </a>
                 {
                     if *state != HoveredOrExpandedState::None {
@@ -206,6 +206,6 @@ pub fn Reply(props: &Props) -> Html {
 #[derive(Clone, PartialEq, Properties)]
 pub struct Props {
     pub reply: common::structs::Reply,
-    pub thread_post_number: String,
+    pub thread_post_number: AttrValue,
     pub invert: bool,
 }

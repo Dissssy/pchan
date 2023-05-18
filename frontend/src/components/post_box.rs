@@ -18,9 +18,9 @@ pub fn PostBox(props: &Props) -> Html {
         (
             route.board_discriminator(),
             match route.thread_id() {
-                Some(id) => ThreadType::RealThread(id),
+                Some(id) => ThreadType::RealThread(AttrValue::from(id)),
                 None => match &props.override_thread {
-                    Some(id) => ThreadType::FakeThread(id.clone()),
+                    Some(id) => ThreadType::FakeThread(id.to_owned()),
                     None => ThreadType::None,
                 },
             },
@@ -72,7 +72,7 @@ pub fn PostBox(props: &Props) -> Html {
                     let file = if let Some(file) = (*post.file).clone() {
                         match api.create_file(file).await {
                             Ok(file) => Some(CreateFile {
-                                id: file,
+                                id: file.to_string(),
                                 spoiler: *post.spoiler,
                             }),
                             Err(e) => {
@@ -93,13 +93,13 @@ pub fn PostBox(props: &Props) -> Html {
 
                     match match routeinfo.map(|(board, thread)| (board, thread.id())) {
                         None => {
-                            state.set(ApiState::ContextError("BaseRoute".to_string()));
+                            state.set(ApiState::ContextError(AttrValue::from("BaseRoute")));
                             return;
                         }
                         Some((None, _)) => {
-                            state.set(ApiState::ContextError(
-                                "BaseRoute (board_discriminator)".to_string(),
-                            ));
+                            state.set(ApiState::ContextError(AttrValue::from(
+                                "BaseRoute (board_discriminator)",
+                            )));
                             return;
                         }
                         Some((Some(board_discriminator), None)) => {
@@ -124,7 +124,7 @@ pub fn PostBox(props: &Props) -> Html {
                         Err(e) => state.set(ApiState::Error(e)),
                     }
                 } else {
-                    state.set(ApiState::ContextError("ApiContext".to_string()));
+                    state.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                 }
             });
         })
@@ -176,7 +176,7 @@ pub fn PostBox(props: &Props) -> Html {
     match routeinfo {
         Some((Some(_), thread)) => {
             html! {
-                <div class={thread.class()}>
+                <div class={thread.class().to_string()}>
                     <div class="post-box">
                         <div class="post-box-meta">
                             <a
@@ -251,7 +251,7 @@ pub fn PostBox(props: &Props) -> Html {
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct Props {
-    pub override_thread: Option<String>,
+    pub override_thread: Option<AttrValue>,
 }
 
 #[derive(Clone, PartialEq)]
@@ -343,13 +343,13 @@ impl CreatePostInfo {
 
 #[derive(Clone, PartialEq)]
 enum ThreadType {
-    RealThread(String),
-    FakeThread(String),
+    RealThread(AttrValue),
+    FakeThread(AttrValue),
     None,
 }
 
 impl ThreadType {
-    pub fn id(&self) -> Option<String> {
+    pub fn id(&self) -> Option<AttrValue> {
         match self {
             ThreadType::RealThread(id) => Some(id.clone()),
             ThreadType::FakeThread(id) => Some(id.clone()),
@@ -370,11 +370,12 @@ impl ThreadType {
             ThreadType::None => true,
         }
     }
-    pub fn class(&self) -> String {
+    pub fn class(&self) -> AttrValue {
         match self {
-            ThreadType::RealThread(_) => "post-box-floating".to_string(),
-            ThreadType::FakeThread(_) => "post-box-inline".to_string(),
-            ThreadType::None => "post-box-centered".to_string(),
+            ThreadType::RealThread(_) => "post-box-floating",
+            ThreadType::FakeThread(_) => "post-box-inline",
+            ThreadType::None => "post-box-centered",
         }
+        .into()
     }
 }

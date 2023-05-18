@@ -76,12 +76,12 @@ pub fn ThreadPage() -> Html {
                                     }
                                 };
                             } else {
-                                thread.set(ApiState::ContextError("BoardContext".to_string()));
+                                thread.set(ApiState::ContextError(AttrValue::from("BoardContext")));
                             }
                         }
                     },
                     _ => {
-                        thread.set(ApiState::ContextError("ApiContext".to_string()));
+                        thread.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                     }
                 }
             });
@@ -154,28 +154,30 @@ pub fn ThreadPage() -> Html {
                                             };
                                         }
                                         (None, Some(_)) => {
-                                            thread.set(ApiState::ContextError(
-                                                "BoardContext".to_string(),
-                                            ));
+                                            thread.set(ApiState::ContextError(AttrValue::from(
+                                                "BoardContext",
+                                            )));
                                         }
                                         (Some(_), None) => {
-                                            thread.set(ApiState::ContextError(
-                                                "ThreadContext".to_string(),
-                                            ));
+                                            thread.set(ApiState::ContextError(AttrValue::from(
+                                                "ThreadContext",
+                                            )));
                                         }
                                         (None, None) => {
-                                            thread.set(ApiState::ContextError(
-                                                "RouteContext".to_string(),
-                                            ));
+                                            thread.set(ApiState::ContextError(AttrValue::from(
+                                                "RouteContext",
+                                            )));
                                         }
                                     }
                                 } else {
-                                    thread.set(ApiState::ContextError("RouteContext".to_string()));
+                                    thread.set(ApiState::ContextError(AttrValue::from(
+                                        "RouteContext",
+                                    )));
                                 }
                             }
                         },
                         _ => {
-                            thread.set(ApiState::ContextError("ApiContext".to_string()));
+                            thread.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                         }
                     }
                 });

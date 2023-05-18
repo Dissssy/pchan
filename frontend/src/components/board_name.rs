@@ -83,7 +83,7 @@ pub struct Props {
     pub board: SafeBoard,
     pub view: BoardNameType,
     pub hover: Option<BoardNameType>,
-    pub prefix: String,
+    pub prefix: AttrValue,
     pub first: bool,
     pub last: bool,
 }

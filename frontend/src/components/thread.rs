@@ -191,10 +191,10 @@ impl ThreadState {
         }
     }
 
-    pub fn topic(&self) -> String {
+    pub fn topic(&self) -> AttrValue {
         match self {
-            ThreadState::Expandable(thread) => thread.thread.topic.clone(),
-            ThreadState::Full(thread) => thread.topic.clone(),
+            ThreadState::Expandable(thread) => AttrValue::from(thread.thread.topic.clone()),
+            ThreadState::Full(thread) => AttrValue::from(thread.topic.clone()),
         }
     }
 
@@ -212,7 +212,7 @@ impl ThreadState {
     //     }
     // }
 
-    pub fn button_text(&self) -> Option<String> {
+    pub fn button_text(&self) -> Option<AttrValue> {
         // Show ({hidden_post_count} posts)
         // Hide ({hidden_post_count} posts)
 
@@ -226,7 +226,7 @@ impl ThreadState {
                     } else {
                         format!("Show {} posts", hidden_post_count)
                     };
-                    Some(text)
+                    Some(AttrValue::from(text))
                 } else {
                     None
                 }
