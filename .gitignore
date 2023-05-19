@@ -24,6 +24,9 @@ frontend/res/banners
 frontend/res/spoilers
 frontend/res/*.png
 frontend/res/*.svg
+frontend/res/*.jpg
+frontend/res/*.gif
+frontend/res/*.ico
 frontend/unauthorized.html
 frontend/src/api/old
 build.sh

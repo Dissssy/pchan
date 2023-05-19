@@ -68,6 +68,10 @@ pub fn use_server_sent_event(
                             }
                         };
 
+                    let mut event_types = event_types.clone();
+                    event_types.push("close");
+                    event_types.push("open");
+
                     let subs = event_types
                         .iter()
                         .cloned()

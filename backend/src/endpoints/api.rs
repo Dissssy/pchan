@@ -569,7 +569,17 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         })))
     });
 
-    pushnotifs.or(threadnotifs)
+    pushnotifs.or(threadnotifs).map(|reply| {
+        warp::reply::with_header(
+            warp::reply::with_header(
+                warp::reply::with_header(reply, warp::http::header::CACHE_CONTROL, "no-cache"),
+                warp::http::header::CONTENT_TYPE,
+                "text/event-stream",
+            ),
+            "X-Accel-Buffering",
+            "no",
+        )
+    })
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
