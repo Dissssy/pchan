@@ -484,7 +484,7 @@ impl Database {
         {
             let mut sse = crate::PUSH_NOTIFS.lock().await;
             let safe = p.safe(conn).await?;
-            let mut idents = crate::database::Database::get_subscribed_users(conn, tthread).await?;
+            let mut idents = crate::database::Database::get_subscribed_users(conn, tthread).await.unwrap_or_default();
             idents.push(format!(
                 "board: {} | thread: {}",
                 safe.board_discriminator, safe.thread_post_number

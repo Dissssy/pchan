@@ -681,7 +681,7 @@ pub struct SubscriptionKeys {
 fn verify_post(post: &CreatePost, topic: Option<&String>) -> anyhow::Result<()> {
     if let Some(ref a) = post.author {
         if a.len() > 30 {
-            return Err(anyhow::anyhow!("Author name too long"));
+            return Err(anyhow::anyhow!("Author too long"));
         }
     }
     if post.content.len() > 5000 {
@@ -689,7 +689,7 @@ fn verify_post(post: &CreatePost, topic: Option<&String>) -> anyhow::Result<()> 
     }
     if let Some(t) = topic {
         if t.len() > 100 {
-            return Err(anyhow::anyhow!("Topic name too long"));
+            return Err(anyhow::anyhow!("Topic too long"));
         }
     }
     Ok(())
