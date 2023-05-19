@@ -504,6 +504,58 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     //         }
     //     });
 
+    // GET /api/v1/board/{board_discriminator}/post/{post_number}/watching - returns true or false depending on if the user is watching the post or not
+
+    let get_watching = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "watching")
+        .and(warp::get())
+        .and(valid_token())
+        .and_then({
+            |disc: String, post: i64, token: String| async move {
+                match crate::database::Database::get_watching(
+                    &mut crate::POOL.get().await.unwrap(),
+                    disc,
+                    post,
+                    hash_with_salt(&token, &crate::statics::TOKEN_SALT),
+                )
+                .await
+                {
+                    Ok(watching) => Ok::<warp::reply::Json, warp::reject::Rejection>(
+                        warp::reply::json(&watching),
+                    ),
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(
+                        warp::reply::json(&e.to_string()),
+                    ),
+                }
+            }
+        });
+
+    // PUT /api/v1/board/{board_discriminator}/post/{post_number}/watching - sets the user's watching status for the post
+    
+    let put_watching = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "watching")
+        .and(warp::put())
+        .and(valid_token())
+        .and(warp::body::json::<bool>())
+        .and_then({
+            |disc: String, post: i64, token: String, watching: bool| async move {
+                match crate::database::Database::set_watching(
+                    &mut crate::POOL.get().await.unwrap(),
+                    disc,
+                    post,
+                    hash_with_salt(&token, &crate::statics::TOKEN_SALT),
+                    watching,
+                )
+                .await
+                {
+                    Ok(v) => Ok::<warp::reply::Json, warp::reject::Rejection>(
+                        warp::reply::json(&v),
+                    ),
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(
+                        warp::reply::json(&e.to_string()),
+                    ),
+                }
+            }
+        });
+
     crate::filters::ratelimit()
         .and(
             getpost
@@ -516,6 +568,8 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(getboards)
                 .or(uploadfile)
                 .or(gettoken)
+                .or(get_watching)
+                .or(put_watching)
                 .or(notifications()),
         )
         .recover(|err: Rejection| async move {

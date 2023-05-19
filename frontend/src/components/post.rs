@@ -3,7 +3,7 @@ use yew::prelude::*;
 use yew_router::prelude::use_route;
 
 use crate::{
-    components::{DeleteButton, File, MaybeLink, Reply, RichText},
+    components::{DeleteButton, File, MaybeLink, Reply, RichText, WatchButton},
     helpers::CallbackContext,
     BaseRoute,
 };
@@ -65,6 +65,9 @@ pub fn Post(props: &Props) -> Html {
             <div class={ if props.topic.is_some() { "parent-post" } else { "post" } } id={ if props.invert { "invert" } else { "normal" }} >
                 <div class="post-header">
                     <DeleteButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
+                    if props.topic.is_some() {
+                        <WatchButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
+                    }
                     <span class="post-author">{ match &props.post.author {
                         User::Anonymous => { html! { <>{"Anonymous"}</> } }
                         User::Named(name) => { html! { <>{name}</> } }

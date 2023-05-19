@@ -663,6 +663,57 @@ impl Database {
             .collect::<Vec<String>>())
     }
 
+    pub async fn get_watching(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, 
+        disc: String, 
+        post: i64,
+        token: String
+    ) -> Result<bool> {
+        use crate::schema::members::dsl::*;
+        let post = Self::get_raw_post(conn, disc, post).await?;
+        
+        // if user where token_hash == token && watching.contains(post.thread_id)
+        match members.filter(token_hash.eq(token)).filter(watching.contains(vec![post.id])).first::<crate::schema::Member>(conn).await {
+            Ok(_) => Ok(true),
+            Err(diesel::NotFound) => {
+                Ok(false)
+            },
+            Err(e) => Err(e.into())
+        }
+    }
+
+    pub async fn set_watching(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, 
+        disc: String, 
+        post: i64,
+        token: String,
+        set_watching: bool
+    ) -> Result<bool> {
+        use crate::schema::members::dsl::*;
+        let post = Self::get_raw_post(conn, disc, post).await?;
+
+        // get user and, put or remove post.id from watching depending on watching
+        let user = members.filter(token_hash.eq(&token)).first::<crate::schema::Member>(conn).await?;
+
+        match (set_watching, user.watching.contains(&post.id)) {
+            (true, false) => {
+                let mut twatching = user.watching;
+                twatching.push(post.id);
+                diesel::update(members.filter(token_hash.eq(token))).set(watching.eq(twatching)).execute(conn).await?;
+                Ok(true)
+            }
+            (false, true) => {
+                let mut twatching = user.watching;
+                twatching.retain(|x| *x != post.id);
+                diesel::update(members.filter(token_hash.eq(token))).set(watching.eq(twatching)).execute(conn).await?;
+                Ok(false)
+            }
+            _ => {
+                Ok(set_watching)
+            }
+        }
+    }
+
     // pub async fn dispatch_push_notifications(thread_id: i64, post: SafePost) -> Result<()> {
     //     tokio::task::spawn(async move {
     //         let mut conn = crate::POOL.get().await.unwrap_or_else(|_| {

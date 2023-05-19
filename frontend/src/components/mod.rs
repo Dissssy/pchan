@@ -18,6 +18,7 @@ mod richtext;
 mod settings;
 mod spinner;
 mod thread;
+mod watch_button;
 
 pub use banner_ad::BannerAd;
 pub use board_name::{BoardName, BoardNameType};
@@ -41,6 +42,7 @@ pub use richtext::RichText;
 pub use settings::SettingsButton;
 pub use spinner::Spinner;
 pub use thread::Thread;
+pub use watch_button::WatchButton;
 use yew::AttrValue;
 
 #[derive(Clone, PartialEq, Debug)]

@@ -23,3 +23,8 @@
   border-bottom: var(--border-width) var(--border-type) var(--border-color);
   border-right: var(--border-width) var(--border-type) var(--border-color);
 }
+
+.dead-link {
+  cursor: not-allowed;
+  color: var(--error-color);
+}

@@ -197,9 +197,17 @@
 .post-header-delete-button {
   display: inline-flex;
   border-right: var(--border-width) var(--border-type) var(--border-color);
-  padding-inline: 0.1rem;
-  padding-block: 0.1rem;
+  padding-inline: 0.2rem;
+  padding-block: 0.15rem;
 }
+
+.post-watch-button {
+  display: inline-flex;
+  border-right: var(--border-width) var(--border-type) var(--border-color);
+  padding-inline: 0.2rem;
+  padding-block: 0.15rem;
+}
+
 
 .post-number {
   display: inline-flex;
@@ -291,9 +299,4 @@
     text-shadow: 0 0 calc(var(--default) + var(--added)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 7)) var(--link-color);
     filter: brightness(75%);
   }
-}
-
-.dead-link {
-  cursor: not-allowed;
-  color: var(--error-color);
 }

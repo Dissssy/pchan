@@ -11,8 +11,8 @@ use warp::Filter;
 
 mod database;
 mod endpoints;
-mod push;
 mod filters;
+mod push;
 pub mod schema;
 mod statics;
 mod unclaimedfiles;
@@ -38,7 +38,6 @@ lazy_static::lazy_static! {
     pub static ref RATELIMIT: Arc<Mutex<HashMap<String, tokio::time::Instant>>> = Arc::new(Mutex::new(HashMap::new()));
     pub static ref PUSH_NOTIFS: Arc<Mutex<push::PushHolder>> = Arc::new(Mutex::new(push::PushHolder::new()));
 }
-
 
 fn is_safe_mimetype(mimetype: &str) -> bool {
     let mimetype = mimetype.to_lowercase();
@@ -80,8 +79,7 @@ async fn main() {
                 .map(|reply: warp::filters::fs::File| {
                     use warp::Reply;
                     let mut resp = reply.into_response();
-                    if let Some(content_type) =
-                        resp.headers().get(warp::http::header::CONTENT_TYPE)
+                    if let Some(content_type) = resp.headers().get(warp::http::header::CONTENT_TYPE)
                     {
                         let content_type = content_type.to_str().unwrap();
                         if !is_safe_mimetype(content_type) {

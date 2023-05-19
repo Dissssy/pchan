@@ -371,6 +371,34 @@ impl Api {
         res
     }
 
+    pub async fn set_watching(
+        &self,
+        board: impl Display + ToString + Copy,
+        post: impl Display + ToString + Copy,
+        watching: bool,
+    ) -> Result<bool, ApiError> {
+        let token = self.formatted_token();
+        // PUT /api/v1/board/{board_discriminator}/post/{post_number}/watching
+        standard_put(
+            &format!("/api/v1/board/{}/post/{}/watching", board, post),
+            &token,
+            &watching,
+        ).await
+    }
+
+    pub async fn get_watching(
+        &self,
+        board: impl Display + ToString + Copy,
+        post: impl Display + ToString + Copy,
+    ) -> Result<bool, ApiError> {
+        let token = self.formatted_token();
+        // GET /api/v1/board/{board_discriminator}/post/{post_number}/watching
+        standard_get(
+            &format!("/api/v1/board/{}/post/{}/watching", board, post),
+            &token,
+        ).await
+    }
+
     pub async fn get_banner(&self, board: impl Display + ToString) -> Result<Banner, ApiError> {
         let token = self.formatted_token();
 
@@ -445,6 +473,14 @@ impl<T> ApiState<T> {
             }),
             ApiState::Error(e) => Err(e.clone()),
             ApiState::Loaded(data) => Ok(then(data)),
+        }
+    }
+    pub fn get_or(&self, other: T) -> T
+    where T: Clone
+    {
+        match self {
+            ApiState::Loaded(data) => data.clone(),
+            _ => other,
         }
     }
 }
@@ -583,6 +619,34 @@ where
     E: Serialize,
 {
     let res = Request::post(path)
+        .header("authorization", token)
+        .json(data)
+        .map_err(|e| ApiError::Serde(AttrValue::from(e.to_string())))?
+        .send()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?
+        .text()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?;
+
+    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
+        Ok(v) => ApiError::Api(AttrValue::from(v)),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}"))),
+    })
+}
+
+pub async fn standard_put<T, E>(path: &str, token: &str, data: &E) -> Result<T, ApiError>
+where
+    T: DeserializeOwned,
+    E: Serialize,
+{
+    let res = Request::put(path)
         .header("authorization", token)
         .json(data)
         .map_err(|e| ApiError::Serde(AttrValue::from(e.to_string())))?
