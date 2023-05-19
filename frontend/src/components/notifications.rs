@@ -100,10 +100,10 @@ pub fn NotificationBox() -> Html {
                                 html! {
                                     <div class="notification">
                                         <div class="notification-header">
-                                            <div onclick={ let path = n.path.clone(); navigate_to.reform(move |e: MouseEvent| { e.prevent_default(); path.clone() } ) } class="notification-title">{&n.title}</div>
                                             <span onclick={ disregard.reform(move |e: MouseEvent| { e.prevent_default(); i } ) } class="notification-close">{"󰅙"}</span>
+                                            <div onclick={ let path = n.path.clone(); let disregard = disregard.clone(); navigate_to.reform(move |e: MouseEvent| { e.prevent_default(); disregard.emit(i); path.clone() } ) } class="notification-title">{&n.title}</div>
                                         </div>
-                                        <div onclick={ let path = n.path.clone(); navigate_to.reform(move |e: MouseEvent| { e.prevent_default(); path.clone() } ) } >
+                                        <div onclick={ let path = n.path.clone(); let disregard = disregard.clone(); navigate_to.reform(move |e: MouseEvent| { e.prevent_default(); disregard.emit(i); path.clone() } ) } >
                                             <div class="notification-body">
                                                 if let Some(icon) = n.icon.as_ref() {
                                                     <img class="notification-icon" src={icon.to_owned()} />

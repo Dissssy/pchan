@@ -191,7 +191,7 @@
 }
 
 .post-author-admin {
-  color: var(--error-color);
+  color: var(--post-link-invalid-color);
 }
 
 .post-header-delete-button {
@@ -291,4 +291,9 @@
     text-shadow: 0 0 calc(var(--default) + var(--added)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 7)) var(--link-color);
     filter: brightness(75%);
   }
+}
+
+.dead-link {
+  cursor: not-allowed;
+  color: var(--error-color);
 }

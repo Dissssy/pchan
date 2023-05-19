@@ -6,9 +6,8 @@ Frontend:
 Backend:
     - Moderation tools
     - Seperate login code out into its own function to simplify the OAuth flow readability
-    - SSE for new threads and posts!
-
 Shared:
+    - Way to watch threads and know you are watching them (maybe some eye icon and two api endpoints, one that tells you if you're watching a thread, and one that sets watching the thread
     
 
 Long term goals:
@@ -17,6 +16,7 @@ Long term goals:
     - Learn how to use the github issue tracker LOOOL
 
 Complete:
+    - SSE for new threads and posts! @done
     - Exponendial backoff retry @done
     - Thread links from board view @done
     - Embed post when clicking on the reply link for said post @done

@@ -195,9 +195,9 @@ pub fn Reply(props: &Props) -> Html {
         }
     }) {
         Ok(h) => h,
-        Err(e) => {
+        Err(_) => {
             html! {
-                format!("Error: {:?}", e)
+                <span class="dead-link">{props.reply.text(props.thread_post_number.to_string())}</span>
             }
         }
     }

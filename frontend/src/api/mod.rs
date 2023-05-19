@@ -482,15 +482,15 @@ impl<T> CachedValue<T> {
         // ));
         if let Some((instant, value)) = self.values.get(&identifier.to_string()) {
             if instant.elapsed() < self.ttl {
-                gloo::console::log!(format!(
-                    "retrieved \"{}\" for \"{}\" from cache",
-                    identifier,
-                    std::any::type_name::<T>()
-                        .split("::")
-                        .last()
-                        .unwrap_or("")
-                        .trim_end_matches('>')
-                ));
+                // gloo::console::log!(format!(
+                //     "retrieved \"{}\" for \"{}\" from cache",
+                //     identifier,
+                //     std::any::type_name::<T>()
+                //         .split("::")
+                //         .last()
+                //         .unwrap_or("")
+                //         .trim_end_matches('>')
+                // ));
                 return Some(value);
             }
         }
