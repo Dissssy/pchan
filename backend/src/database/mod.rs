@@ -511,6 +511,19 @@ impl Database {
         Ok(filelist)
     }
 
+    pub async fn get_file(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        path: String,
+    ) -> Result<FileInfo> {
+        use crate::schema::files::dsl::*;
+        let file = files
+            .filter(filepath.eq(path))
+            .first::<crate::schema::File>(conn)
+            .await
+            .map_err(|_| anyhow!("File not found"))?;
+        Ok(file.raw_info())
+    }
+
     pub async fn get_random_banner(
         board_discriminator: String,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,

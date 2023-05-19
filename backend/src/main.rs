@@ -7,7 +7,7 @@ use diesel_async::AsyncPgConnection;
 
 use reqwest::header::HeaderValue;
 use tokio::sync::Mutex;
-use warp::Filter;
+use warp::{Filter, Reply};
 
 mod database;
 mod endpoints;
@@ -25,7 +25,7 @@ use std::collections::HashMap;
 // use crate::database::Users;
 use profanity::Profanity;
 
-use crate::filters::user_agent_is_scraper;
+use crate::filters::{user_agent_is_scraper, always_allow_thumb, valid_token};
 
 lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
@@ -73,11 +73,10 @@ async fn main() {
     //         .or(warp::fs::file("/git/pchan-dev/frontend/olddist/index.html")),
     // );
 
-    let newroot = warp::get() /*.and(filters::is_beta())*/
+    let root = warp::get() /*.and(filters::is_beta())*/
         .and(
-            warp::fs::dir(env!("FILE_STORAGE_PATH"))
+            warp::fs::dir(env!("FILE_STORAGE_PATH")).and(always_allow_thumb())
                 .map(|reply: warp::filters::fs::File| {
-                    use warp::Reply;
                     let mut resp = reply.into_response();
                     if let Some(content_type) = resp.headers().get(warp::http::header::CONTENT_TYPE)
                     {
@@ -92,14 +91,14 @@ async fn main() {
                     }
                     resp
                 })
-                .or(warp::fs::dir(env!("DISTRIBUTION_PATH")))
-                .or(warp::fs::file(format!(
-                    "{}/index.html",
-                    env!("DISTRIBUTION_PATH")
+                .or(valid_token().map(|_| {}).untuple_one().and(
+                    warp::fs::dir(env!("DISTRIBUTION_PATH"))
+                    .or(warp::fs::file(format!(
+                        "{}/index.html",
+                        env!("DISTRIBUTION_PATH")
+                    ))
                 ))),
         );
-
-    let root = newroot/*.or(oldroot)*/;
 
     let manifest = warp::path!("manifest.json")
         .and(warp::get())
@@ -122,17 +121,79 @@ async fn main() {
             env!("DISTRIBUTION_PATH")
         )));
 
-    let is_scraper = user_agent_is_scraper().and(warp::fs::file(format!(
-        "{}/scraping.html",
-        env!("DISTRIBUTION_PATH")
-    )));
+    // let is_scraper = user_agent_is_scraper().and(warp::fs::file(format!(
+    //     "{}/scraping.html",
+    //     env!("DISTRIBUTION_PATH")
+    // ))).map(|reply: warp::filters::fs::File| {
+    //     let mut resp = reply.into_response();
+    //     let body = resp.body().clone().to_bytes();
+    //     println!("body: {:?}", body);
+    //     resp
+    // });
+
+    let is_scraper = user_agent_is_scraper().and(warp::path::full()).and_then(
+        // templating the scraping page by serving up a body with the right headers
+        |path: warp::path::FullPath| async move {
+            // extract file path from url. it is just everything after the tld
+            let conn = &mut crate::POOL.get().await.map_err(|_| {
+                warp::reject::reject()
+            })?;
+            let path = path.as_str();
+            let finally = match path.split_once('/').map(|(_, p)| p) {
+                Some(p) => {
+                    match crate::database::Database::get_file(
+                        conn,
+                        format!("/{}", p),
+                    ).await {
+                        Ok(file) => {
+                            Some(format!("https://pchan.p51.nl{}", if file.spoiler {
+                                crate::database::Database::get_random_spoiler(conn).await.map_err(|_| {
+                                    warp::reject::reject()
+                                })?
+                            } else {
+                                file.thumbnail
+                            }))
+                        }
+                        Err(_) => {
+                            None
+                        }
+                    }
+                },
+                None => None,
+            };
+
+
+
+            Ok::<_, warp::reject::Rejection>(warp::http::Response::builder()
+                .header("Content-Type", "text/html; charset=utf-8")
+                .body(format!(
+                    r#"
+                    <!DOCTYPE html>
+
+                    <html lang="en">
+                        <head>
+                            <title>PChan</title>
+                            <meta property="og:title" content="PChan" />
+                            <meta property="og:type" content="website" />
+                            <meta property="og:url" content="https://pchan.p51.nl" />
+                            <meta property="og:image" content={} />
+                            <meta property="og:description" content="PChan, a simple 4chan-like imageboard" />
+                            <meta name="theme-color" content="\#800000">
+                        </head>
+                    </html>
+                    "#,
+                    finally.unwrap_or("https://pchan.p51.nl/res/icon-256.png".to_owned())
+            )))
+        },
+    );
 
     let routes = endpoints::other_endpoints()
         .or(endpoints::api::priveleged_api_endpoints())
-        .or(filters::valid_token()
+        .or(valid_token()
             .map(|_| { /*println!("valid token");*/ })
             .untuple_one()
-            .and(endpoints::api::api_endpoints().or(root))
+            .and(endpoints::api::api_endpoints())
+            .or(root)
             .or(unauthorized)
             .or(manifest)
             .or(icon)
