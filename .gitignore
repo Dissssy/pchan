@@ -18,9 +18,12 @@ frontend/src-old
 backend/thumb_large.png
 profanity/src/testing.rs
 backend/.env
-frontend/res
 frontend/favicon.ico
 frontend/res/fonts
+frontend/res/banners
+frontend/res/spoilers
+frontend/res/*.png
+frontend/res/*.svg
 frontend/unauthorized.html
 frontend/src/api/old
 build.sh

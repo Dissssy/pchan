@@ -1,0 +1,51 @@
+.notification-popup {
+  position: fixed;
+  right: 0.4em;
+  bottom: 0.4em;
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--primary-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-popup-toggle {
+  text-align: center;
+  padding-inline: 0.4em;
+  padding-block: 0.2em;
+  cursor: pointer;
+}
+
+.notification {
+  border-top: var(--border-width) var(--border-type) var(--border-color);
+  display: flex;
+  flex-direction: column;
+}
+
+.notification-header {
+  display: flex;
+  flex-direction: row-reverse;
+  border-bottom: var(--border-width) var(--border-type) var(--border-color);
+}
+
+.notification-close {
+  border-right: var(--border-width) var(--border-type) var(--border-color);
+  padding-inline: 0.4em;
+  padding-block: 0.2em;
+  cursor: pointer;
+}
+
+.notification-title {
+  padding-inline: 0.4em;
+  padding-block: 0.2em;
+}
+
+.notification-body {
+  display: flex;
+  flex-direction: row;
+}
+
+.notification-content {
+  padding-inline: 0.4em;
+  padding-block: 0.2em;
+}

@@ -1,3 +1,4 @@
+#![feature(async_iterator)]
 use std::sync::Arc;
 
 use diesel_async::pooled_connection::deadpool::Pool;
@@ -10,6 +11,7 @@ use warp::Filter;
 
 mod database;
 mod endpoints;
+mod push;
 mod filters;
 pub mod schema;
 mod statics;
@@ -34,6 +36,7 @@ lazy_static::lazy_static! {
     pub static ref FS_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
     pub static ref QUOTES: Arc<Quotes> = Arc::new(Quotes::load("./quotes.txt".to_string()).expect("Failed to load quotes"));
     pub static ref RATELIMIT: Arc<Mutex<HashMap<String, tokio::time::Instant>>> = Arc::new(Mutex::new(HashMap::new()));
+    pub static ref PUSH_NOTIFS: Arc<Mutex<push::PushHolder>> = Arc::new(Mutex::new(push::PushHolder::new()));
 }
 
 
@@ -57,7 +60,7 @@ fn is_safe_mimetype(mimetype: &str) -> bool {
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    println!("Starting backend with:");
+    // println!("Starting backend with:");
 
     // {
     //     if let Err(e) = DATA.lock().await.open().await {

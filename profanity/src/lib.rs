@@ -156,10 +156,20 @@ where
                 .collect::<Vec<char>>();
 
             let mut indices = Vec::new();
-            for (index, _) in lower_chars
-                .windows(sequence.len())
+            for index in lower_chars
+                .windows(sequence.len() + 2)
                 .enumerate()
-                .filter(|(_, stringy)| stringy == sequence)
+                .filter_map(|(i, stringy)| {
+                    if i == 0 && stringy.starts_with(sequence) {
+                        Some(i)
+                    } else if i == (lower_chars.len() - (sequence.len() + 2)) && stringy.ends_with(sequence) {
+                        Some(i + 2)
+                    } else if stringy.first().map(|x| x.is_whitespace()).unwrap_or(false) && stringy.last().map(|x| x.is_whitespace()).unwrap_or(false) && stringy[1..(sequence.len() + 1)].iter().eq(sequence.iter()) {
+                        Some(i + 1)
+                    } else {
+                        None
+                    }
+                })
             {
                 indices.push(index);
             }

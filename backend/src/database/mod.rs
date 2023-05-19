@@ -1,5 +1,7 @@
 // use std::io::{Read, Write};
 
+use std::sync::Arc;
+
 use anyhow::{anyhow, Result};
 use common::structs::*;
 use deadpool::managed::Object;
@@ -479,14 +481,19 @@ impl Database {
             .execute(conn)
             .await?;
 
-        // let safe = p.safe(conn).await?;
-
-        // if let Err(e) =
-        //     crate::database::Database::dispatch_push_notifications(tthread safe.clone())
-        //         .await
-        // {
-        //     println!("Error dispatching push notification handler: {:?}", e);
-        // }
+        {
+            let mut sse = crate::PUSH_NOTIFS.lock().await;
+            let safe = p.safe(conn).await?;
+            let mut idents = crate::database::Database::get_subscribed_users(conn, tthread).await?;
+            idents.push(format!(
+                "board: {} | thread: {}",
+                safe.board_discriminator, safe.thread_post_number
+            ));
+            sse.send_to(
+                idents.as_slice(),
+                common::structs::PushMessage::NewPost(Arc::new(safe)),
+            );
+        }
 
         Ok(p)
     }
@@ -624,43 +631,37 @@ impl Database {
         Ok(())
     }
 
-    pub async fn set_user_push_url(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: String,
-        push_url: Option<String>,
-    ) -> Result<()> {
-        use crate::schema::members::dsl::*;
-
-        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
-
-        diesel::update(members.filter(token_hash.eq(hashed_token)))
-            .set(push_notif_url.eq(push_url))
-            .execute(conn)
-            .await?;
-
-        Ok(())
-    }
-
-    // pub async fn get_subscribed_users(
+    // pub async fn set_user_push_url(
     //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    //     thread_id: i64,
-    // ) -> Result<Vec<(String, SubscriptionData)>> {
+    //     token: String,
+    //     push_url: Option<String>,
+    // ) -> Result<()> {
     //     use crate::schema::members::dsl::*;
-    //     let users = members
-    //         .filter(watching.contains(vec![thread_id]))
-    //         .load::<crate::schema::Member>(conn)
+
+    //     let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
+
+    //     diesel::update(members.filter(token_hash.eq(hashed_token)))
+    //         .set(push_notif_url.eq(push_url))
+    //         .execute(conn)
     //         .await?;
 
-    //     Ok(users
-    //         .into_iter()
-    //         .flat_map(|s| {
-    //             // map from Member to (token, SubscriptionData)
-    //             s.push_notif_url.and_then(|url| {
-    //                 SubscriptionData::from_database_string(&url).map(|x| (s.token_hash, x))
-    //             })
-    //         })
-    //         .collect::<Vec<(String, SubscriptionData)>>())
+    //     Ok(())
     // }
+
+    pub async fn get_subscribed_users(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        thread_id: i64,
+    ) -> Result<Vec<String>> {
+        use crate::schema::members::dsl::*;
+        let users = members
+            .filter(watching.contains(vec![thread_id]))
+            .load::<crate::schema::Member>(conn)
+            .await?;
+        Ok(users
+            .into_iter()
+            .map(|s| s.token_hash)
+            .collect::<Vec<String>>())
+    }
 
     // pub async fn dispatch_push_notifications(thread_id: i64, post: SafePost) -> Result<()> {
     //     tokio::task::spawn(async move {

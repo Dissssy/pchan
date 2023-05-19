@@ -1,4 +1,7 @@
-use std::fmt::{Display, Formatter};
+use std::{
+    fmt::{Display, Formatter},
+    sync::Arc,
+};
 
 use anyhow::anyhow;
 use serde::{Deserialize, Serialize};
@@ -202,4 +205,11 @@ impl Reply {
 pub struct Banner {
     pub path: String,
     pub href: Option<String>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum PushMessage {
+    Open,
+    NewPost(Arc<SafePost>),
+    Close,
 }

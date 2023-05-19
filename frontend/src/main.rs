@@ -7,8 +7,9 @@ use std::sync::Arc;
 use yew::prelude::*;
 use yew_hooks::{use_local_storage, UseLocalStorageHandle};
 use yew_router::prelude::*;
+pub mod hooks;
 
-use crate::components::SettingsButton;
+use crate::components::{NotificationBox, SettingsButton};
 
 #[derive(Clone, Routable, PartialEq, Debug)]
 pub enum BaseRoute {
@@ -142,6 +143,7 @@ fn Root() -> Html {
                                     <BrowserRouter>
                                         <SettingsButton/>
                                         // <FeedbackButton/>
+                                        <NotificationBox/>
                                         <Switch<BaseRoute> render={switch} />
                                     </BrowserRouter>
                                 </ContextProvider<Favicon>>

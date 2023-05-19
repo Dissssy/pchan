@@ -139,23 +139,17 @@ pub fn File(props: &Props) -> Html {
                 <span class="post-hash" title={format!("Hash: {}", props.file.hash.clone())}>
                     { if emojis { "" } else { "Hash" }}
                 </span>
-                {
-                    if props.file.path.contains("/audio/") || props.file.path.contains("/video/") {
-                        html! {
-                            <span class="might-have-sound-indicator" >
-                                {
-                                    match (emojis, props.file.path.contains("/audio/")) {
-                                        (true, true) => "",
-                                        (true, false) => "󰸬",
-                                        (false, true) => "Audio",
-                                        (false, false) => "Video",
-                                    }
-                                }
-                            </span>
+                if props.file.path.contains("/audio/") || props.file.path.contains("/video/") {
+                    <span class="might-have-sound-indicator" >
+                        {
+                            match (emojis, props.file.path.contains("/audio/")) {
+                                (true, true) => "",
+                                (true, false) => "󰸬",
+                                (false, true) => "Audio",
+                                (false, false) => "Video",
+                            }
                         }
-                    } else {
-                        html! {}
-                    }
+                    </span>
                 }
             // </div>
             <div class="post-file-contents">

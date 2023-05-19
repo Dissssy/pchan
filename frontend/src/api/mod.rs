@@ -377,6 +377,39 @@ impl Api {
         // board::get_banner(&token, board).await
         standard_get(&format!("/api/v1/board/{}/banner", board), &token).await
     }
+
+    pub fn insert_thread_to_cache(&self, thread: ThreadWithPosts) {
+        let ident = format!(
+            "{}-{}",
+            thread.thread_post.board_discriminator, thread.thread_post.thread_post_number
+        );
+        if let Some(mut cache) = self.cache.try_lock() {
+            let v = {
+                match cache.entry::<CachedValue<ThreadWithPosts>>() {
+                    typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                    typemap_ors::Entry::Vacant(hole) => {
+                        hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                    }
+                }
+            };
+            v.set(&ident, thread);
+        }
+    }
+
+    pub fn insert_post_to_cache(&self, post: SafePost) {
+        let ident = format!("{}-{}", post.board_discriminator, post.thread_post_number);
+        if let Some(mut cache) = self.cache.try_lock() {
+            let v = {
+                match cache.entry::<CachedValue<SafePost>>() {
+                    typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                    typemap_ors::Entry::Vacant(hole) => {
+                        hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                    }
+                }
+            };
+            v.set(&ident, post);
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
