@@ -34,6 +34,38 @@ pub fn valid_token() -> impl Filter<Extract = (String,), Error = warp::Rejection
             },
         )
 }
+
+pub fn optional_token() -> impl Filter<Extract = (Option<String>,), Error = warp::Rejection> + Clone {
+    warp::any()
+        .and(warp::header::optional::<Bearer>("authorization"))
+        .and(warp::cookie::optional("token"))
+        .and_then(
+            |header: Option<Bearer>, cookie: Option<String>| async move {
+                let mut conn = crate::POOL
+                    .get()
+                    .await
+                    .map_err(|_| warp::reject::reject())?;
+                if let Some(header) = header {
+                    if crate::database::Database::is_valid_token(&mut conn, header.token.clone())
+                        .await
+                        .map_err(|_| warp::reject::reject())?
+                    {
+                        return Ok::<_, warp::reject::Rejection>(Some(header.token));
+                    }
+                };
+                if let Some(cookie) = cookie {
+                    if crate::database::Database::is_valid_token(&mut conn, cookie.clone())
+                        .await
+                        .map_err(|_| warp::reject::reject())?
+                    {
+                        return Ok(Some(cookie));
+                    }
+                };
+                Ok(None)
+            },
+        )
+}
+
 pub fn priveleged_endpoint() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
     warp::header::header::<Bearer>("authorization")
         .and_then(|header: Bearer| async move {
