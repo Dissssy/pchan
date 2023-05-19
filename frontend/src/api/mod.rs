@@ -1,16 +1,19 @@
+use std::fmt::Display;
+#[cfg(feature = "cache")]
 use std::{
     collections::{self, HashMap},
-    fmt::Display,
     sync::Arc,
 };
-
+#[cfg(feature = "cache")]
 use async_lock::Mutex;
 use common::structs::{
     Banner, BoardWithThreads, CreatePost, CreateThread, SafeBoard, SafePost, ThreadWithPosts,
 };
 use gloo_net::http::Request;
 use serde::{de::DeserializeOwned, Serialize};
+#[cfg(feature = "cache")]
 use typemap_ors::{Key, TypeMap};
+#[cfg(feature = "cache")]
 use wasm_timer::Instant;
 use yew::prelude::*;
 use yew_hooks::UseLocalStorageHandle;
@@ -20,10 +23,20 @@ use yew_hooks::UseLocalStorageHandle;
 // mod thread;
 mod token;
 
-#[derive(Clone)]
 pub struct Api {
     pub token: AttrValue,
+    #[cfg(feature = "cache")]
     pub cache: Arc<Mutex<TypeMap>>,
+}
+
+impl Clone for Api {
+    fn clone(&self) -> Self {
+        Self {
+            token: self.token.clone(),
+            #[cfg(feature = "cache")]
+            cache: self.cache.clone(),
+        }
+    }
 }
 
 impl std::fmt::Debug for Api {
@@ -53,6 +66,7 @@ impl Api {
 
         Ok(Self {
             token,
+            #[cfg(feature = "cache")]
             cache: Arc::new(Mutex::new(TypeMap::new())),
         })
     }
@@ -67,9 +81,11 @@ impl Api {
         format!("Bearer {}", self.token)
     }
 
+    #[allow(unused_variables)]
     pub async fn get_boards(&self, override_cache: bool) -> Result<Vec<SafeBoard>, ApiError> {
         let ident = "".to_owned();
         // attempt cache hit
+        #[cfg(feature = "cache")]
         let v: Option<Vec<SafeBoard>> = if override_cache {
             None
         } else {
@@ -83,6 +99,9 @@ impl Api {
             }
         };
 
+        #[cfg(not(feature = "cache"))]
+        let v = None;
+
         if let Some(v) = v {
             //
             Ok(v)
@@ -91,6 +110,7 @@ impl Api {
             // GET /api/v1/board -> Vec<Board>
             let token = self.formatted_token();
             let res = standard_get::<Vec<SafeBoard>>("/api/v1/board", &token).await;
+            #[cfg(feature = "cache")]
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
@@ -104,6 +124,7 @@ impl Api {
         }
     }
 
+    #[allow(unused_variables)]
     pub async fn get_board(
         &self,
         board: impl Display + ToString + Copy,
@@ -111,6 +132,7 @@ impl Api {
     ) -> Result<BoardWithThreads, ApiError> {
         let ident = format!("{}", board);
         // attempt cache hit
+        #[cfg(feature = "cache")]
         let v = if override_cache {
             None
         } else {
@@ -124,6 +146,9 @@ impl Api {
             }
         };
 
+        #[cfg(not(feature = "cache"))]
+        let v = None;
+
         if let Some(v) = v {
             //
             Ok(v)
@@ -133,6 +158,7 @@ impl Api {
             let token = self.formatted_token();
             let res =
                 standard_get::<BoardWithThreads>(&format!("/api/v1/board/{}", board), &token).await;
+            #[cfg(feature = "cache")]
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 let v = {
@@ -167,6 +193,7 @@ impl Api {
         }
     }
 
+    #[allow(unused_variables)]
     pub async fn get_thread(
         &self,
         board: impl Display + ToString + Copy,
@@ -176,6 +203,7 @@ impl Api {
         let ident = format!("{}-{}", board, thread);
         // attempt cache hit
 
+        #[cfg(feature = "cache")]
         let v = if override_cache {
             None
         } else {
@@ -189,6 +217,9 @@ impl Api {
             }
         };
 
+        #[cfg(not(feature = "cache"))]
+        let v = None;
+
         if let Some(v) = v {
             Ok(v)
         } else {
@@ -200,6 +231,7 @@ impl Api {
                 &token,
             )
             .await;
+            #[cfg(feature = "cache")]
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 let v = {
@@ -232,6 +264,7 @@ impl Api {
         }
     }
 
+    #[allow(unused_variables)]
     pub async fn get_post(
         &self,
         board: impl Display + ToString + Copy,
@@ -240,6 +273,7 @@ impl Api {
     ) -> Result<SafePost, ApiError> {
         let ident = format!("{}-{}", board, post);
         // attempt cache hit
+        #[cfg(feature = "cache")]
         let v = if override_cache {
             None
         } else {
@@ -253,6 +287,9 @@ impl Api {
             }
         };
 
+        #[cfg(not(feature = "cache"))]
+        let v = None;
+
         if let Some(v) = v {
             Ok(v)
         } else {
@@ -260,6 +297,7 @@ impl Api {
             let res =
                 standard_get::<SafePost>(&format!("/api/v1/board/{}/post/{}", board, post), &token)
                     .await;
+            #[cfg(feature = "cache")]
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 let v = {
@@ -406,6 +444,7 @@ impl Api {
         standard_get(&format!("/api/v1/board/{}/banner", board), &token).await
     }
 
+    #[cfg(feature = "cache")]
     pub fn insert_thread_to_cache(&self, thread: ThreadWithPosts) {
         let ident = format!(
             "{}-{}",
@@ -424,6 +463,7 @@ impl Api {
         }
     }
 
+    #[cfg(feature = "cache")]
     pub fn insert_post_to_cache(&self, post: SafePost) {
         let ident = format!("{}-{}", post.board_discriminator, post.thread_post_number);
         if let Some(mut cache) = self.cache.try_lock() {
@@ -485,11 +525,13 @@ impl<T> ApiState<T> {
     }
 }
 
+#[cfg(feature = "cache")]
 pub struct CachedValue<T> {
     values: HashMap<String, (Instant, T)>,
     ttl: std::time::Duration,
 }
 
+#[cfg(feature = "cache")]
 impl<T> Default for CachedValue<T> {
     fn default() -> Self {
         CachedValue {
@@ -499,10 +541,12 @@ impl<T> Default for CachedValue<T> {
     }
 }
 
+#[cfg(feature = "cache")]
 impl<T: 'static> Key for CachedValue<T> {
     type Value = CachedValue<T>;
 }
 
+#[cfg(feature = "cache")]
 impl<T> CachedValue<T> {
     pub fn new(ttl: std::time::Duration) -> Self {
         Self {
