@@ -25,7 +25,7 @@ use std::collections::HashMap;
 // use crate::database::Users;
 use profanity::Profanity;
 
-use crate::filters::{user_agent_is_scraper, always_allow_thumb, valid_token};
+use crate::filters::{user_agent_is_scraper, valid_token};
 
 lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
@@ -75,21 +75,27 @@ async fn main() {
 
     let root = warp::get() /*.and(filters::is_beta())*/
         .and(
-            warp::fs::dir(env!("FILE_STORAGE_PATH")).and(always_allow_thumb())
-                .map(|reply: warp::filters::fs::File| {
-                    let mut resp = reply.into_response();
-                    if let Some(content_type) = resp.headers().get(warp::http::header::CONTENT_TYPE)
-                    {
-                        let content_type = content_type.to_str().unwrap();
-                        if !is_safe_mimetype(content_type) {
-                            println!("Forcing download of file with mimetype {}", content_type);
-                            resp.headers_mut().insert(
-                                warp::http::header::CONTENT_DISPOSITION,
-                                HeaderValue::from_static("attachment"),
-                            );
+            warp::fs::dir(env!("FILE_STORAGE_PATH")).and(warp::path::full())
+                .and_then(|reply: warp::filters::fs::File, path: warp::path::FullPath| async move {
+                    let path = path.as_str();
+                    if path.ends_with("-thumb.jpg") {
+                        let mut resp = reply.into_response();
+                        if let Some(content_type) = resp.headers().get(warp::http::header::CONTENT_TYPE)
+                        {
+                            let content_type = content_type.to_str().unwrap();
+                            if !is_safe_mimetype(content_type) {
+                                println!("Forcing download of file with mimetype {}", content_type);
+                                resp.headers_mut().insert(
+                                    warp::http::header::CONTENT_DISPOSITION,
+                                    HeaderValue::from_static("attachment"),
+                                );
+                            }
                         }
+                        Ok(resp)
+                    } else {
+                        Err(warp::reject::reject())
                     }
-                    resp
+                    
                 })
                 .or(valid_token().map(|_| {}).untuple_one().and(
                     warp::fs::dir(env!("DISTRIBUTION_PATH"))

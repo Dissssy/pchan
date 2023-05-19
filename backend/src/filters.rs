@@ -34,18 +34,6 @@ pub fn valid_token() -> impl Filter<Extract = (String,), Error = warp::Rejection
             },
         )
 }
-
-pub fn always_allow_thumb() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
-    warp::get().and(warp::path::full()).and_then(|path: FullPath| async move {
-        let path = path.as_str();
-        if path.ends_with("-thumb.jpg") {
-            Ok(())
-        } else {
-            Err(warp::reject::reject())
-        }
-    }).untuple_one()
-}
-
 pub fn priveleged_endpoint() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
     warp::header::header::<Bearer>("authorization")
         .and_then(|header: Bearer| async move {
