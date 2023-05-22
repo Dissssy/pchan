@@ -12,7 +12,7 @@ lto = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = ["cache-post", "cache-thread", "cache-boards", "cache-board"]
+default = ["cache-boards", "cache-post"]
 cache-boards = ["cache-base"]
 cache-board = ["cache-base"]
 cache-thread = ["cache-base"]

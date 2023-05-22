@@ -1,9 +1,9 @@
 var cacheName = 'yew-pwa';
 var filesToCache = [
-  './',
   './index.html',
-  './pkg/bundle.js',
-  './pkg/yew_wasm_pack_minimal_bg.wasm'
+  './frontend.js',
+  './frontend_bg.wasm',
+  './res/',
 ];
 
 
@@ -17,10 +17,15 @@ self.addEventListener('install', function(e) {
 });
 
 /* Serve cached content when offline */
-/* self.addEventListener('fetch', function(e) {
-  e.respondWith(
-    caches.match(e.request).then(function(response) {
-      return response || fetch(e.request);
-    })
-  );
-}); */
+self.addEventListener('fetch', function(e) {
+  // if request url ends with notification, do not intercept as it is an sse request and should not be cached
+  if (!e.request.url.endsWith("notifications")) {
+    e.respondWith(
+      caches.match(e.request).then(function(response) {
+        return response || fetch(e.request);
+      })
+    );
+  } else {
+    console.log("not intercepting sse request: " + e.request.url);
+  }
+});

@@ -21,7 +21,7 @@
         <link rel="stylesheet" href="/res/css/postbox.css" />
         <link rel="stylesheet" href="/res/css/feedback.css" />
         <link rel="stylesheet" href="/res/css/notification.css" />
-        <!-- <script>
+        <script>
             window.onload = () => {
                 'use strict';
                 if ('serviceWorker' in navigator) {
@@ -29,6 +29,10 @@
                         .register('./service_worker.js');
                 }
             }
-    	</script> -->
+    	</script>
+        <base data-trunk-public-url/>
     </head>
+    <body>
+        <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z"/>
+    </body>
 </html>
