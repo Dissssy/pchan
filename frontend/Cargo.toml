@@ -12,10 +12,11 @@ lto = true
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [features]
-default = []
+default = ["cache-post", "cache-thread", "cache-boards", "cache-board"]
 cache-boards = ["cache-base"]
-cache-threads = ["cache-base"]
-cache-posts = ["cache-base"]
+cache-board = ["cache-base"]
+cache-thread = ["cache-base"]
+cache-post = ["cache-base"]
 cache-base = []
 
 [dependencies]

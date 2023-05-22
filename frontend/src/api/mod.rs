@@ -1,39 +1,25 @@
-#[cfg(feature = "cache")]
-use async_lock::Mutex;
 use common::structs::{
     Banner, BoardWithThreads, CreatePost, CreateThread, SafeBoard, SafePost, ThreadWithPosts,
 };
 use gloo_net::http::Request;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Display;
-#[cfg(feature = "cache")]
-use std::{
-    collections::{self, HashMap},
-    sync::Arc,
-};
-#[cfg(feature = "cache")]
-use typemap_ors::{Key, TypeMap};
-#[cfg(feature = "cache")]
-use wasm_timer::Instant;
 use yew::prelude::*;
 use yew_hooks::UseLocalStorageHandle;
 
-// mod board;
-// mod post;
-// mod thread;
 mod token;
 
 pub struct Api {
     pub token: AttrValue,
-    #[cfg(feature = "cache")]
-    pub cache: Arc<Mutex<TypeMap>>,
+    #[cfg(feature = "cache-base")]
+    pub cache: std::sync::Arc<async_lock::Mutex<typemap_ors::TypeMap>>,
 }
 
 impl Clone for Api {
     fn clone(&self) -> Self {
         Self {
             token: self.token.clone(),
-            #[cfg(feature = "cache")]
+            #[cfg(feature = "cache-base")]
             cache: self.cache.clone(),
         }
     }
@@ -66,8 +52,8 @@ impl Api {
 
         Ok(Self {
             token,
-            #[cfg(feature = "cache")]
-            cache: Arc::new(Mutex::new(TypeMap::new())),
+            #[cfg(feature = "cache-base")]
+            cache: std::sync::Arc::new(async_lock::Mutex::new(typemap_ors::TypeMap::new())),
         })
     }
 
@@ -85,7 +71,7 @@ impl Api {
     pub async fn get_boards(&self, override_cache: bool) -> Result<Vec<SafeBoard>, ApiError> {
         let ident = "".to_owned();
         // attempt cache hit
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-boards")]
         let v: Option<Vec<SafeBoard>> = if override_cache {
             None
         } else {
@@ -99,7 +85,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache"))]
+        #[cfg(not(feature = "cache-board"))]
         let v = None;
 
         if let Some(v) = v {
@@ -111,7 +97,7 @@ impl Api {
             let token = self.formatted_token();
             match standard_get::<Vec<SafeBoard>>("/api/v1/board", &token).await {
                 Ok(res) => {
-                    #[cfg(feature = "cache")]
+                    #[cfg(feature = "cache-boards")]
                     {
                         let mut cache = self.cache.lock().await;
                         match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
@@ -141,7 +127,7 @@ impl Api {
     ) -> Result<BoardWithThreads, ApiError> {
         let ident = format!("{}", board);
         // attempt cache hit
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-board")]
         let v = if override_cache {
             None
         } else {
@@ -155,7 +141,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache"))]
+        #[cfg(not(feature = "cache-board"))]
         let v = None;
 
         if let Some(v) = v {
@@ -169,9 +155,10 @@ impl Api {
                 .await
             {
                 Ok(res) => {
-                    #[cfg(feature = "cache")]
+                    #[cfg(any(feature = "cache-board", feature = "cache-post"))]
+                    let mut cache = self.cache.lock().await;
+                    #[cfg(feature = "cache-board")]
                     {
-                        let mut cache = self.cache.lock().await;
                         let v = {
                             match cache.entry::<CachedValue<BoardWithThreads>>() {
                                 typemap_ors::Entry::Occupied(val) => val.into_mut(),
@@ -180,6 +167,9 @@ impl Api {
                             }
                         };
                         v.set(&ident, res.clone());
+                    }
+                    #[cfg(feature = "cache-post")]
+                    {
                         let p = {
                             match cache.entry::<CachedValue<SafePost>>() {
                                 typemap_ors::Entry::Occupied(val) => val.into_mut(),
@@ -187,7 +177,6 @@ impl Api {
                                     .insert(CachedValue::new(std::time::Duration::from_secs(30))),
                             }
                         };
-
                         res.threads.iter().for_each(|res| {
                             let ident = format!("{}-{}", board, res.thread_post.post_number);
                             p.set(&ident, res.thread_post.clone());
@@ -218,7 +207,7 @@ impl Api {
         let ident = format!("{}-{}", board, thread);
         // attempt cache hit
 
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-thread")]
         let v = if override_cache {
             None
         } else {
@@ -232,7 +221,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache"))]
+        #[cfg(not(feature = "cache-thread"))]
         let v = None;
 
         if let Some(v) = v {
@@ -248,9 +237,10 @@ impl Api {
             .await
             {
                 Ok(res) => {
-                    #[cfg(feature = "cache")]
+                    #[cfg(any(feature = "cache-thread", feature = "cache-post"))]
+                    let mut cache = self.cache.lock().await;
+                    #[cfg(feature = "cache-thread")]
                     {
-                        let mut cache = self.cache.lock().await;
                         let v = {
                             match cache.entry::<CachedValue<ThreadWithPosts>>() {
                                 typemap_ors::Entry::Occupied(val) => val.into_mut(),
@@ -259,6 +249,9 @@ impl Api {
                             }
                         };
                         v.set(&ident, res.clone());
+                    }
+                    #[cfg(feature = "cache-post")]
+                    {
                         let p = {
                             match cache.entry::<CachedValue<SafePost>>() {
                                 typemap_ors::Entry::Occupied(val) => val.into_mut(),
@@ -294,7 +287,7 @@ impl Api {
     ) -> Result<SafePost, ApiError> {
         let ident = format!("{}-{}", board, post);
         // attempt cache hit
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-post")]
         let v = if override_cache {
             None
         } else {
@@ -308,7 +301,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache"))]
+        #[cfg(not(feature = "cache-post"))]
         let v = None;
 
         if let Some(v) = v {
@@ -322,7 +315,7 @@ impl Api {
             .await
             {
                 Ok(res) => {
-                    #[cfg(feature = "cache")]
+                    #[cfg(feature = "cache-post")]
                     {
                         let mut cache = self.cache.lock().await;
                         let v = {
@@ -476,7 +469,7 @@ impl Api {
         standard_get(&format!("/api/v1/board/{}/banner", board), &token).await
     }
 
-    #[cfg(feature = "cache")]
+    #[cfg(feature = "cache-base")]
     pub fn insert_thread_to_cache(&self, thread: ThreadWithPosts) {
         let ident = format!(
             "{}-{}",
@@ -495,7 +488,7 @@ impl Api {
         }
     }
 
-    #[cfg(feature = "cache")]
+    #[cfg(feature = "cache-base")]
     pub fn insert_post_to_cache(&self, post: SafePost) {
         let ident = format!("{}-{}", post.board_discriminator, post.thread_post_number);
         if let Some(mut cache) = self.cache.try_lock() {
@@ -558,32 +551,32 @@ impl<T> ApiState<T> {
     }
 }
 
-#[cfg(feature = "cache")]
+#[cfg(feature = "cache-base")]
 pub struct CachedValue<T> {
-    values: HashMap<String, (Instant, T)>,
+    values: std::collections::HashMap<String, (wasm_timer::Instant, T)>,
     ttl: std::time::Duration,
 }
 
-#[cfg(feature = "cache")]
+#[cfg(feature = "cache-base")]
 impl<T> Default for CachedValue<T> {
     fn default() -> Self {
         CachedValue {
-            values: HashMap::new(),
+            values: std::collections::HashMap::new(),
             ttl: std::time::Duration::from_secs(30),
         }
     }
 }
 
-#[cfg(feature = "cache")]
-impl<T: 'static> Key for CachedValue<T> {
+#[cfg(feature = "cache-base")]
+impl<T: 'static> typemap_ors::Key for CachedValue<T> {
     type Value = CachedValue<T>;
 }
 
-#[cfg(feature = "cache")]
+#[cfg(feature = "cache-base")]
 impl<T> CachedValue<T> {
     pub fn new(ttl: std::time::Duration) -> Self {
         Self {
-            values: HashMap::new(),
+            values: std::collections::HashMap::new(),
             ttl,
         }
     }
@@ -616,17 +609,17 @@ impl<T> CachedValue<T> {
         //     std::any::type_name::<T>()
         // ));
         match self.values.entry(identifier.to_string()) {
-            collections::hash_map::Entry::Vacant(hole) => {
+            std::collections::hash_map::Entry::Vacant(hole) => {
                 //
-                hole.insert((Instant::now(), value));
+                hole.insert((wasm_timer::Instant::now(), value));
             }
-            collections::hash_map::Entry::Occupied(mut val) => {
+            std::collections::hash_map::Entry::Occupied(mut val) => {
                 let (t, _) = val.get();
                 if t.elapsed() < self.ttl {
                     return;
                 }
                 //
-                val.insert((Instant::now(), value));
+                val.insert((wasm_timer::Instant::now(), value));
             }
         }
     }
