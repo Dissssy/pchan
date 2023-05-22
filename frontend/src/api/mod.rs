@@ -1,9 +1,3 @@
-use std::fmt::Display;
-#[cfg(feature = "cache")]
-use std::{
-    collections::{self, HashMap},
-    sync::Arc,
-};
 #[cfg(feature = "cache")]
 use async_lock::Mutex;
 use common::structs::{
@@ -11,6 +5,12 @@ use common::structs::{
 };
 use gloo_net::http::Request;
 use serde::{de::DeserializeOwned, Serialize};
+use std::fmt::Display;
+#[cfg(feature = "cache")]
+use std::{
+    collections::{self, HashMap},
+    sync::Arc,
+};
 #[cfg(feature = "cache")]
 use typemap_ors::{Key, TypeMap};
 #[cfg(feature = "cache")]
@@ -109,18 +109,27 @@ impl Api {
             //
             // GET /api/v1/board -> Vec<Board>
             let token = self.formatted_token();
-            let res = standard_get::<Vec<SafeBoard>>("/api/v1/board", &token).await;
-            #[cfg(feature = "cache")]
-            if let Ok(res) = &res {
-                let mut cache = self.cache.lock().await;
-                match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
-                    typemap_ors::Entry::Occupied(val) => val.into_mut().set(&ident, res.clone()),
-                    typemap_ors::Entry::Vacant(hole) => hole
-                        .insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        .set(&ident, res.clone()),
-                };
+            match standard_get::<Vec<SafeBoard>>("/api/v1/board", &token).await {
+                Ok(res) => {
+                    #[cfg(feature = "cache")]
+                    {
+                        let mut cache = self.cache.lock().await;
+                        match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
+                            typemap_ors::Entry::Occupied(val) => {
+                                val.into_mut().set(&ident, res.clone())
+                            }
+                            typemap_ors::Entry::Vacant(hole) => hole
+                                .insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                                .set(&ident, res.clone()),
+                        };
+                    }
+                    Ok(res)
+                }
+                Err(e) => {
+                    gloo::console::error!(format!("Error getting boards: {:?}", e));
+                    Err(e)
+                }
             }
-            res
         }
     }
 
@@ -156,40 +165,46 @@ impl Api {
             //
             // GET /api/v1/{} -> Board
             let token = self.formatted_token();
-            let res =
-                standard_get::<BoardWithThreads>(&format!("/api/v1/board/{}", board), &token).await;
-            #[cfg(feature = "cache")]
-            if let Ok(res) = &res {
-                let mut cache = self.cache.lock().await;
-                let v = {
-                    match cache.entry::<CachedValue<BoardWithThreads>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
-                        }
-                    }
-                };
-                v.set(&ident, res.clone());
-                let p = {
-                    match cache.entry::<CachedValue<SafePost>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
-                        }
-                    }
-                };
+            match standard_get::<BoardWithThreads>(&format!("/api/v1/board/{}", board), &token)
+                .await
+            {
+                Ok(res) => {
+                    #[cfg(feature = "cache")]
+                    {
+                        let mut cache = self.cache.lock().await;
+                        let v = {
+                            match cache.entry::<CachedValue<BoardWithThreads>>() {
+                                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                                typemap_ors::Entry::Vacant(hole) => hole
+                                    .insert(CachedValue::new(std::time::Duration::from_secs(30))),
+                            }
+                        };
+                        v.set(&ident, res.clone());
+                        let p = {
+                            match cache.entry::<CachedValue<SafePost>>() {
+                                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                                typemap_ors::Entry::Vacant(hole) => hole
+                                    .insert(CachedValue::new(std::time::Duration::from_secs(30))),
+                            }
+                        };
 
-                res.threads.iter().for_each(|res| {
-                    let ident = format!("{}-{}", board, res.thread_post.post_number);
-                    p.set(&ident, res.thread_post.clone());
+                        res.threads.iter().for_each(|res| {
+                            let ident = format!("{}-{}", board, res.thread_post.post_number);
+                            p.set(&ident, res.thread_post.clone());
 
-                    res.posts.iter().for_each(|post| {
-                        let ident = format!("{}-{}", board, post.post_number);
-                        p.set(&ident, post.clone());
-                    });
-                });
+                            res.posts.iter().for_each(|post| {
+                                let ident = format!("{}-{}", board, post.post_number);
+                                p.set(&ident, post.clone());
+                            });
+                        });
+                    }
+                    Ok(res)
+                }
+                Err(e) => {
+                    gloo::console::error!(format!("Error getting board: {:?}", e));
+                    Err(e)
+                }
             }
-            res
         }
     }
 
@@ -226,41 +241,47 @@ impl Api {
             //
             // GET /api/v1/{}/{} -> Thread
             let token = self.formatted_token();
-            let res = standard_get::<ThreadWithPosts>(
+            match standard_get::<ThreadWithPosts>(
                 &format!("/api/v1/board/{}/thread/{}", board, thread),
                 &token,
             )
-            .await;
-            #[cfg(feature = "cache")]
-            if let Ok(res) = &res {
-                let mut cache = self.cache.lock().await;
-                let v = {
-                    match cache.entry::<CachedValue<ThreadWithPosts>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
-                        }
-                    }
-                };
-                v.set(&ident, res.clone());
-                let p = {
-                    match cache.entry::<CachedValue<SafePost>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        }
-                    }
-                };
+            .await
+            {
+                Ok(res) => {
+                    #[cfg(feature = "cache")]
+                    {
+                        let mut cache = self.cache.lock().await;
+                        let v = {
+                            match cache.entry::<CachedValue<ThreadWithPosts>>() {
+                                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                                typemap_ors::Entry::Vacant(hole) => hole
+                                    .insert(CachedValue::new(std::time::Duration::from_secs(30))),
+                            }
+                        };
+                        v.set(&ident, res.clone());
+                        let p = {
+                            match cache.entry::<CachedValue<SafePost>>() {
+                                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                                typemap_ors::Entry::Vacant(hole) => hole
+                                    .insert(CachedValue::new(std::time::Duration::from_secs(300))),
+                            }
+                        };
 
-                let ident = format!("{}-{}", board, res.thread_post.post_number);
-                p.set(&ident, res.thread_post.clone());
+                        let ident = format!("{}-{}", board, res.thread_post.post_number);
+                        p.set(&ident, res.thread_post.clone());
 
-                res.posts.iter().for_each(|post| {
-                    let ident = format!("{}-{}", board, post.post_number);
-                    p.set(&ident, post.clone());
-                });
+                        res.posts.iter().for_each(|post| {
+                            let ident = format!("{}-{}", board, post.post_number);
+                            p.set(&ident, post.clone());
+                        });
+                    }
+                    Ok(res)
+                }
+                Err(e) => {
+                    gloo::console::error!(format!("Error getting thread: {:?}", e));
+                    Err(e)
+                }
             }
-            res
         }
     }
 
@@ -294,23 +315,32 @@ impl Api {
             Ok(v)
         } else {
             let token = self.formatted_token();
-            let res =
-                standard_get::<SafePost>(&format!("/api/v1/board/{}/post/{}", board, post), &token)
-                    .await;
-            #[cfg(feature = "cache")]
-            if let Ok(res) = &res {
-                let mut cache = self.cache.lock().await;
-                let v = {
-                    match cache.entry::<CachedValue<SafePost>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
-                        }
+            match standard_get::<SafePost>(
+                &format!("/api/v1/board/{}/post/{}", board, post),
+                &token,
+            )
+            .await
+            {
+                Ok(res) => {
+                    #[cfg(feature = "cache")]
+                    {
+                        let mut cache = self.cache.lock().await;
+                        let v = {
+                            match cache.entry::<CachedValue<SafePost>>() {
+                                typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                                typemap_ors::Entry::Vacant(hole) => hole
+                                    .insert(CachedValue::new(std::time::Duration::from_secs(300))),
+                            }
+                        };
+                        v.set(&ident, res.clone());
                     }
-                };
-                v.set(&ident, res.clone());
+                    Ok(res)
+                }
+                Err(e) => {
+                    gloo::console::error!(format!("Error getting post: {:?}", e));
+                    Err(e)
+                }
             }
-            res
         }
     }
 
@@ -421,7 +451,8 @@ impl Api {
             &format!("/api/v1/board/{}/post/{}/watching", board, post),
             &token,
             &watching,
-        ).await
+        )
+        .await
     }
 
     pub async fn get_watching(
@@ -434,7 +465,8 @@ impl Api {
         standard_get(
             &format!("/api/v1/board/{}/post/{}/watching", board, post),
             &token,
-        ).await
+        )
+        .await
     }
 
     pub async fn get_banner(&self, board: impl Display + ToString) -> Result<Banner, ApiError> {
@@ -516,7 +548,8 @@ impl<T> ApiState<T> {
         }
     }
     pub fn get_or(&self, other: T) -> T
-    where T: Clone
+    where
+        T: Clone,
     {
         match self {
             ApiState::Loaded(data) => data.clone(),

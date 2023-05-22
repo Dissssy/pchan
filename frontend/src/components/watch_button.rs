@@ -1,10 +1,7 @@
 use yew::prelude::*;
 use yew_hooks::use_effect_once;
 
-use crate::{
-    api::{ApiState},
-    ApiContext,
-};
+use crate::{api::ApiState, ApiContext};
 
 #[function_component]
 pub fn WatchButton(props: &Props) -> Html {
@@ -19,28 +16,33 @@ pub fn WatchButton(props: &Props) -> Html {
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
             match api_ctx {
-                Some(ref api_ctx) => {
-                    match api_ctx.api.clone() {
-                        Ok(api) => {
-                            let api = api.clone();
-                            let props = props.clone();
-                            let state = state.clone();
-                            wasm_bindgen_futures::spawn_local(async move {
-                                match api.set_watching(&props.board_discriminator, props.post_number, !state.get_or(false)).await {
-                                    Ok(v) => {
-                                        state.set(ApiState::Loaded(v));
-                                    }
-                                    Err(e) => {
-                                        state.set(ApiState::Error(e));
-                                    }
-                                };
-                            });
-                        }
-                        Err(e) => {
-                            state.set(ApiState::Error(e));
-                        }
+                Some(ref api_ctx) => match api_ctx.api.clone() {
+                    Ok(api) => {
+                        let api = api;
+                        let props = props.clone();
+                        let state = state.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match api
+                                .set_watching(
+                                    &props.board_discriminator,
+                                    props.post_number,
+                                    !state.get_or(false),
+                                )
+                                .await
+                            {
+                                Ok(v) => {
+                                    state.set(ApiState::Loaded(v));
+                                }
+                                Err(e) => {
+                                    state.set(ApiState::Error(e));
+                                }
+                            };
+                        });
                     }
-                }
+                    Err(e) => {
+                        state.set(ApiState::Error(e));
+                    }
+                },
                 None => {
                     state.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                 }
@@ -54,29 +56,29 @@ pub fn WatchButton(props: &Props) -> Html {
         let props = props.clone();
         use_effect_once(move || {
             match api_ctx {
-                Some(api_ctx) => {
-                    match api_ctx.api {
-                        Ok(api) => {
-                            let api = api.clone();
-                            let props = props.clone();
-                            let state = state.clone();
-                            wasm_bindgen_futures::spawn_local(async move {
-                                match api.get_watching(&props.board_discriminator, props.post_number).await {
-                                    Ok(v) => {
-                                        state.set(ApiState::Loaded(v));
-                                    }
-                                    Err(e) => {
-                                        state.set(ApiState::Error(e));
-                                    }
-                                };
-                                
-                            });
-                        }
-                        Err(e) => {
-                            state.set(ApiState::Error(e));
-                        }
+                Some(api_ctx) => match api_ctx.api {
+                    Ok(api) => {
+                        let api = api;
+                        let props = props.clone();
+                        let state = state.clone();
+                        wasm_bindgen_futures::spawn_local(async move {
+                            match api
+                                .get_watching(&props.board_discriminator, props.post_number)
+                                .await
+                            {
+                                Ok(v) => {
+                                    state.set(ApiState::Loaded(v));
+                                }
+                                Err(e) => {
+                                    state.set(ApiState::Error(e));
+                                }
+                            };
+                        });
                     }
-                }
+                    Err(e) => {
+                        state.set(ApiState::Error(e));
+                    }
+                },
                 None => {
                     state.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                 }

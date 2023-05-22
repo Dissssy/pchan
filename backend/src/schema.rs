@@ -390,5 +390,4 @@ pub struct Member {
     pub watching: Vec<i64>,
 }
 
-
 // postgresql function that runs on delete of a post to remove its ID from the watching list of all members

@@ -484,7 +484,9 @@ impl Database {
         {
             let mut sse = crate::PUSH_NOTIFS.lock().await;
             let safe = p.safe(conn).await?;
-            let mut idents = crate::database::Database::get_subscribed_users(conn, tthread).await.unwrap_or_default();
+            let mut idents = crate::database::Database::get_subscribed_users(conn, tthread)
+                .await
+                .unwrap_or_default();
             idents.push(format!(
                 "board: {} | thread: {}",
                 safe.board_discriminator, safe.thread_post_number
@@ -677,53 +679,63 @@ impl Database {
     }
 
     pub async fn get_watching(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, 
-        disc: String, 
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        disc: String,
         post: i64,
-        token: String
+        token: String,
     ) -> Result<bool> {
         use crate::schema::members::dsl::*;
         let watching_id = Self::get_raw_thread(conn, disc, post).await?.id;
-        
+
         // if user where token_hash == token && watching.contains(post.thread_id)
-        match members.filter(token_hash.eq(token)).filter(watching.contains(vec![watching_id])).first::<crate::schema::Member>(conn).await {
+        match members
+            .filter(token_hash.eq(token))
+            .filter(watching.contains(vec![watching_id]))
+            .first::<crate::schema::Member>(conn)
+            .await
+        {
             Ok(_) => Ok(true),
-            Err(diesel::NotFound) => {
-                Ok(false)
-            },
-            Err(e) => Err(e.into())
+            Err(diesel::NotFound) => Ok(false),
+            Err(e) => Err(e.into()),
         }
     }
 
     pub async fn set_watching(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>, 
-        disc: String, 
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        disc: String,
         post: i64,
         token: String,
-        set_watching: bool
+        set_watching: bool,
     ) -> Result<bool> {
         use crate::schema::members::dsl::*;
         let watching_id = Self::get_raw_thread(conn, disc, post).await?.id;
 
         // get user and, put or remove post.id from watching depending on watching
-        let user = members.filter(token_hash.eq(&token)).first::<crate::schema::Member>(conn).await?;
+        let user = members
+            .filter(token_hash.eq(&token))
+            .first::<crate::schema::Member>(conn)
+            .await?;
 
         match (set_watching, user.watching.contains(&watching_id)) {
             (true, false) => {
                 let mut twatching = user.watching;
                 twatching.push(watching_id);
-                diesel::update(members.filter(token_hash.eq(token))).set(watching.eq(twatching)).execute(conn).await?;
+                diesel::update(members.filter(token_hash.eq(token)))
+                    .set(watching.eq(twatching))
+                    .execute(conn)
+                    .await?;
                 Ok(true)
             }
             (false, true) => {
                 let mut twatching = user.watching;
                 twatching.retain(|x| *x != watching_id);
-                diesel::update(members.filter(token_hash.eq(token))).set(watching.eq(twatching)).execute(conn).await?;
+                diesel::update(members.filter(token_hash.eq(token)))
+                    .set(watching.eq(twatching))
+                    .execute(conn)
+                    .await?;
                 Ok(false)
             }
-            _ => {
-                Ok(set_watching)
-            }
+            _ => Ok(set_watching),
         }
     }
 

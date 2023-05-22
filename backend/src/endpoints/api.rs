@@ -522,15 +522,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     Ok(watching) => Ok::<warp::reply::Json, warp::reject::Rejection>(
                         warp::reply::json(&watching),
                     ),
-                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(
-                        warp::reply::json(&e.to_string()),
-                    ),
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    )),
                 }
             }
         });
 
     // PUT /api/v1/board/{board_discriminator}/post/{post_number}/watching - sets the user's watching status for the post
-    
+
     let put_watching = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "watching")
         .and(warp::put())
         .and(valid_token())
@@ -546,12 +546,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 )
                 .await
                 {
-                    Ok(v) => Ok::<warp::reply::Json, warp::reject::Rejection>(
-                        warp::reply::json(&v),
-                    ),
-                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(
-                        warp::reply::json(&e.to_string()),
-                    ),
+                    Ok(v) => {
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&v))
+                    }
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    )),
                 }
             }
         });
