@@ -1,20 +1,9 @@
-use std::fmt::Display;
-#[cfg(feature = "cache")]
-use std::{
-    collections::{self, HashMap},
-    sync::Arc,
-};
-#[cfg(feature = "cache")]
-use async_lock::Mutex;
 use common::structs::{
     Banner, BoardWithThreads, CreatePost, CreateThread, SafeBoard, SafePost, ThreadWithPosts,
 };
 use gloo_net::http::Request;
 use serde::{de::DeserializeOwned, Serialize};
-#[cfg(feature = "cache")]
-use typemap_ors::{Key, TypeMap};
-#[cfg(feature = "cache")]
-use wasm_timer::Instant;
+use std::fmt::Display;
 use yew::prelude::*;
 use yew_hooks::UseLocalStorageHandle;
 
@@ -25,15 +14,15 @@ mod token;
 
 pub struct Api {
     pub token: AttrValue,
-    #[cfg(feature = "cache")]
-    pub cache: Arc<Mutex<TypeMap>>,
+    #[cfg(feature = "cache-base")]
+    pub cache: std::sync::Arc<async_lock::Mutex<typemap_ors::TypeMap>>,
 }
 
 impl Clone for Api {
     fn clone(&self) -> Self {
         Self {
             token: self.token.clone(),
-            #[cfg(feature = "cache")]
+            #[cfg(feature = "cache-base")]
             cache: self.cache.clone(),
         }
     }
@@ -43,7 +32,7 @@ impl std::fmt::Debug for Api {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Api")
             .field("token", &self.token)
-            .field("cache", &"Mutex<TypeMap>")
+            .field("cache-base", &"Mutex<TypeMap>")
             .finish()
     }
 }
@@ -66,8 +55,8 @@ impl Api {
 
         Ok(Self {
             token,
-            #[cfg(feature = "cache")]
-            cache: Arc::new(Mutex::new(TypeMap::new())),
+            #[cfg(feature = "cache-base")]
+            cache: std::sync::Arc::new(async_lock::Mutex::new(typemap_ors::TypeMap::new())),
         })
     }
 
@@ -85,7 +74,7 @@ impl Api {
     pub async fn get_boards(&self, override_cache: bool) -> Result<Vec<SafeBoard>, ApiError> {
         let ident = "".to_owned();
         // attempt cache hit
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-boards")]
         let v: Option<Vec<SafeBoard>> = if override_cache {
             None
         } else {
@@ -99,7 +88,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache"))]
+        #[cfg(not(feature = "cache-boards"))]
         let v = None;
 
         if let Some(v) = v {
@@ -110,7 +99,7 @@ impl Api {
             // GET /api/v1/board -> Vec<Board>
             let token = self.formatted_token();
             let res = standard_get::<Vec<SafeBoard>>("/api/v1/board", &token).await;
-            #[cfg(feature = "cache")]
+            #[cfg(feature = "cache-boards")]
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 match cache.entry::<CachedValue<Vec<SafeBoard>>>() {
@@ -132,7 +121,7 @@ impl Api {
     ) -> Result<BoardWithThreads, ApiError> {
         let ident = format!("{}", board);
         // attempt cache hit
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-boards")]
         let v = if override_cache {
             None
         } else {
@@ -146,7 +135,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache"))]
+        #[cfg(not(feature = "cache-boards"))]
         let v = None;
 
         if let Some(v) = v {
@@ -158,36 +147,43 @@ impl Api {
             let token = self.formatted_token();
             let res =
                 standard_get::<BoardWithThreads>(&format!("/api/v1/board/{}", board), &token).await;
-            #[cfg(feature = "cache")]
+            #[cfg(any(feature = "cache-boards", feature = "cache-posts"))]
             if let Ok(res) = &res {
+                #[allow(unused_mut)]
                 let mut cache = self.cache.lock().await;
-                let v = {
-                    match cache.entry::<CachedValue<BoardWithThreads>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
+                #[cfg(feature = "cache-boards")]
+                {
+                    let v = {
+                        match cache.entry::<CachedValue<BoardWithThreads>>() {
+                            typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                            typemap_ors::Entry::Vacant(hole) => {
+                                hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
+                            }
                         }
-                    }
-                };
-                v.set(&ident, res.clone());
-                let p = {
-                    match cache.entry::<CachedValue<SafePost>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
+                    };
+                    v.set(&ident, res.clone());
+                }
+                #[cfg(feature = "cache-posts")]
+                {
+                    let p = {
+                        match cache.entry::<CachedValue<SafePost>>() {
+                            typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                            typemap_ors::Entry::Vacant(hole) => {
+                                hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
+                            }
                         }
-                    }
-                };
+                    };
 
-                res.threads.iter().for_each(|res| {
-                    let ident = format!("{}-{}", board, res.thread_post.post_number);
-                    p.set(&ident, res.thread_post.clone());
+                    res.threads.iter().for_each(|res| {
+                        let ident = format!("{}-{}", board, res.thread_post.post_number);
+                        p.set(&ident, res.thread_post.clone());
 
-                    res.posts.iter().for_each(|post| {
-                        let ident = format!("{}-{}", board, post.post_number);
-                        p.set(&ident, post.clone());
+                        res.posts.iter().for_each(|post| {
+                            let ident = format!("{}-{}", board, post.post_number);
+                            p.set(&ident, post.clone());
+                        });
                     });
-                });
+                }
             }
             res
         }
@@ -203,7 +199,7 @@ impl Api {
         let ident = format!("{}-{}", board, thread);
         // attempt cache hit
 
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-threads")]
         let v = if override_cache {
             None
         } else {
@@ -217,7 +213,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache"))]
+        #[cfg(not(feature = "cache-threads"))]
         let v = None;
 
         if let Some(v) = v {
@@ -231,34 +227,42 @@ impl Api {
                 &token,
             )
             .await;
-            #[cfg(feature = "cache")]
+            #[cfg(any(feature = "cache-posts", feature = "cache-threads"))]
             if let Ok(res) = &res {
+                #[allow(unused_mut)]
                 let mut cache = self.cache.lock().await;
-                let v = {
-                    match cache.entry::<CachedValue<ThreadWithPosts>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
+                #[cfg(feature = "cache-threads")]
+                {
+                    let v = {
+                        match cache.entry::<CachedValue<ThreadWithPosts>>() {
+                            typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                            typemap_ors::Entry::Vacant(hole) => {
+                                hole.insert(CachedValue::new(std::time::Duration::from_secs(30)))
+                            }
                         }
-                    }
-                };
-                v.set(&ident, res.clone());
-                let p = {
-                    match cache.entry::<CachedValue<SafePost>>() {
-                        typemap_ors::Entry::Occupied(val) => val.into_mut(),
-                        typemap_ors::Entry::Vacant(hole) => {
-                            hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                    };
+                    v.set(&ident, res.clone());
+                }
+
+                #[cfg(feature = "cache-posts")]
+                {
+                    let p = {
+                        match cache.entry::<CachedValue<SafePost>>() {
+                            typemap_ors::Entry::Occupied(val) => val.into_mut(),
+                            typemap_ors::Entry::Vacant(hole) => {
+                                hole.insert(CachedValue::new(std::time::Duration::from_secs(300)))
+                            }
                         }
-                    }
-                };
+                    };
 
-                let ident = format!("{}-{}", board, res.thread_post.post_number);
-                p.set(&ident, res.thread_post.clone());
+                    let ident = format!("{}-{}", board, res.thread_post.post_number);
+                    p.set(&ident, res.thread_post.clone());
 
-                res.posts.iter().for_each(|post| {
-                    let ident = format!("{}-{}", board, post.post_number);
-                    p.set(&ident, post.clone());
-                });
+                    res.posts.iter().for_each(|post| {
+                        let ident = format!("{}-{}", board, post.post_number);
+                        p.set(&ident, post.clone());
+                    });
+                }
             }
             res
         }
@@ -273,7 +277,7 @@ impl Api {
     ) -> Result<SafePost, ApiError> {
         let ident = format!("{}-{}", board, post);
         // attempt cache hit
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-posts")]
         let v = if override_cache {
             None
         } else {
@@ -287,7 +291,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache"))]
+        #[cfg(not(feature = "cache-posts"))]
         let v = None;
 
         if let Some(v) = v {
@@ -297,7 +301,7 @@ impl Api {
             let res =
                 standard_get::<SafePost>(&format!("/api/v1/board/{}/post/{}", board, post), &token)
                     .await;
-            #[cfg(feature = "cache")]
+            #[cfg(feature = "cache-posts")]
             if let Ok(res) = &res {
                 let mut cache = self.cache.lock().await;
                 let v = {
@@ -421,7 +425,8 @@ impl Api {
             &format!("/api/v1/board/{}/post/{}/watching", board, post),
             &token,
             &watching,
-        ).await
+        )
+        .await
     }
 
     pub async fn get_watching(
@@ -434,7 +439,8 @@ impl Api {
         standard_get(
             &format!("/api/v1/board/{}/post/{}/watching", board, post),
             &token,
-        ).await
+        )
+        .await
     }
 
     pub async fn get_banner(&self, board: impl Display + ToString) -> Result<Banner, ApiError> {
@@ -444,7 +450,7 @@ impl Api {
         standard_get(&format!("/api/v1/board/{}/banner", board), &token).await
     }
 
-    #[cfg(feature = "cache")]
+    #[cfg(feature = "cache-threads")]
     pub fn insert_thread_to_cache(&self, thread: ThreadWithPosts) {
         let ident = format!(
             "{}-{}",
@@ -463,7 +469,7 @@ impl Api {
         }
     }
 
-    #[cfg(feature = "cache")]
+    #[cfg(feature = "cache-posts")]
     pub fn insert_post_to_cache(&self, post: SafePost) {
         let ident = format!("{}-{}", post.board_discriminator, post.thread_post_number);
         if let Some(mut cache) = self.cache.try_lock() {
@@ -516,7 +522,8 @@ impl<T> ApiState<T> {
         }
     }
     pub fn get_or(&self, other: T) -> T
-    where T: Clone
+    where
+        T: Clone,
     {
         match self {
             ApiState::Loaded(data) => data.clone(),
@@ -525,32 +532,32 @@ impl<T> ApiState<T> {
     }
 }
 
-#[cfg(feature = "cache")]
+#[cfg(feature = "cache-base")]
 pub struct CachedValue<T> {
-    values: HashMap<String, (Instant, T)>,
+    values: std::collections::HashMap<String, (wasm_timer::Instant, T)>,
     ttl: std::time::Duration,
 }
 
-#[cfg(feature = "cache")]
+#[cfg(feature = "cache-base")]
 impl<T> Default for CachedValue<T> {
     fn default() -> Self {
         CachedValue {
-            values: HashMap::new(),
+            values: std::collections::HashMap::new(),
             ttl: std::time::Duration::from_secs(30),
         }
     }
 }
 
-#[cfg(feature = "cache")]
-impl<T: 'static> Key for CachedValue<T> {
+#[cfg(feature = "cache-base")]
+impl<T: 'static> typemap_ors::Key for CachedValue<T> {
     type Value = CachedValue<T>;
 }
 
-#[cfg(feature = "cache")]
+#[cfg(feature = "cache-base")]
 impl<T> CachedValue<T> {
     pub fn new(ttl: std::time::Duration) -> Self {
         Self {
-            values: HashMap::new(),
+            values: std::collections::HashMap::new(),
             ttl,
         }
     }
@@ -583,17 +590,17 @@ impl<T> CachedValue<T> {
         //     std::any::type_name::<T>()
         // ));
         match self.values.entry(identifier.to_string()) {
-            collections::hash_map::Entry::Vacant(hole) => {
+            std::collections::hash_map::Entry::Vacant(hole) => {
                 //
-                hole.insert((Instant::now(), value));
+                hole.insert((wasm_timer::Instant::now(), value));
             }
-            collections::hash_map::Entry::Occupied(mut val) => {
+            std::collections::hash_map::Entry::Occupied(mut val) => {
                 let (t, _) = val.get();
                 if t.elapsed() < self.ttl {
                     return;
                 }
                 //
-                val.insert((Instant::now(), value));
+                val.insert((wasm_timer::Instant::now(), value));
             }
         }
     }

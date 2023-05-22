@@ -25,7 +25,7 @@ use std::collections::HashMap;
 // use crate::database::Users;
 use profanity::Profanity;
 
-use crate::filters::{user_agent_is_scraper, valid_token, optional_token};
+use crate::filters::{optional_token, user_agent_is_scraper, valid_token};
 
 lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
@@ -75,53 +75,64 @@ async fn main() {
 
     let root = warp::get() /*.and(filters::is_beta())*/
         .and(
-            warp::fs::dir(env!("FILE_STORAGE_PATH")).and(warp::path::full()).and(optional_token())
-                .and_then(|reply: warp::filters::fs::File, path: warp::path::FullPath, token: Option<String>| async move {
-                    let path = path.as_str();
+            warp::fs::dir(env!("FILE_STORAGE_PATH"))
+                .and(warp::path::full())
+                .and(optional_token())
+                .and_then(
+                    |reply: warp::filters::fs::File,
+                     path: warp::path::FullPath,
+                     token: Option<String>| async move {
+                        let path = path.as_str();
 
-                    match (path.ends_with("-thumb.jpg"), token.is_some()) {
-                        (_, true) => {
-                            let mut resp = reply.into_response();
-                            if let Some(content_type) = resp.headers().get(warp::http::header::CONTENT_TYPE)
-                            {
-                                let content_type = content_type.to_str().unwrap();
-                                if !is_safe_mimetype(content_type) {
-                                    println!("Forcing download of file with mimetype {}", content_type);
-                                    resp.headers_mut().insert(
-                                        warp::http::header::CONTENT_DISPOSITION,
-                                        HeaderValue::from_static("attachment"),
-                                    );
+                        match (path.ends_with("-thumb.jpg"), token.is_some()) {
+                            (_, true) => {
+                                let mut resp = reply.into_response();
+                                if let Some(content_type) =
+                                    resp.headers().get(warp::http::header::CONTENT_TYPE)
+                                {
+                                    let content_type = content_type.to_str().unwrap();
+                                    if !is_safe_mimetype(content_type) {
+                                        println!(
+                                            "Forcing download of file with mimetype {}",
+                                            content_type
+                                        );
+                                        resp.headers_mut().insert(
+                                            warp::http::header::CONTENT_DISPOSITION,
+                                            HeaderValue::from_static("attachment"),
+                                        );
+                                    }
                                 }
+                                Ok(resp)
                             }
-                            Ok(resp)
-                        }
-                        (true, _) => {
-                            let mut resp = reply.into_response();
-                            if let Some(content_type) = resp.headers().get(warp::http::header::CONTENT_TYPE)
-                            {
-                                let content_type = content_type.to_str().unwrap();
-                                if !is_safe_mimetype(content_type) {
-                                    println!("Forcing download of file with mimetype {}", content_type);
-                                    resp.headers_mut().insert(
-                                        warp::http::header::CONTENT_DISPOSITION,
-                                        HeaderValue::from_static("attachment"),
-                                    );
+                            (true, _) => {
+                                let mut resp = reply.into_response();
+                                if let Some(content_type) =
+                                    resp.headers().get(warp::http::header::CONTENT_TYPE)
+                                {
+                                    let content_type = content_type.to_str().unwrap();
+                                    if !is_safe_mimetype(content_type) {
+                                        println!(
+                                            "Forcing download of file with mimetype {}",
+                                            content_type
+                                        );
+                                        resp.headers_mut().insert(
+                                            warp::http::header::CONTENT_DISPOSITION,
+                                            HeaderValue::from_static("attachment"),
+                                        );
+                                    }
                                 }
+                                Ok(resp)
                             }
-                            Ok(resp)
+                            _ => Err(warp::reject::reject()),
                         }
-                        _ => {
-                            Err(warp::reject::reject())
-                        }
-                    }
-                })
+                    },
+                )
                 .or(valid_token().map(|_| {}).untuple_one().and(
-                    warp::fs::dir(env!("DISTRIBUTION_PATH"))
-                    .or(warp::fs::file(format!(
+                    warp::fs::dir(env!("DISTRIBUTION_PATH")).or(warp::fs::file(format!(
                         "{}/index.html",
                         env!("DISTRIBUTION_PATH")
-                    ))
-                ))),
+                    ))),
+                )),
         );
 
     let manifest = warp::path!("manifest.json")

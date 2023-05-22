@@ -35,7 +35,8 @@ pub fn valid_token() -> impl Filter<Extract = (String,), Error = warp::Rejection
         )
 }
 
-pub fn optional_token() -> impl Filter<Extract = (Option<String>,), Error = warp::Rejection> + Clone {
+pub fn optional_token() -> impl Filter<Extract = (Option<String>,), Error = warp::Rejection> + Clone
+{
     warp::any()
         .and(warp::header::optional::<Bearer>("authorization"))
         .and(warp::cookie::optional("token"))

@@ -13,7 +13,10 @@ lto = true
 
 [features]
 default = []
-cache = []
+cache-boards = ["cache-base"]
+cache-threads = ["cache-base"]
+cache-posts = ["cache-base"]
+cache-base = []
 
 [dependencies]
 gloo-net = "0.2.6"
