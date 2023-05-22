@@ -20,7 +20,7 @@ pub fn PostBox(props: &Props) -> Html {
             match route.thread_id() {
                 Some(id) => ThreadType::RealThread(AttrValue::from(id)),
                 None => match &props.override_thread {
-                    Some(id) => ThreadType::FakeThread(id.to_owned()),
+                    Some(id) => ThreadType::FakeThread(id.clone()),
                     None => ThreadType::None,
                 },
             },
@@ -36,10 +36,10 @@ pub fn PostBox(props: &Props) -> Html {
 
     let post = CreatePostInfo {
         opened: show_box,
-        name: use_state(|| possible_name.as_ref().unwrap_or(&"".to_string()).clone()),
-        code: use_state(|| possible_code.as_ref().unwrap_or(&"".to_string()).clone()),
-        topic: use_state(|| "".to_string()),
-        content: use_state(|| "".to_string()),
+        name: use_state(|| return possible_name.as_ref().unwrap_or(&String::new()).clone()),
+        code: use_state(|| return possible_code.as_ref().unwrap_or(&String::new()).clone()),
+        topic: use_state(String::new),
+        content: use_state(String::new),
         file: use_state(|| None),
         spoiler: use_state(|| false),
     };
@@ -187,7 +187,7 @@ pub fn PostBox(props: &Props) -> Html {
                             </a>
                             <div class="post-box-meta-inputs" style={ if *post.opened { "" } else { "display: none;" } }>
                                 <div class="post-box-name" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
-                                    <input type="text" placeholder="Anonymous" value={possible_name.as_ref().unwrap_or(&"".to_string()).clone()} oninput={on_input_name} />
+                                    <input type="text" placeholder="Anonymous" value={possible_name.as_ref().unwrap_or(&String::new()).clone()} oninput={on_input_name} />
                                 </div>
                                 <div class="post-box-code" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
                                     <input type="text" placeholder="secret code" value={post.upper_code_val()} oninput={on_input_code} />
@@ -334,8 +334,8 @@ impl CreatePostInfo {
     }
 
     pub fn reset(&self) {
-        self.topic.set("".to_string());
-        self.content.set("".to_string());
+        self.topic.set(String::new());
+        self.content.set(String::new());
         self.file.set(None);
         self.spoiler.set(false);
     }
@@ -351,30 +351,30 @@ enum ThreadType {
 impl ThreadType {
     pub fn id(&self) -> Option<AttrValue> {
         match self {
-            ThreadType::RealThread(id) => Some(id.clone()),
-            ThreadType::FakeThread(id) => Some(id.clone()),
-            ThreadType::None => None,
+            Self::RealThread(id) => Some(id.clone()),
+            Self::FakeThread(id) => Some(id.clone()),
+            Self::None => None,
         }
     }
     pub fn is_some(&self) -> bool {
         match self {
-            ThreadType::RealThread(_) => true,
-            ThreadType::FakeThread(_) => true,
-            ThreadType::None => false,
+            Self::RealThread(_) => true,
+            Self::FakeThread(_) => true,
+            Self::None => false,
         }
     }
     pub fn is_none(&self) -> bool {
         match self {
-            ThreadType::RealThread(_) => false,
-            ThreadType::FakeThread(_) => false,
-            ThreadType::None => true,
+            Self::RealThread(_) => false,
+            Self::FakeThread(_) => false,
+            Self::None => true,
         }
     }
     pub fn class(&self) -> AttrValue {
         match self {
-            ThreadType::RealThread(_) => "post-box-floating",
-            ThreadType::FakeThread(_) => "post-box-inline",
-            ThreadType::None => "post-box-centered",
+            Self::RealThread(_) => "post-box-floating",
+            Self::FakeThread(_) => "post-box-inline",
+            Self::None => "post-box-centered",
         }
         .into()
     }

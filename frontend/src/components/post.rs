@@ -10,9 +10,7 @@ use crate::{
 
 #[function_component]
 pub fn Post(props: &Props) -> Html {
-    let is_thread = use_route::<BaseRoute>()
-        .map(|b| b.thread_id().is_some())
-        .unwrap_or(false);
+    let is_thread = use_route::<BaseRoute>().map_or(false, |b| b.thread_id().is_some());
 
     let timezone = use_context::<UseStateHandle<chrono_tz::Tz>>();
 

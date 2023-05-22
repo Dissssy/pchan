@@ -21,7 +21,7 @@ pub fn Thread(props: &Props) -> Html {
         if let Some((window, x, y)) = &**refresh {
             refresh.set(None);
             state.set(props.thread.clone_with_handle(pending.clone()));
-            let (window, x, y) = (window.clone(), x.to_owned(), y.to_owned());
+            let (window, x, y) = (window.clone(), *x, *y);
             gloo_timers::callback::Timeout::new(10, move || match (x, y) {
                 (Some(x), Some(y)) => {
                     window.scroll_to_with_x_and_y(x, y);
@@ -59,7 +59,7 @@ pub fn Thread(props: &Props) -> Html {
                         state.set_pending(true);
                         let state = state.clone();
                         let board_discriminator = board_discriminator.clone();
-                        let api = api.clone();
+                        let api = Arc::clone(&api);
                         wasm_bindgen_futures::spawn_local(async move {
                             let mut thread = (*state).clone();
                             if let ThreadState::Expandable(ref mut thread) = thread {
@@ -140,37 +140,37 @@ pub enum ThreadState {
 impl ThreadState {
     pub fn parent_post(&self) -> &SafePost {
         match self {
-            ThreadState::Expandable(thread) => &thread.thread.thread_post,
-            ThreadState::Full(thread) => &thread.thread_post,
+            Self::Expandable(thread) => &thread.thread.thread_post,
+            Self::Full(thread) => &thread.thread_post,
         }
     }
 
     pub fn posts(&self) -> &Vec<SafePost> {
         match self {
-            ThreadState::Expandable(thread) => thread.posts(),
-            ThreadState::Full(thread) => &thread.posts,
+            Self::Expandable(thread) => return thread.posts(),
+            Self::Full(thread) => &thread.posts,
         }
     }
 
     pub fn post_count(&self) -> usize {
         match self {
-            ThreadState::Expandable(thread) => thread.thread.post_count as usize,
-            ThreadState::Full(thread) => thread.post_count as usize,
+            Self::Expandable(thread) => thread.thread.post_count as usize,
+            Self::Full(thread) => thread.post_count as usize,
         }
     }
 
     pub fn pending(&self) -> bool {
         match self {
-            ThreadState::Expandable(thread) => match thread.pending {
+            Self::Expandable(thread) => match thread.pending {
                 Some(ref pending) => **pending,
                 None => false,
             },
-            ThreadState::Full(_) => false,
+            Self::Full(_) => false,
         }
     }
 
     pub fn set_pending(&self, pending: bool) {
-        if let ThreadState::Expandable(thread) = self {
+        if let Self::Expandable(thread) = self {
             if let Some(ref pendinghandle) = thread.pending {
                 pendinghandle.set(pending)
             }
@@ -179,29 +179,27 @@ impl ThreadState {
 
     pub fn clone_with_handle(&self, handle: UseStateHandle<bool>) -> Self {
         match self {
-            ThreadState::Expandable(thread) => {
-                ThreadState::Expandable(Box::new(ExpandableThread {
-                    thread: thread.thread.clone(),
-                    full_thread: thread.full_thread.clone(),
-                    expanded: thread.expanded,
-                    pending: Some(handle),
-                }))
-            }
-            ThreadState::Full(thread) => ThreadState::Full(thread.clone()),
+            Self::Expandable(thread) => Self::Expandable(Box::new(ExpandableThread {
+                thread: thread.thread.clone(),
+                full_thread: thread.full_thread.clone(),
+                expanded: thread.expanded,
+                pending: Some(handle),
+            })),
+            Self::Full(thread) => Self::Full(thread.clone()),
         }
     }
 
     pub fn topic(&self) -> AttrValue {
         match self {
-            ThreadState::Expandable(thread) => AttrValue::from(thread.thread.topic.clone()),
-            ThreadState::Full(thread) => AttrValue::from(thread.topic.clone()),
+            Self::Expandable(thread) => AttrValue::from(thread.thread.topic.clone()),
+            Self::Full(thread) => AttrValue::from(thread.topic.clone()),
         }
     }
 
     pub fn show_post_box(&self) -> bool {
         match self {
-            ThreadState::Expandable(_) => true,
-            ThreadState::Full(_) => false,
+            Self::Expandable(_) => true,
+            Self::Full(_) => false,
         }
     }
 
@@ -217,8 +215,8 @@ impl ThreadState {
         // Hide ({hidden_post_count} posts)
 
         match self {
-            ThreadState::Expandable(thread) => {
-                if thread.thread.post_count != thread.thread.posts.len() as i64 {
+            Self::Expandable(thread) => {
+                (thread.thread.post_count != thread.thread.posts.len() as i64).then(|| {
                     let hidden_post_count =
                         thread.thread.post_count - thread.thread.posts.len() as i64;
                     let text = if thread.expanded {
@@ -226,12 +224,10 @@ impl ThreadState {
                     } else {
                         format!("Show {} posts", hidden_post_count)
                     };
-                    Some(AttrValue::from(text))
-                } else {
-                    None
-                }
+                    AttrValue::from(text)
+                })
             }
-            ThreadState::Full(_) => None,
+            Self::Full(_) => None,
         }
     }
 }

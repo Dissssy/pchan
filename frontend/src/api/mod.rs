@@ -15,22 +15,13 @@ pub struct Api {
     pub cache: std::sync::Arc<async_lock::Mutex<typemap_ors::TypeMap>>,
 }
 
-impl Clone for Api {
-    fn clone(&self) -> Self {
-        Self {
-            token: self.token.clone(),
-            #[cfg(feature = "cache-base")]
-            cache: self.cache.clone(),
-        }
-    }
-}
-
 impl std::fmt::Debug for Api {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.debug_struct("Api")
+        return f
+            .debug_struct("Api")
             .field("token", &self.token)
             .field("cache", &"Mutex<TypeMap>")
-            .finish()
+            .finish();
     }
 }
 
@@ -69,7 +60,7 @@ impl Api {
 
     #[allow(unused_variables)]
     pub async fn get_boards(&self, override_cache: bool) -> Result<Vec<SafeBoard>, ApiError> {
-        let ident = "".to_owned();
+        let ident = String::new();
         // attempt cache hit
         #[cfg(feature = "cache-boards")]
         let v: Option<Vec<SafeBoard>> = if override_cache {
@@ -529,15 +520,15 @@ impl<T> ApiState<T> {
         F: Fn(&T) -> Html,
     {
         match self {
-            ApiState::Pending => Ok(html! {}),
-            ApiState::Loading => Ok(html! {
+            Self::Pending => Ok(html! {}),
+            Self::Loading => Ok(html! {
                 <crate::components::Spinner />
             }),
-            ApiState::ContextError(s) => Ok(html! {
+            Self::ContextError(s) => Ok(html! {
                 <crate::components::ContextError cause={s} source={source} />
             }),
-            ApiState::Error(e) => Err(e.clone()),
-            ApiState::Loaded(data) => Ok(then(data)),
+            Self::Error(e) => Err(e.clone()),
+            Self::Loaded(data) => Ok(then(data)),
         }
     }
     pub fn get_or(&self, other: T) -> T
@@ -545,7 +536,7 @@ impl<T> ApiState<T> {
         T: Clone,
     {
         match self {
-            ApiState::Loaded(data) => data.clone(),
+            Self::Loaded(data) => data.clone(),
             _ => other,
         }
     }
@@ -560,7 +551,7 @@ pub struct CachedValue<T> {
 #[cfg(feature = "cache-base")]
 impl<T> Default for CachedValue<T> {
     fn default() -> Self {
-        CachedValue {
+        Self {
             values: std::collections::HashMap::new(),
             ttl: std::time::Duration::from_secs(30),
         }
@@ -569,7 +560,7 @@ impl<T> Default for CachedValue<T> {
 
 #[cfg(feature = "cache-base")]
 impl<T: 'static> typemap_ors::Key for CachedValue<T> {
-    type Value = CachedValue<T>;
+    type Value = Self;
 }
 
 #[cfg(feature = "cache-base")]

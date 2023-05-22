@@ -148,9 +148,9 @@ pub enum Position {
 impl Position {
     pub fn get_id(&self) -> AttrValue {
         match self {
-            Position::First => "first",
-            Position::Middle => "middle",
-            Position::Last => "last",
+            Self::First => "first",
+            Self::Middle => "middle",
+            Self::Last => "last",
         }
         .into()
     }
@@ -173,31 +173,31 @@ pub enum EmojiState {
 impl EmojiState {
     pub fn next(&self) -> Self {
         match self {
-            EmojiState::Enabled => EmojiState::Conf1,
-            EmojiState::Conf1 => EmojiState::Conf2,
-            EmojiState::Conf2 => EmojiState::Conf3,
-            EmojiState::Conf3 => EmojiState::Conf4,
-            EmojiState::Conf4 => EmojiState::Conf5,
-            EmojiState::Conf5 => EmojiState::Conf6,
-            EmojiState::Conf6 => EmojiState::Conf7,
-            EmojiState::Conf7 => EmojiState::Conf8,
-            EmojiState::Conf8 => EmojiState::Disabled,
-            EmojiState::Disabled => EmojiState::Enabled,
+            Self::Enabled => Self::Conf1,
+            Self::Conf1 => Self::Conf2,
+            Self::Conf2 => Self::Conf3,
+            Self::Conf3 => Self::Conf4,
+            Self::Conf4 => Self::Conf5,
+            Self::Conf5 => Self::Conf6,
+            Self::Conf6 => Self::Conf7,
+            Self::Conf7 => Self::Conf8,
+            Self::Conf8 => Self::Disabled,
+            Self::Disabled => Self::Enabled,
         }
     }
 
     pub fn string(&self) -> AttrValue {
         match self {
-            EmojiState::Enabled => "",
-            EmojiState::Conf1 => "",
-            EmojiState::Conf2 => "",
-            EmojiState::Conf3 => "",
-            EmojiState::Conf4 => "",
-            EmojiState::Conf5 => "",
-            EmojiState::Conf6 => "",
-            EmojiState::Conf7 => "󰞧",
-            EmojiState::Conf8 => "󰮢󰮢󰮢󰮢󰮢󰮢",
-            EmojiState::Disabled => "Emojis Disabled",
+            Self::Enabled => "",
+            Self::Conf1 => "",
+            Self::Conf2 => "",
+            Self::Conf3 => "",
+            Self::Conf4 => "",
+            Self::Conf5 => "",
+            Self::Conf6 => "",
+            Self::Conf7 => "󰞧",
+            Self::Conf8 => "󰮢󰮢󰮢󰮢󰮢󰮢",
+            Self::Disabled => "Emojis Disabled",
         }
         .into()
     }

@@ -1,3 +1,23 @@
+#![warn(
+    clippy::map_unwrap_or,
+    clippy::unwrap_used,
+    clippy::expect_used,
+    clippy::clone_on_ref_ptr,
+    clippy::print_stdout,
+    clippy::print_stderr,
+    clippy::dbg_macro,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::panic,
+    clippy::unwrap_in_result,
+    clippy::use_self,
+    clippy::unnecessary_to_owned,
+    clippy::ptr_arg,
+    clippy::if_then_some_else_none,
+    clippy::implicit_clone,
+    clippy::manual_string_new
+)]
+
 pub mod api;
 pub mod components;
 pub mod helpers;
@@ -34,10 +54,10 @@ pub static PREFIX: &str = "";
 impl BaseRoute {
     pub fn board_discriminator(&self) -> Option<String> {
         match self {
-            BaseRoute::BoardPage {
+            Self::BoardPage {
                 board_discriminator,
             } => Some(board_discriminator.clone()),
-            BaseRoute::ThreadPage {
+            Self::ThreadPage {
                 board_discriminator,
                 ..
             } => Some(board_discriminator.clone()),
@@ -47,7 +67,7 @@ impl BaseRoute {
 
     pub fn thread_id(&self) -> Option<String> {
         match self {
-            BaseRoute::ThreadPage { thread_id, .. } => Some(thread_id.clone()),
+            Self::ThreadPage { thread_id, .. } => Some(thread_id.clone()),
             _ => None,
         }
     }
@@ -55,7 +75,7 @@ impl BaseRoute {
 
 impl From<common::structs::Reply> for BaseRoute {
     fn from(reply: common::structs::Reply) -> Self {
-        BaseRoute::ThreadPage {
+        Self::ThreadPage {
             board_discriminator: reply.board_discriminator,
             thread_id: reply.post_number,
         }

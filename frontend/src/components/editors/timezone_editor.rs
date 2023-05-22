@@ -9,7 +9,7 @@ pub fn TimezoneEditor() -> Html {
 
     html! {
         {
-            timezone.map(|tz| tz.name()).unwrap_or("")
+            timezone.map_or("", |tz| return tz.name())
         }
     }
 }

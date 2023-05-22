@@ -67,9 +67,9 @@ pub enum OffsetType {
 impl OffsetType {
     pub fn percent(&self) -> AttrValue {
         match self {
-            OffsetType::Top => "-100%",
-            OffsetType::Center => "-50%",
-            OffsetType::Bottom => "0%",
+            Self::Top => "-100%",
+            Self::Center => "-50%",
+            Self::Bottom => "0%",
         }
         .into()
     }

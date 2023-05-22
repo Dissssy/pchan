@@ -44,27 +44,19 @@ pub struct RichTextContent {
 lazy_static::lazy_static! {
     static ref RICHFILTERS: Vec<fn(&str) -> Option<RichTextContent>> = vec![
         |s| {
-            if s.starts_with('>') {
-                Some(RichTextContent {
-                    class: AttrValue::from("bluetext"),
-                    string: AttrValue::from(s.to_owned()),
-                })
-            } else {
-                None
-            }
+            s.starts_with('>').then(|| RichTextContent {
+                class: AttrValue::from("bluetext"),
+                string: AttrValue::from(s.to_owned()),
+            })
         },
         |s| {
-            if s.starts_with('<') {
-                Some(RichTextContent {
-                    class: AttrValue::from("peetext"),
-                    string: AttrValue::from(s.to_owned()),
-                })
-            } else {
-                None
-            }
+            s.starts_with('<').then(|| RichTextContent {
+                class: AttrValue::from("peetext"),
+                string: AttrValue::from(s.to_owned()),
+            })
         },
         |s| {
-            s.strip_prefix(r#"./*"#).and_then(|s| s.strip_suffix(r#"*\."#)).map(|s| RichTextContent {
+            return s.strip_prefix(r#"./*"#).and_then(|s| return s.strip_suffix(r#"*\."#)).map(|s| RichTextContent {
                 class: AttrValue::from("gibberish"),
                 string: AttrValue::from(s.to_owned()),
             })

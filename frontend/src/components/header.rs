@@ -8,9 +8,7 @@ use crate::{
 
 #[function_component]
 pub fn Header() -> Html {
-    let post_box = use_route::<BaseRoute>()
-        .map(|r| r.thread_id().is_none())
-        .unwrap_or(false);
+    let post_box = use_route::<BaseRoute>().map_or(false, |r| r.thread_id().is_none());
 
     html! {
         <div class="board-header">

@@ -123,14 +123,14 @@ pub enum DeleteState {
 impl DeleteState {
     pub fn progress_with_trigger_signal(&self) -> (Self, bool) {
         let f = match *self {
-            DeleteState::Untouched => DeleteState::QuestionMark,
-            DeleteState::QuestionMark => DeleteState::Interrobang,
-            DeleteState::Interrobang => DeleteState::ExclamationMark,
-            DeleteState::ExclamationMark => DeleteState::Pending,
-            DeleteState::Pending => DeleteState::Pending,
-            DeleteState::Complete(ref e) => DeleteState::Complete(e.clone()),
+            Self::Untouched => Self::QuestionMark,
+            Self::QuestionMark => Self::Interrobang,
+            Self::Interrobang => Self::ExclamationMark,
+            Self::ExclamationMark => Self::Pending,
+            Self::Pending => Self::Pending,
+            Self::Complete(ref e) => Self::Complete(e.clone()),
         };
-        let b = f == DeleteState::Pending;
+        let b = f == Self::Pending;
         (f, b)
     }
 }

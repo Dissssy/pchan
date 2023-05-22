@@ -106,7 +106,7 @@ pub fn NotificationBox() -> Html {
                                         <div onclick={ let path = n.path.clone(); let disregard = disregard.clone(); navigate_to.reform(move |e: MouseEvent| { e.prevent_default(); disregard.emit(i); path.clone() } ) } >
                                             <div class="notification-body">
                                                 if let Some(icon) = n.icon.as_ref() {
-                                                    <img class="notification-icon" src={icon.to_owned()} />
+                                                    <img class="notification-icon" src={icon.clone()} />
                                                 }
                                                 <div class="notification-content">
                                                     <SpoilableText content={n.body.clone()} />
@@ -134,7 +134,7 @@ pub struct NotificationInfo {
 
 impl From<SafePost> for NotificationInfo {
     fn from(post: SafePost) -> Self {
-        Self {
+        return Self {
             // path: format!(
             //     "/{}/thread/{}",
             //     post.board_discriminator, post.thread_post_number
@@ -151,7 +151,7 @@ impl From<SafePost> for NotificationInfo {
                 }
             },
             icon: post.file.map(|f| f.thumbnail),
-        }
+        };
     }
 }
 

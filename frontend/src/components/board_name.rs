@@ -20,9 +20,9 @@ pub fn BoardName(props: &Props) -> Html {
         );
     }
 
-    let (board_discriminator, is_thread) = location
-        .map(|b| (b.board_discriminator(), b.thread_id().is_some()))
-        .unwrap_or((None, false));
+    let (board_discriminator, is_thread) = location.map_or((None, false), |b| {
+        (b.board_discriminator(), b.thread_id().is_some())
+    });
 
     let (mousein, mouseout) = {
         let ahovered = hovered.clone();

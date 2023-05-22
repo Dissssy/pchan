@@ -180,7 +180,7 @@ pub fn Reply(props: &Props) -> Html {
                                         format!("left: calc({}px{}) !important; top: calc({}px) !important; position: absolute !important; transform: translateY({}) !important;", x, if parent_offset.x == 0 { " + 1em" } else { "" }, y, offset.percent())
                                     },
                                     HoveredOrExpandedState::None => {
-                                        "".to_string()
+                                        String::new()
                                     }
                                 }
                             }>

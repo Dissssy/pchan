@@ -195,11 +195,14 @@ pub fn ThreadPage() -> Html {
                                                         gloo_timers::callback::Timeout::new(
                                                             100,
                                                             move || {
-                                                                web_sys::window()
-                                                                    .unwrap()
+                                                                if let Some(window) = web_sys::window() {
+                                                                    window
                                                                     .scroll_by_with_x_and_y(
                                                                         0.0, 10000.0,
                                                                     );
+                                                                } else {
+                                                                    gloo::console::warn!("Failed to scroll to bottom")
+                                                                }
                                                             },
                                                         )
                                                         .forget();
