@@ -76,7 +76,7 @@ impl Api {
             }
         };
 
-        #[cfg(not(feature = "cache-board"))]
+        #[cfg(not(feature = "cache-boards"))]
         let v = None;
 
         if let Some(v) = v {
@@ -109,7 +109,7 @@ impl Api {
             }
         }
     }
-
+    
     #[allow(unused_variables)]
     pub async fn get_board(
         &self,
