@@ -1,10 +1,23 @@
-use std::{collections::hash_map::Entry, fmt::Display, str::FromStr};
-
+use common::hash_with_salt;
+use lazy_static::lazy_static;
 use reqwest::Method;
 use serde::{Deserialize, Serialize};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    fmt::Display,
+    hash::{Hash, Hasher},
+    str::FromStr,
+    sync::Arc,
+};
+use tokio::{sync::Mutex, time::Instant};
 use warp::{path::FullPath, Filter};
 
-pub fn valid_token() -> impl Filter<Extract = (String,), Error = warp::Rejection> + Clone {
+lazy_static! {
+    pub static ref TOKENCACHE: Arc<Mutex<HashMap<Token, Instant>>> =
+        Arc::new(Mutex::new(HashMap::new()));
+}
+
+pub fn valid_token() -> impl Filter<Extract = (Token,), Error = warp::Rejection> + Clone {
     warp::any()
         .and(warp::header::optional::<Bearer>("authorization"))
         .and(warp::cookie::optional("token"))
@@ -15,19 +28,41 @@ pub fn valid_token() -> impl Filter<Extract = (String,), Error = warp::Rejection
                     .await
                     .map_err(|_| warp::reject::reject())?;
                 if let Some(header) = header {
-                    if crate::database::Database::is_valid_token(&mut conn, header.token.clone())
-                        .await
-                        .map_err(|_| warp::reject::reject())?
-                    {
-                        return Ok(header.token);
+                    let mut t = Token::new(header.token);
+                    let mut cache = TOKENCACHE.lock().await;
+                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
+                        if e.get().elapsed().as_secs() < 60 {
+                            return Ok(t);
+                        } else {
+                            e.remove();
+                        }
+                    } else {
+                        if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
+                            .await
+                            .map_err(|_| warp::reject::reject())?
+                        {
+                            cache.insert(t.clone(), Instant::now());
+                            return Ok(t);
+                        }
                     }
                 };
                 if let Some(cookie) = cookie {
-                    if crate::database::Database::is_valid_token(&mut conn, cookie.clone())
-                        .await
-                        .map_err(|_| warp::reject::reject())?
-                    {
-                        return Ok(cookie);
+                    let mut t = Token::new(cookie);
+                    let mut cache = TOKENCACHE.lock().await;
+                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
+                        if e.get().elapsed().as_secs() < 60 {
+                            return Ok(t);
+                        } else {
+                            e.remove();
+                        }
+                    } else {
+                        if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
+                            .await
+                            .map_err(|_| warp::reject::reject())?
+                        {
+                            cache.insert(t.clone(), Instant::now());
+                            return Ok(t);
+                        }
                     }
                 };
                 Err(warp::reject::reject())
@@ -35,7 +70,7 @@ pub fn valid_token() -> impl Filter<Extract = (String,), Error = warp::Rejection
         )
 }
 
-pub fn optional_token() -> impl Filter<Extract = (Option<String>,), Error = warp::Rejection> + Clone
+pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp::Rejection> + Clone
 {
     warp::any()
         .and(warp::header::optional::<Bearer>("authorization"))
@@ -47,19 +82,41 @@ pub fn optional_token() -> impl Filter<Extract = (Option<String>,), Error = warp
                     .await
                     .map_err(|_| warp::reject::reject())?;
                 if let Some(header) = header {
-                    if crate::database::Database::is_valid_token(&mut conn, header.token.clone())
-                        .await
-                        .map_err(|_| warp::reject::reject())?
-                    {
-                        return Ok::<_, warp::reject::Rejection>(Some(header.token));
+                    let mut t = Token::new(header.token);
+                    let mut cache = TOKENCACHE.lock().await;
+                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
+                        if e.get().elapsed().as_secs() < 60 {
+                            return Ok(Some(t));
+                        } else {
+                            e.remove();
+                        }
+                    } else {
+                        if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
+                            .await
+                            .map_err(|_| warp::reject::reject())?
+                        {
+                            cache.insert(t.clone(), Instant::now());
+                            return Ok::<_, warp::reject::Rejection>(Some(t));
+                        }
                     }
                 };
                 if let Some(cookie) = cookie {
-                    if crate::database::Database::is_valid_token(&mut conn, cookie.clone())
-                        .await
-                        .map_err(|_| warp::reject::reject())?
-                    {
-                        return Ok(Some(cookie));
+                    let mut t = Token::new(cookie);
+                    let mut cache = TOKENCACHE.lock().await;
+                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
+                        if e.get().elapsed().as_secs() < 60 {
+                            return Ok(Some(t));
+                        } else {
+                            e.remove();
+                        }
+                    } else {
+                        if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
+                            .await
+                            .map_err(|_| warp::reject::reject())?
+                        {
+                            cache.insert(t.clone(), Instant::now());
+                            return Ok(Some(t));
+                        }
                     }
                 };
                 Ok(None)
@@ -97,7 +154,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
     warp::path::full()
         .and(valid_token())
         .and(warp::method())
-        .and_then(|path: FullPath, token: String, method| async move {
+        .and_then(|path: FullPath, token: Token, method| async move {
             if method == Method::GET {
                 return Ok(());
             }
@@ -233,5 +290,78 @@ impl FromStr for Bearer {
 impl Display for Bearer {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Bearer {}", self.token)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct Token {
+    token: Arc<String>,
+    cached_member_hash: Option<MemberToken>,
+}
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        self.token == other.token
+    }
+}
+
+impl Eq for Token {}
+
+impl Hash for Token {
+    fn hash<H: Hasher>(&self, state: &mut H) {
+        self.token.hash(state);
+    }
+}
+
+impl Display for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}", self.token)
+    }
+}
+
+impl Token {
+    pub fn new(token: String) -> Self {
+        Self {
+            token: Arc::new(token),
+            cached_member_hash: None,
+        }
+    }
+    pub fn member_hash(&mut self) -> MemberToken {
+        if let Some(member_hash) = &self.cached_member_hash {
+            return member_hash.clone();
+        }
+        let m = MemberToken::new(
+            self.token.clone(),
+            Arc::new(hash_with_salt(&self.token, &crate::statics::TOKEN_SALT)),
+        );
+        self.cached_member_hash = Some(m.clone());
+        m
+    }
+    pub fn from_id(id: &str) -> Self {
+        Self::new(hash_with_salt(id, &crate::statics::HASH_SALT))
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct MemberToken {
+    original: Arc<String>,
+    token: Arc<String>,
+}
+
+impl Display for MemberToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{} ({})", self.token, self.original)
+    }
+}
+
+impl MemberToken {
+    pub fn new(original: Arc<String>, token: Arc<String>) -> Self {
+        Self { original, token }
+    }
+    pub fn post_hash(&self, id: &str) -> String {
+        hash_with_salt(&*self.token, id)
+    }
+    pub fn member_hash(&self) -> Arc<String> {
+        self.token.clone()
     }
 }

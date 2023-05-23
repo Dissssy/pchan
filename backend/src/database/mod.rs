@@ -21,6 +21,7 @@ use profanity::replace_possible_profanity;
 // use web_push::WebPushMessageBuilder;
 
 use crate::endpoints::api::SubscriptionData;
+use crate::filters::MemberToken;
 // use crate::endpoints::api::SubscriptionData;
 use crate::schema::thread_post_number;
 use crate::schema::Banner;
@@ -56,10 +57,10 @@ use crate::schema::Post;
 //         Ok(())
 //     }
 
-//     pub async fn is_auth(&mut self, token: String) -> Result<bool> {
+//     pub async fn is_auth(&mut self, token: MemberToken) -> Result<bool> {
 //         Ok(self.valid_users.contains(&token))
 //     }
-//     pub async fn add_auth(&mut self, token: String) -> Result<()> {
+//     pub async fn add_auth(&mut self, token: MemberToken) -> Result<()> {
 //         self.valid_users.push(token);
 //         Ok(())
 //     }
@@ -67,7 +68,7 @@ use crate::schema::Post;
 //         self.valid_users = tokens;
 //         Ok(())
 //     }
-//     pub async fn remove_auth(&mut self, token: String) -> Result<()> {
+//     pub async fn remove_auth(&mut self, token: MemberToken) -> Result<()> {
 //         self.valid_users.retain(|x| x != &token);
 //         Ok(())
 //     }
@@ -172,11 +173,10 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discriminator: String,
         number: i64,
-        token: String,
+        token: MemberToken,
     ) -> Result<i64> {
         let tpost = Self::get_raw_post(conn, discriminator.clone(), number).await?;
-        let tauthor =
-            tpost.actual_author == common::hash_with_salt(&token, &format!("{}", tpost.id));
+        let tauthor = &tpost.actual_author == &*token.post_hash(&tpost.id.to_string());
         let tadmin = Self::is_admin(conn, token, tpost.board).await?;
 
         if !(tadmin || tauthor) {
@@ -232,18 +232,16 @@ impl Database {
 
     async fn is_admin(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: String,
+        token: MemberToken,
         board_id: i64,
     ) -> Result<bool> {
         use crate::schema::members::dsl::*;
         use diesel::query_dsl::methods::SelectDsl;
 
-        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
-
         // get this members moderates Vec<i64>
         let status = members
             .select(moderates)
-            .filter(token_hash.eq(hashed_token))
+            .filter(token_hash.eq(&*token.member_hash()))
             .first::<Option<Vec<i64>>>(&mut *conn)
             .await?;
 
@@ -321,7 +319,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tboard: String,
         mut thread: CreateThread,
-        actual_author: String,
+        token: MemberToken,
     ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
 
@@ -349,16 +347,8 @@ impl Database {
             .get_result::<crate::schema::Thread>(conn)
             .await?;
 
-        let p = match Self::create_post(
-            conn,
-            this_board.id,
-            tboard,
-            t.id,
-            thread.post,
-            actual_author,
-            None,
-        )
-        .await
+        let p = match Self::create_post(conn, this_board.id, tboard, t.id, thread.post, token, None)
+            .await
         {
             Ok(p) => p,
             Err(e) => {
@@ -378,7 +368,7 @@ impl Database {
         discriminator: String,
         tthread: i64,
         mut post: CreatePost,
-        tactual_author: String,
+        token: MemberToken,
         check_hash_against: Option<Vec<FileInfo>>,
     ) -> Result<crate::schema::Post> {
         use crate::schema::posts::dsl::*;
@@ -433,11 +423,7 @@ impl Database {
             let f = crate::UNCLAIMED_FILES
                 .lock()
                 .await
-                .claim_file(
-                    &file,
-                    tactual_author.clone(),
-                    thread_post_number == this_post_number,
-                )
+                .claim_file(&file, token.clone(), thread_post_number == this_post_number)
                 .await?;
 
             if let Some(files_check) = check_hash_against {
@@ -451,9 +437,11 @@ impl Database {
             None
         };
 
-        if !Self::is_admin(conn, tactual_author.clone(), tboard).await? {
+        if !Self::is_admin(conn, token.clone(), tboard).await? {
             post.code = None;
         }
+
+        let member_hash = token.member_hash();
 
         let t = insert_into(posts).values((
             post_number.eq(this_post_number),
@@ -464,7 +452,7 @@ impl Database {
             content.eq(&post.content),
             replies_to.eq(replieses),
             timestamp.eq(now),
-            actual_author.eq(&tactual_author),
+            actual_author.eq(&*member_hash),
         ));
         let p = t.get_result::<crate::schema::Post>(conn).await?;
 
@@ -474,21 +462,14 @@ impl Database {
 
         drop(lock);
 
-        let hashed_author = common::hash_with_salt(&tactual_author, &p.id.to_string());
-
         diesel::update(posts.filter(id.eq(p.id)))
-            .set(actual_author.eq(&hashed_author))
+            .set(actual_author.eq(&*token.post_hash(&p.id.to_string())))
             .execute(conn)
             .await?;
 
         let safe = p.safe(conn).await?;
         tokio::spawn(async move {
-            Self::dispatch_push_notifications(
-                safe,
-                tthread,
-                common::hash_with_salt(&tactual_author, &crate::statics::TOKEN_SALT),
-            )
-            .await;
+            Self::dispatch_push_notifications(safe, tthread, &*member_hash).await;
         });
 
         Ok(p)
@@ -497,7 +478,7 @@ impl Database {
     pub async fn dispatch_push_notifications(
         safe: common::structs::SafePost,
         thread: i64,
-        this_author: String,
+        this_author: &str,
     ) {
         let mut conn = match crate::POOL.get().await {
             Ok(v) => v,
@@ -577,7 +558,7 @@ impl Database {
                         }
                     }
                     changed
-                },
+                }
                 Err(e) => {
                     eprintln!("Error parsing push data: {}", e);
                     continue;
@@ -667,14 +648,13 @@ impl Database {
 
     pub async fn is_valid_token(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: String,
+        token: MemberToken,
     ) -> Result<bool> {
         use crate::schema::members::dsl::*;
-        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
-
+        // println!("Checking token: {}", token.member_hash());
         // check if a user with this token exists
         let user = members
-            .filter(token_hash.eq(hashed_token))
+            .filter(token_hash.eq(&*token.member_hash()))
             .first::<crate::schema::Member>(conn)
             .await;
 
@@ -683,11 +663,9 @@ impl Database {
 
     pub async fn add_token(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: String,
+        token: MemberToken,
     ) -> Result<()> {
         use crate::schema::members::dsl::*;
-
-        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
 
         // check if a user with this token exists
         if Self::is_valid_token(conn, token.clone()).await? {
@@ -696,7 +674,7 @@ impl Database {
 
         // if not, create one
         diesel::insert_into(members)
-            .values((token_hash.eq(hashed_token),))
+            .values((token_hash.eq(&*token.member_hash()),))
             .execute(conn)
             .await?;
 
@@ -705,11 +683,9 @@ impl Database {
 
     pub async fn remove_token(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: String,
+        token: MemberToken,
     ) -> Result<()> {
         use crate::schema::members::dsl::*;
-
-        let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
 
         // check if a user with this token exists
         if !Self::is_valid_token(conn, token.clone()).await? {
@@ -717,7 +693,7 @@ impl Database {
         };
 
         // if so, delete it
-        diesel::delete(members.filter(token_hash.eq(hashed_token)))
+        diesel::delete(members.filter(token_hash.eq(&*token.member_hash())))
             .execute(conn)
             .await?;
 
@@ -726,13 +702,13 @@ impl Database {
 
     pub async fn sync_tokens(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        tokens: Vec<String>,
+        tokens: Vec<MemberToken>,
     ) -> Result<()> {
         use crate::schema::members::dsl::*;
 
         let hashed_tokens = tokens
             .iter()
-            .map(|x| common::hash_with_salt(x, &crate::statics::TOKEN_SALT))
+            .map(|x| (*x.member_hash()).clone())
             .collect::<Vec<String>>();
 
         // delete all tokens that are not in the list
@@ -750,7 +726,7 @@ impl Database {
 
     // pub async fn set_user_push_url(
     //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    //     token: String,
+    //     token: MemberToken,
     //     push_url: Option<String>,
     // ) -> Result<()> {
     //     use crate::schema::members::dsl::*;
@@ -781,14 +757,14 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         disc: String,
         post: i64,
-        token: String,
+        token: MemberToken,
     ) -> Result<bool> {
         use crate::schema::members::dsl::*;
         let watching_id = Self::get_raw_thread(conn, disc, post).await?.id;
 
         // if user where token_hash == token && watching.contains(post.thread_id)
         match members
-            .filter(token_hash.eq(token))
+            .filter(token_hash.eq(&*token.member_hash()))
             .filter(watching.contains(vec![watching_id]))
             .first::<crate::schema::Member>(conn)
             .await
@@ -803,7 +779,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         disc: String,
         post: i64,
-        token: String,
+        token: MemberToken,
         set_watching: bool,
     ) -> Result<bool> {
         use crate::schema::members::dsl::*;
@@ -811,7 +787,7 @@ impl Database {
 
         // get user and, put or remove post.id from watching depending on watching
         let user = members
-            .filter(token_hash.eq(&token))
+            .filter(token_hash.eq(&*token.member_hash()))
             .first::<crate::schema::Member>(conn)
             .await?;
 
@@ -819,7 +795,7 @@ impl Database {
             (true, false) => {
                 let mut twatching = user.watching;
                 twatching.push(watching_id);
-                diesel::update(members.filter(token_hash.eq(token)))
+                diesel::update(members.filter(token_hash.eq(&*token.member_hash())))
                     .set(watching.eq(twatching))
                     .execute(conn)
                     .await?;
@@ -828,7 +804,7 @@ impl Database {
             (false, true) => {
                 let mut twatching = user.watching;
                 twatching.retain(|x| *x != watching_id);
-                diesel::update(members.filter(token_hash.eq(token)))
+                diesel::update(members.filter(token_hash.eq(&*token.member_hash())))
                     .set(watching.eq(twatching))
                     .execute(conn)
                     .await?;
@@ -840,13 +816,13 @@ impl Database {
 
     pub async fn add_user_push_url(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: String,
+        token: MemberToken,
         sub: crate::endpoints::api::SubscriptionData,
     ) -> Result<()> {
         use crate::schema::members::dsl::*;
 
         let user = members
-            .filter(token_hash.eq(&token))
+            .filter(token_hash.eq(&*token.member_hash()))
             .first::<crate::schema::Member>(conn)
             .await?;
 
@@ -867,12 +843,12 @@ impl Database {
         // only push if not already subscribed
         if !subs.contains(&sub) {
             subs.push(sub);
-            diesel::update(members.filter(token_hash.eq(token)))
+            diesel::update(members.filter(token_hash.eq(&*token.member_hash())))
                 .set(push_data.eq(serde_json::to_value(&subs)?))
                 .execute(conn)
                 .await?;
         }
-        
+
         Ok(())
     }
 

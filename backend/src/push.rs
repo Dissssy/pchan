@@ -42,10 +42,10 @@ impl PushHolder {
 
     pub async fn subscribe(
         &mut self,
-        ident: String,
+        ident: &String,
     ) -> impl Stream<Item = Result<Event, Infallible>> {
         let mut rx = self.add_push(ident.clone());
-        self.send_to(&[&ident], PushMessage::Open);
+        self.send_to(&[ident], PushMessage::Open);
         stream! {
             while let Some(message) = rx.recv().await {
                 yield Ok(match into_event(message) {

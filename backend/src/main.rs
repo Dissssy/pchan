@@ -25,7 +25,7 @@ use std::collections::HashMap;
 // use crate::database::Users;
 use profanity::Profanity;
 
-use crate::filters::{optional_token, user_agent_is_scraper, valid_token};
+use crate::filters::{optional_token, user_agent_is_scraper, valid_token, Token};
 
 lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
@@ -81,7 +81,7 @@ async fn main() {
                 .and_then(
                     |reply: warp::filters::fs::File,
                      path: warp::path::FullPath,
-                     token: Option<String>| async move {
+                     token: Option<Token>| async move {
                         let path = path.as_str();
 
                         match (path.ends_with("-thumb.jpg"), token.is_some()) {

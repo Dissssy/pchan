@@ -1,7 +1,7 @@
-use crate::filters::{valid_token, Bearer, Ratelimited};
+use crate::filters::{valid_token, MemberToken, Ratelimited, Token};
 use crate::unclaimedfiles::File;
+use common::structs::CreateBoard;
 use common::structs::{CreatePost, CreateThread, FileInfo, SafeBoard};
-use common::{hash_with_salt, structs::CreateBoard};
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Rejection, Reply};
 
@@ -16,14 +16,14 @@ pub fn priveleged_api_endpoints(
         .and_then(|board: CreateBoard| async move {
             match crate::database::Database::create_board(
                 &mut match crate::POOL.get().await {
-                        Ok(pool) => pool,
-                        Err(e) => {
-                            println!("error connecting to backend: {}", e);
-                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                warp::reply::json(&"error connecting to backend"),
-                            )
-                        }
-                    },
+                    Ok(pool) => pool,
+                    Err(e) => {
+                        println!("error connecting to backend: {}", e);
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&"error connecting to backend"),
+                        );
+                    }
+                },
                 board.discriminator,
                 board.name,
             )
@@ -50,7 +50,7 @@ pub fn priveleged_api_endpoints(
 
                 if let Err(e) = crate::database::Database::add_token(
                     &mut conn,
-                    hash_with_salt(&user.id, &crate::statics::HASH_SALT),
+                    Token::from_id(&user.id).member_hash(),
                 )
                 .await
                 {
@@ -76,7 +76,7 @@ pub fn priveleged_api_endpoints(
 
                 if let Err(e) = crate::database::Database::remove_token(
                     &mut conn,
-                    hash_with_salt(&user.id, &crate::statics::HASH_SALT),
+                    Token::from_id(&user.id).member_hash(),
                 )
                 .await
                 {
@@ -102,8 +102,8 @@ pub fn priveleged_api_endpoints(
 
                 let tokens = users
                     .iter()
-                    .map(|u| hash_with_salt(&u.id, &crate::statics::HASH_SALT))
-                    .collect::<Vec<String>>();
+                    .map(|u| Token::from_id(&u.id).member_hash())
+                    .collect::<Vec<MemberToken>>();
 
                 if let Err(e) = crate::database::Database::sync_tokens(&mut conn, tokens).await {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
@@ -128,15 +128,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then({
             || async move {
                 match crate::database::Database::get_boards(&mut match crate::POOL.get().await {
-                        Ok(pool) => pool,
-                        Err(e) => {
-                            println!("error connecting to backend: {}", e);
-                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                warp::reply::json(&"error connecting to backend"),
-                            )
-                        }
-                    },)
-                    .await
+                    Ok(pool) => pool,
+                    Err(e) => {
+                        println!("error connecting to backend: {}", e);
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&"error connecting to backend"),
+                        );
+                    }
+                })
+                .await
                 {
                     Ok(boards) => {
                         Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
@@ -157,14 +157,14 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then({
             |disc: String| async move {
                 let mut conn = match crate::POOL.get().await {
-                        Ok(pool) => pool,
-                        Err(e) => {
-                            println!("error connecting to backend: {}", e);
-                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                warp::reply::json(&"error connecting to backend"),
-                            )
-                        }
-                    };
+                    Ok(pool) => pool,
+                    Err(e) => {
+                        println!("error connecting to backend: {}", e);
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&"error connecting to backend"),
+                        );
+                    }
+                };
                 match crate::database::Database::get_board(&mut conn, disc).await {
                     Ok(board) => match board.with_threads(&mut conn).await {
                         Ok(board) => Ok::<warp::reply::Json, warp::reject::Rejection>(
@@ -186,9 +186,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let postthread = warp::path!("api" / "v1" / "board" / String / "thread")
         .and(warp::post())
         .and(warp::body::json::<CreateThread>())
-        .and(warp::header::<Bearer>("authorization"))
+        .and(valid_token())
         .and_then({
-            |disc: String, thread: CreateThread, auth: Bearer| async move {
+            |disc: String, thread: CreateThread, mut token: Token| async move {
                 if let Err(e) = verify_post(&thread.post, Some(&thread.topic)) {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
@@ -202,12 +202,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             println!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
-                            )
+                            );
                         }
                     },
                     disc,
                     thread,
-                    auth.token,
+                    token.member_hash(),
                 )
                 .await
                 {
@@ -237,7 +237,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             println!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
-                            )
+                            );
                         }
                     },
                     disc,
@@ -260,9 +260,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let postinthread = warp::path!("api" / "v1" / "board" / String / "thread" / i64)
         .and(warp::post())
         .and(warp::body::json::<CreatePost>())
-        .and(warp::header::<Bearer>("authorization"))
+        .and(valid_token())
         .and_then(
-            |disc: String, rawthread: i64, post: CreatePost, auth: Bearer| async move {
+            |disc: String, rawthread: i64, post: CreatePost, mut token: Token| async move {
                 if let Err(e) = verify_post(&post, None) {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
@@ -329,7 +329,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     disc,
                     tid,
                     post,
-                    auth.token,
+                    token.member_hash(),
                     Some(files),
                 )
                 .await
@@ -362,7 +362,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             println!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
-                            )
+                            );
                         }
                     },
                     disc,
@@ -384,9 +384,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let deletepost = warp::path!("api" / "v1" / "board" / String / "post" / i64)
         .and(warp::delete())
-        .and(warp::header::<Bearer>("authorization"))
+        .and(valid_token())
         .and_then({
-            |disc: String, post: i64, auth: Bearer| async move {
+            |disc: String, post: i64, mut token: Token| async move {
                 match crate::database::Database::delete_post(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -394,12 +394,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             println!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
-                            )
+                            );
                         }
                     },
                     disc,
                     post,
-                    auth.token,
+                    token.member_hash(),
                 )
                 .await
                 {
@@ -418,12 +418,16 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let uploadfile = warp::path!("api" / "v1" / "file")
         .and(warp::post())
         .and(warp::multipart::form().max_length(1024 * 1024 * 100))
-        .and(warp::header::<Bearer>("authorization"))
+        .and(valid_token())
         .and_then({
-            |mut form: warp::multipart::FormData, auth: Bearer| async move {
+            |mut form: warp::multipart::FormData, mut token: Token| async move {
                 use futures::TryStreamExt;
                 {
-                    if crate::UNCLAIMED_FILES.lock().await.has_pending(&auth.token) {
+                    if crate::UNCLAIMED_FILES
+                        .lock()
+                        .await
+                        .has_pending(token.member_hash())
+                    {
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&"You already have a file pending"),
                         );
@@ -484,7 +488,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                                     .data(value)
                                     .build()
                                     .unwrap(),
-                                auth.token,
+                                token.member_hash(),
                             )
                             .await
                         {
@@ -527,7 +531,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             println!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
-                            )
+                            );
                         }
                     },
                 )
@@ -549,7 +553,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::get())
         .and(valid_token())
         .and_then({
-            |disc: String, post: i64, token: String| async move {
+            |disc: String, post: i64, mut token: Token| async move {
                 match crate::database::Database::get_watching(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -557,12 +561,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             println!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
-                            )
+                            );
                         }
                     },
                     disc,
                     post,
-                    hash_with_salt(&token, &crate::statics::TOKEN_SALT),
+                    token.member_hash(),
                 )
                 .await
                 {
@@ -583,7 +587,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(valid_token())
         .and(warp::body::json::<bool>())
         .and_then({
-            |disc: String, post: i64, token: String, watching: bool| async move {
+            |disc: String, post: i64, mut token: Token, watching: bool| async move {
                 match crate::database::Database::set_watching(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -591,12 +595,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             println!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
-                            )
+                            );
                         }
                     },
                     disc,
                     post,
-                    hash_with_salt(&token, &crate::statics::TOKEN_SALT),
+                    token.member_hash(),
                     watching,
                 )
                 .await
@@ -656,10 +660,13 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let pushnotifs = warp::path!("api" / "v1" / "notifications")
         .and(valid_token())
-        .and_then(|token: String| async move {
+        .and_then(|mut token: Token| async move {
             Ok::<_, warp::reject::Rejection>(warp::sse::reply(warp::sse::keep_alive().stream({
-                let token = hash_with_salt(&token, &crate::statics::TOKEN_SALT);
-                crate::PUSH_NOTIFS.lock().await.subscribe(token).await
+                crate::PUSH_NOTIFS
+                    .lock()
+                    .await
+                    .subscribe(&*token.member_hash().member_hash())
+                    .await
             })))
         });
 
@@ -673,7 +680,7 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             crate::PUSH_NOTIFS
                 .lock()
                 .await
-                .subscribe(format!("board: {} | thread: {}", board, thread))
+                .subscribe(&format!("board: {} | thread: {}", board, thread))
                 .await
         })))
     });
@@ -683,9 +690,9 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let subscribble = warp::path!("api" / "v1" / "subscribe")
         .and(warp::post())
         .and(warp::body::json::<SubscriptionData>())
-        .and(warp::cookie::<String>("token"))
+        .and(valid_token())
         .and_then({
-            |sub: SubscriptionData, token: String| async move {
+            |sub: SubscriptionData, mut token: Token| async move {
                 match crate::database::Database::add_user_push_url(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -693,10 +700,10 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             println!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
-                            )
+                            );
                         }
                     },
-                    hash_with_salt(&token, &crate::statics::TOKEN_SALT),
+                    token.member_hash(),
                     sub,
                 )
                 .await
@@ -711,17 +718,20 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    pushnotifs.or(threadnotifs).map(|reply| {
-        warp::reply::with_header(
+    pushnotifs
+        .or(threadnotifs)
+        .map(|reply| {
             warp::reply::with_header(
-                warp::reply::with_header(reply, warp::http::header::CACHE_CONTROL, "no-cache"),
-                warp::http::header::CONTENT_TYPE,
-                "text/event-stream",
-            ),
-            "X-Accel-Buffering",
-            "no",
-        )
-    }).or(subscribble)
+                warp::reply::with_header(
+                    warp::reply::with_header(reply, warp::http::header::CACHE_CONTROL, "no-cache"),
+                    warp::http::header::CONTENT_TYPE,
+                    "text/event-stream",
+                ),
+                "X-Accel-Buffering",
+                "no",
+            )
+        })
+        .or(subscribble)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -737,7 +747,6 @@ pub struct UserSafe {
 //         "p256dh":"p256dh thing"
 //     }
 // }
-
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SubscriptionData {

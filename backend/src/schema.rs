@@ -13,7 +13,6 @@ use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConne
 
 use crate::endpoints::api::SubscriptionData;
 
-
 diesel::table! {
     boards (id) {
         id -> BigInt,

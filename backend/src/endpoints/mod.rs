@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Reply};
 
-use common::hash_with_salt;
+use crate::filters::Token;
 
 pub mod api;
 
@@ -50,7 +50,7 @@ pub fn other_endpoints(
                         return Ok(warp::reply::json(&e.to_string()).into_response());
                     }
                 };
-                let id = match match client
+                let mut token = match match client
                     .get("https://discordapp.com/api/users/@me")
                     .bearer_auth(&token)
                     .send()
@@ -66,7 +66,7 @@ pub fn other_endpoints(
                 .await
                 {
                     Ok(r) => match serde_json::from_str::<DiscordUser>(&r) {
-                        Ok(r) => r.id,
+                        Ok(r) => Token::from_id(&r.id),
                         Err(e) => {
                             println!("Error: {e:?}");
                             return Ok(warp::reply::json(&format!(
@@ -80,14 +80,13 @@ pub fn other_endpoints(
                         return Ok(warp::reply::json(&e.to_string()).into_response());
                     }
                 };
-                let hashed_id = hash_with_salt(&id, &crate::statics::HASH_SALT);
                 let is_auth = {
                     let mut conn = crate::POOL
                         .get()
                         .await
                         .map_err(|_| warp::reject::reject())?;
 
-                    crate::database::Database::is_valid_token(&mut conn, hashed_id.clone()).await
+                    crate::database::Database::is_valid_token(&mut conn, token.member_hash()).await
                 };
 
                 match is_auth {
@@ -100,7 +99,7 @@ pub fn other_endpoints(
                                 .unwrap(),
                             "set-cookie",
                             format!(
-                                "token={hashed_id}; Path=/; HttpOnly; Max-Age={}",
+                                "token={token}; Path=/; HttpOnly; Max-Age={}",
                                 60 * 60 * 24 * 365 * 10
                             ),
                         )
