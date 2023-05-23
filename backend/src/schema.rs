@@ -376,7 +376,7 @@ diesel::table! {
         id -> BigInt,
         token_hash -> Text,
         moderates -> Nullable<Array<BigInt>>,
-        push_notif_url -> Nullable<Text>,
+        push_data -> Array<Text>,
         watching -> Array<BigInt>,
     }
 }
@@ -386,7 +386,7 @@ pub struct Member {
     pub id: i64,
     pub token_hash: String,
     pub moderates: Option<Vec<i64>>,
-    pub push_notif_url: Option<String>,
+    pub push_data: Vec<String>,
     pub watching: Vec<i64>,
 }
 

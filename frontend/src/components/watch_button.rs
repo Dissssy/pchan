@@ -32,6 +32,9 @@ pub fn WatchButton(props: &Props) -> Html {
                             {
                                 Ok(v) => {
                                     state.set(ApiState::Loaded(v));
+                                    if let Err(e) = web_sys::Notification::request_permission() {
+                                        gloo::console::warn!("Notification permission error: ", e);
+                                    }
                                 }
                                 Err(e) => {
                                     state.set(ApiState::Error(e));

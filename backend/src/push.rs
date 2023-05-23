@@ -45,7 +45,7 @@ impl PushHolder {
         ident: String,
     ) -> impl Stream<Item = Result<Event, Infallible>> {
         let mut rx = self.add_push(ident.clone());
-        self.send_to(&[ident], PushMessage::Open);
+        self.send_to(&[&ident], PushMessage::Open);
         stream! {
             while let Some(message) = rx.recv().await {
                 yield Ok(match into_event(message) {
@@ -62,10 +62,10 @@ impl PushHolder {
         self.pushes.remove(ident);
     }
 
-    pub fn send_to(&mut self, idents: &[String], message: PushMessage) {
+    pub fn send_to(&mut self, idents: &[&String], message: PushMessage) {
         // attempt to get the list of pushes for each ident (mutable)
         idents.iter().for_each(|ident| {
-            if let Some(push) = self.pushes.get_mut(ident) {
+            if let Some(push) = self.pushes.get_mut(*ident) {
                 // attempt to send the message to each push, if sending fails, remove the push from the list
                 push.retain(|p| p.send(message.clone()).is_ok());
             }

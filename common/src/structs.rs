@@ -88,7 +88,7 @@ impl Display for User {
         match self {
             Self::Anonymous => write!(f, "Anonymous"),
             Self::Named(s) => write!(f, "{}", s),
-            Self::Mod(s) => write!(f, "{} <MOD>", s),
+            Self::Mod(s) => write!(f, "{}", s),
         }
     }
 }

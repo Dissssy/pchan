@@ -15,7 +15,15 @@ pub fn priveleged_api_endpoints(
         .and(warp::body::json::<CreateBoard>())
         .and_then(|board: CreateBoard| async move {
             match crate::database::Database::create_board(
-                &mut crate::POOL.get().await.unwrap(),
+                &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
                 board.discriminator,
                 board.name,
             )
@@ -119,7 +127,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::get())
         .and_then({
             || async move {
-                match crate::database::Database::get_boards(&mut crate::POOL.get().await.unwrap())
+                match crate::database::Database::get_boards(&mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },)
                     .await
                 {
                     Ok(boards) => {
@@ -140,7 +156,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::get())
         .and_then({
             |disc: String| async move {
-                let mut conn = crate::POOL.get().await.unwrap();
+                let mut conn = match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    };
                 match crate::database::Database::get_board(&mut conn, disc).await {
                     Ok(board) => match board.with_threads(&mut conn).await {
                         Ok(board) => Ok::<warp::reply::Json, warp::reject::Rejection>(
@@ -172,7 +196,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 }
 
                 match crate::database::Database::create_thread(
-                    &mut crate::POOL.get().await.unwrap(),
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
                     disc,
                     thread,
                     auth.token,
@@ -199,7 +231,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then({
             |disc: String, thread: i64| async move {
                 match crate::database::Database::get_thread(
-                    &mut crate::POOL.get().await.unwrap(),
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
                     disc,
                     thread,
                 )
@@ -316,7 +356,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then({
             |disc: String, post: i64| async move {
                 match crate::database::Database::get_post(
-                    &mut crate::POOL.get().await.unwrap(),
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
                     disc,
                     post,
                 )
@@ -340,7 +388,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then({
             |disc: String, post: i64, auth: Bearer| async move {
                 match crate::database::Database::delete_post(
-                    &mut crate::POOL.get().await.unwrap(),
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
                     disc,
                     post,
                     auth.token,
@@ -465,7 +521,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             |disc: String| async move {
                 match crate::database::Database::get_random_banner(
                     disc,
-                    &mut crate::POOL.get().await.unwrap(),
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
                 )
                 .await
                 {
@@ -479,31 +543,6 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    // POST /subscribe - sets the user's push notification url
-
-    // let subscribble = warp::path!("api" / "v1" / "subscribe")
-    //     .and(warp::post())
-    //     .and(warp::body::json::<SubscriptionData>())
-    //     .and(warp::cookie::<String>("token"))
-    //     .and_then({
-    //         |sub: SubscriptionData, token: String| async move {
-    //             match crate::database::Database::set_user_push_url(
-    //                 &mut crate::POOL.get().await.unwrap(),
-    //                 token,
-    //                 Some(sub.to_database_string()),
-    //             )
-    //             .await
-    //             {
-    //                 Ok(_) => {
-    //                     Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&"ok"))
-    //                 }
-    //                 Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-    //                     &e.to_string(),
-    //                 )),
-    //             }
-    //         }
-    //     });
-
     // GET /api/v1/board/{board_discriminator}/post/{post_number}/watching - returns true or false depending on if the user is watching the post or not
 
     let get_watching = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "watching")
@@ -512,7 +551,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then({
             |disc: String, post: i64, token: String| async move {
                 match crate::database::Database::get_watching(
-                    &mut crate::POOL.get().await.unwrap(),
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
                     disc,
                     post,
                     hash_with_salt(&token, &crate::statics::TOKEN_SALT),
@@ -538,7 +585,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then({
             |disc: String, post: i64, token: String, watching: bool| async move {
                 match crate::database::Database::set_watching(
-                    &mut crate::POOL.get().await.unwrap(),
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
                     disc,
                     post,
                     hash_with_salt(&token, &crate::statics::TOKEN_SALT),
@@ -623,6 +678,39 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         })))
     });
 
+    // POST /subscribe - sets the user's push notification url
+
+    let subscribble = warp::path!("api" / "v1" / "subscribe")
+        .and(warp::post())
+        .and(warp::body::json::<SubscriptionData>())
+        .and(warp::cookie::<String>("token"))
+        .and_then({
+            |sub: SubscriptionData, token: String| async move {
+                match crate::database::Database::add_user_push_url(
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            )
+                        }
+                    },
+                    hash_with_salt(&token, &crate::statics::TOKEN_SALT),
+                    sub,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&"ok"))
+                    }
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    )),
+                }
+            }
+        });
+
     pushnotifs.or(threadnotifs).map(|reply| {
         warp::reply::with_header(
             warp::reply::with_header(
@@ -633,13 +721,23 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             "X-Accel-Buffering",
             "no",
         )
-    })
+    }).or(subscribble)
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UserSafe {
     pub id: String,
 }
+
+// {
+//     "endpoint":"endpoint_url",
+//     "expirationTime":null,
+//     "keys":{
+//         "auth":"auth thing",
+//         "p256dh":"p256dh thing"
+//     }
+// }
+
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionData {
@@ -649,8 +747,8 @@ pub struct SubscriptionData {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SubscriptionKeys {
-    pub p256dh: String,
     pub auth: String,
+    pub p256dh: String,
 }
 
 // impl SubscriptionData {
