@@ -95,8 +95,8 @@ pub fn other_endpoints(
                             warp::http::Response::builder()
                                 .header("Location", "/")
                                 .status(302)
-                                .body("".to_owned())
-                                .unwrap(),
+                                .body(String::new())
+                                .expect("Failed to build login redirect response"),
                             "set-cookie",
                             format!(
                                 "token={token}; Path=/; HttpOnly; Max-Age={}",
@@ -108,8 +108,8 @@ pub fn other_endpoints(
                     _ => Ok(warp::http::Response::builder()
                         .header("Location", "/login")
                         .status(302)
-                        .body("".to_owned())
-                        .unwrap()
+                        .body(String::new())
+                        .expect("Failed to build login redirect response")
                         .into_response()),
                 }
             }

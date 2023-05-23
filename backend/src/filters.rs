@@ -36,14 +36,12 @@ pub fn valid_token() -> impl Filter<Extract = (Token,), Error = warp::Rejection>
                         } else {
                             e.remove();
                         }
-                    } else {
-                        if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
-                            .await
-                            .map_err(|_| warp::reject::reject())?
-                        {
-                            cache.insert(t.clone(), Instant::now());
-                            return Ok(t);
-                        }
+                    } else if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
+                        .await
+                        .map_err(|_| warp::reject::reject())?
+                    {
+                        cache.insert(t.clone(), Instant::now());
+                        return Ok(t);
                     }
                 };
                 if let Some(cookie) = cookie {
@@ -55,14 +53,12 @@ pub fn valid_token() -> impl Filter<Extract = (Token,), Error = warp::Rejection>
                         } else {
                             e.remove();
                         }
-                    } else {
-                        if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
-                            .await
-                            .map_err(|_| warp::reject::reject())?
-                        {
-                            cache.insert(t.clone(), Instant::now());
-                            return Ok(t);
-                        }
+                    } else if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
+                        .await
+                        .map_err(|_| warp::reject::reject())?
+                    {
+                        cache.insert(t.clone(), Instant::now());
+                        return Ok(t);
                     }
                 };
                 Err(warp::reject::reject())
@@ -90,14 +86,12 @@ pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp:
                         } else {
                             e.remove();
                         }
-                    } else {
-                        if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
-                            .await
-                            .map_err(|_| warp::reject::reject())?
-                        {
-                            cache.insert(t.clone(), Instant::now());
-                            return Ok::<_, warp::reject::Rejection>(Some(t));
-                        }
+                    } else if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
+                        .await
+                        .map_err(|_| warp::reject::reject())?
+                    {
+                        cache.insert(t.clone(), Instant::now());
+                        return Ok::<_, warp::reject::Rejection>(Some(t));
                     }
                 };
                 if let Some(cookie) = cookie {
@@ -109,14 +103,12 @@ pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp:
                         } else {
                             e.remove();
                         }
-                    } else {
-                        if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
-                            .await
-                            .map_err(|_| warp::reject::reject())?
-                        {
-                            cache.insert(t.clone(), Instant::now());
-                            return Ok(Some(t));
-                        }
+                    } else if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
+                        .await
+                        .map_err(|_| warp::reject::reject())?
+                    {
+                        cache.insert(t.clone(), Instant::now());
+                        return Ok(Some(t));
                     }
                 };
                 Ok(None)
@@ -186,12 +178,12 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                         if include_board {
                             format!(" on /{}/", discrim)
                         } else {
-                            "".to_string()
+                            String::new()
                         },
                         if include_thread {
                             format!(" in {}", thread)
                         } else {
-                            "".to_string()
+                            String::new()
                         }
                     ),
                 ),
@@ -205,7 +197,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                         if include_board {
                             format!(" on /{}/", discrim)
                         } else {
-                            "".to_string()
+                            String::new()
                         }
                     ),
                 ),
@@ -331,7 +323,7 @@ impl Token {
             return member_hash.clone();
         }
         let m = MemberToken::new(
-            self.token.clone(),
+            Arc::clone(&self.token),
             Arc::new(hash_with_salt(&self.token, &crate::statics::TOKEN_SALT)),
         );
         self.cached_member_hash = Some(m.clone());
@@ -359,9 +351,9 @@ impl MemberToken {
         Self { original, token }
     }
     pub fn post_hash(&self, id: &str) -> String {
-        hash_with_salt(&*self.token, id)
+        hash_with_salt(&self.token, id)
     }
     pub fn member_hash(&self) -> Arc<String> {
-        self.token.clone()
+        Arc::clone(&self.token)
     }
 }

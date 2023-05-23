@@ -176,7 +176,7 @@ impl Database {
         token: MemberToken,
     ) -> Result<i64> {
         let tpost = Self::get_raw_post(conn, discriminator.clone(), number).await?;
-        let tauthor = &tpost.actual_author == &*token.post_hash(&tpost.id.to_string());
+        let tauthor = tpost.actual_author == *token.post_hash(&tpost.id.to_string());
         let tadmin = Self::is_admin(conn, token, tpost.board).await?;
 
         if !(tadmin || tauthor) {
@@ -457,7 +457,7 @@ impl Database {
         let p = t.get_result::<crate::schema::Post>(conn).await?;
 
         if let Some(f) = pending_file {
-            crate::database::Database::create_file(conn, f, p.id).await?;
+            Self::create_file(conn, f, p.id).await?;
         }
 
         drop(lock);
@@ -469,7 +469,7 @@ impl Database {
 
         let safe = p.safe(conn).await?;
         tokio::spawn(async move {
-            Self::dispatch_push_notifications(safe, tthread, &*member_hash).await;
+            Self::dispatch_push_notifications(safe, tthread, &member_hash).await;
         });
 
         Ok(p)
@@ -488,7 +488,7 @@ impl Database {
             }
         };
         let mut sse = crate::PUSH_NOTIFS.lock().await;
-        let raw_members = crate::database::Database::get_subscribed_users(&mut conn, thread)
+        let raw_members = Self::get_subscribed_users(&mut conn, thread)
             .await
             .unwrap_or_default();
         let all_members = raw_members

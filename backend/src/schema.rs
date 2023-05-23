@@ -187,16 +187,10 @@ impl Post {
     ) -> Result<SafePost> {
         use crate::schema::posts::dsl::*;
         let replies = posts
-            .load::<Post>(conn)
+            .load::<Self>(conn)
             .await?
             .iter()
-            .flat_map(|p| {
-                if p.replies_to.contains(&self.id) {
-                    Some(p.id)
-                } else {
-                    None
-                }
-            })
+            .flat_map(|p| p.replies_to.contains(&self.id).then_some(p.id))
             .collect::<Vec<i64>>();
 
         let mut newreplies = Vec::new();

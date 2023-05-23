@@ -1,4 +1,21 @@
 #![feature(async_iterator)]
+#![warn(
+    clippy::map_unwrap_or,
+    clippy::unwrap_used,
+    clippy::clone_on_ref_ptr,
+    clippy::dbg_macro,
+    clippy::todo,
+    clippy::unimplemented,
+    clippy::panic,
+    clippy::unwrap_in_result,
+    clippy::use_self,
+    clippy::unnecessary_to_owned,
+    clippy::ptr_arg,
+    clippy::if_then_some_else_none,
+    clippy::implicit_clone,
+    clippy::manual_string_new
+)]
+
 use std::sync::Arc;
 
 use diesel_async::pooled_connection::deadpool::Pool;
@@ -43,7 +60,7 @@ fn is_safe_mimetype(mimetype: &str) -> bool {
     let mimetype = mimetype.to_lowercase();
     // println!("mimetype: {}", mimetype);
     // if the Content-Type header is not video/* audio/* or image/*, then force download. also check for svg because those can contain javascript
-    let can_contain = vec!["video/", "audio/", "image/"];
+    let can_contain = vec!["video/", "audio/", "image/", "NO MIMETYPE"];
     let overrides = vec!["svg"];
 
     // if the mimetype contains any of the can_contain strings, then it's not bad UNLESS it also contains any of the overrides
@@ -90,7 +107,8 @@ async fn main() {
                                 if let Some(content_type) =
                                     resp.headers().get(warp::http::header::CONTENT_TYPE)
                                 {
-                                    let content_type = content_type.to_str().unwrap();
+                                    let content_type =
+                                        content_type.to_str().unwrap_or("NO MIMETYPE");
                                     if !is_safe_mimetype(content_type) {
                                         println!(
                                             "Forcing download of file with mimetype {}",
@@ -109,7 +127,8 @@ async fn main() {
                                 if let Some(content_type) =
                                     resp.headers().get(warp::http::header::CONTENT_TYPE)
                                 {
-                                    let content_type = content_type.to_str().unwrap();
+                                    let content_type =
+                                        content_type.to_str().unwrap_or("NO MIMETYPE");
                                     if !is_safe_mimetype(content_type) {
                                         println!(
                                             "Forcing download of file with mimetype {}",
@@ -236,16 +255,14 @@ async fn main() {
                 .and(warp::cookie::optional::<String>("token"))
                 .then(|token: Option<String>| async move {
                     match token {
-                        None => Ok(warp::http::Response::builder()
+                        None => warp::http::Response::builder()
                             .header("Location", "/login")
                             .status(302)
-                            .body("".to_owned())
-                            .unwrap()),
-                        Some(_) => Ok(warp::http::Response::builder()
+                            .body(String::new()),
+                        Some(_) => warp::http::Response::builder()
                             .header("Location", "/unauthorized")
                             .status(302)
-                            .body("".to_owned())
-                            .unwrap()),
+                            .body(String::new()),
                     }
                 })));
 
@@ -254,7 +271,10 @@ async fn main() {
     let (_, server) = warp::serve(is_scraper.or(routes)).bind_with_graceful_shutdown(
         (
             [0, 0, 0, 0],
-            env!("PORT").parse::<u16>().expect("PORT must be a number"),
+            env!("PORT").parse::<u16>().unwrap_or_else(|_| {
+                println!("Failed to parse port, defaulting to 8118");
+                8118
+            }),
         ),
         async {
             let _ = kill.await;
@@ -327,7 +347,8 @@ async fn get_all_entries(dir: &str) -> anyhow::Result<Vec<tokio::fs::DirEntry>> 
     let mut files = tokio::fs::read_dir(dir).await?;
     while let Some(file) = files.next_entry().await? {
         if file.file_type().await?.is_dir() {
-            return_files.append(&mut get_all_entries(file.path().to_str().unwrap()).await?);
+            return_files
+                .append(&mut get_all_entries(file.path().to_str().unwrap_or_default()).await?);
         } else {
             return_files.push(file);
         }

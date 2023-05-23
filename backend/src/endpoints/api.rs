@@ -487,7 +487,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                                     .mimetype(fct)
                                     .data(value)
                                     .build()
-                                    .unwrap(),
+                                    .expect("failed to build file response"),
                                 token.member_hash(),
                             )
                             .await
@@ -665,7 +665,7 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 crate::PUSH_NOTIFS
                     .lock()
                     .await
-                    .subscribe(&*token.member_hash().member_hash())
+                    .subscribe(&token.member_hash().member_hash())
                     .await
             })))
         });
