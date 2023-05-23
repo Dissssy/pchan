@@ -11,6 +11,9 @@ use diesel::{
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
 
+use crate::endpoints::api::SubscriptionData;
+
+
 diesel::table! {
     boards (id) {
         id -> BigInt,
@@ -376,18 +379,25 @@ diesel::table! {
         id -> BigInt,
         token_hash -> Text,
         moderates -> Nullable<Array<BigInt>>,
-        push_data -> Array<Text>,
+        push_data -> Jsonb,
         watching -> Array<BigInt>,
     }
 }
 
-#[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Queryable, Debug, Clone, PartialEq, Eq)]
 pub struct Member {
     pub id: i64,
     pub token_hash: String,
     pub moderates: Option<Vec<i64>>,
-    pub push_data: Vec<String>,
+    pub push_data: serde_json::Value,
     pub watching: Vec<i64>,
+}
+
+impl Member {
+    pub fn parse_push_data(&self) -> Result<Vec<SubscriptionData>> {
+        let data = serde_json::from_value(self.push_data.clone())?;
+        Ok(data)
+    }
 }
 
 // postgresql function that runs on delete of a post to remove its ID from the watching list of all members

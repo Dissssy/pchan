@@ -562,28 +562,36 @@ impl Database {
 
         for member in &all_members {
             let mut pushy = vec![];
-            for push in &member.push_data {
-                if let Ok(sub) =
-                    serde_json::from_str::<crate::endpoints::api::SubscriptionData>(push)
-                {
-                    match Self::push(&sub, payload.as_bytes()).await {
-                        Ok(_) => {
-                            pushy.push(serde_json::to_string(&sub).ok());
-                        }
-                        Err(_e) => {
-                            // eprintln!("Error sending push notification: {}", e);
+            let changed = match member.parse_push_data() {
+                Ok(v) => {
+                    let mut changed = false;
+                    for push in v {
+                        match Self::push(&push, payload.as_bytes()).await {
+                            Ok(_) => {
+                                pushy.push(push);
+                            }
+                            Err(_e) => {
+                                // eprintln!("Error sending push notification: {}", e);
+                                changed = true;
+                            }
                         }
                     }
+                    changed
+                },
+                Err(e) => {
+                    eprintln!("Error parsing push data: {}", e);
+                    continue;
                 }
-            }
-            let pushy = pushy.into_iter().flatten().collect::<Vec<String>>();
-            if pushy != member.push_data {
-                if let Err(e) = diesel::update(members.filter(id.eq(member.id)))
-                    .set(push_data.eq(pushy))
-                    .execute(&mut conn)
-                    .await
-                {
-                    eprintln!("Error updating push data: {}", e);
+            };
+            if changed {
+                if let Ok(v) = serde_json::to_value(pushy) {
+                    if let Err(e) = diesel::update(members.filter(id.eq(member.id)))
+                        .set(push_data.eq(&v))
+                        .execute(&mut conn)
+                        .await
+                    {
+                        eprintln!("Error updating push data: {}", e);
+                    }
                 }
             }
         }
@@ -842,19 +850,29 @@ impl Database {
             .first::<crate::schema::Member>(conn)
             .await?;
 
-        let substring = serde_json::to_string(&sub)
-            .map_err(|_| anyhow::anyhow!("Unknown error, try again?"))?;
+        // let substring = serde_json::to_string(&sub)
+        //     .map_err(|_| anyhow::anyhow!("Unknown error, try again?"))?;
 
-        let mut subs = user.push_data;
+        // let mut subs = user.push_data;
+        // // only push if not already subscribed
+        // if !subs.contains(&substring) {
+        //     subs.push(substring);
+        //     diesel::update(members.filter(token_hash.eq(token)))
+        //         .set(push_data.eq(subs))
+        //         .execute(conn)
+        //         .await?;
+        // }
+
+        let mut subs: Vec<SubscriptionData> = user.parse_push_data()?;
         // only push if not already subscribed
-        if !subs.contains(&substring) {
-            subs.push(substring);
+        if !subs.contains(&sub) {
+            subs.push(sub);
             diesel::update(members.filter(token_hash.eq(token)))
-                .set(push_data.eq(subs))
+                .set(push_data.eq(serde_json::to_value(&subs)?))
                 .execute(conn)
                 .await?;
         }
-
+        
         Ok(())
     }
 

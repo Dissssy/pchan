@@ -739,13 +739,13 @@ pub struct UserSafe {
 // }
 
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SubscriptionData {
     pub endpoint: String,
     pub keys: SubscriptionKeys,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct SubscriptionKeys {
     pub auth: String,
     pub p256dh: String,
