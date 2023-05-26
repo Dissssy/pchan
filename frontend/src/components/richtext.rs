@@ -1,6 +1,12 @@
 use yew::prelude::*;
+use yew_hooks::use_local_storage;
 
 use crate::components::Reply;
+
+static CHARS: [char; 26] = ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H', 'I', 'J', 'K', 'L', 'M', 'N', 'O', 'P', 'Q', 'R', 'S', 'T', 'U', 'V', 'W', 'X', 'Y', 'Z'];
+static UPPERCASE_WIDTH: f32 = 0.26;
+static LOWERCASE_WIDTH: f32 = 0.91;
+static PUNCTUATION_WIDTH: f32 = 1.2;
 
 #[function_component]
 pub fn RichText(props: &Props) -> Html {
@@ -159,6 +165,71 @@ pub fn SpoiledText(props: &SpoilableProps) -> Html {
         })
     };
 
+    let uppercase_width = use_local_storage::<f32>(String::from("uppercase_width")).unwrap_or(UPPERCASE_WIDTH);
+    let lowercase_width = use_local_storage::<f32>(String::from("lowercase_width")).unwrap_or(LOWERCASE_WIDTH);
+    let punctuation_width = use_local_storage::<f32>(String::from("punctuation_width")).unwrap_or(PUNCTUATION_WIDTH);
+
+
+    let hidden_content = use_state(|| {
+        let mut index = 0;
+        // props.content.chars().map(|c| {
+        //     if c != ' ' {
+        //         let rng = (js_sys::Math::random() * CHARS.len() as f64).floor() as i32;
+        //         let old_index = index;
+        //         if js_sys::Math::random() > 0.5 {
+        //             index -= rng;
+        //         } else {
+        //             index += rng;
+        //         }
+        //         index %= CHARS.len() as i32;
+        //         if index == old_index {
+        //             index += 1;
+        //             index %= CHARS.len() as i32;
+        //         }
+        //         if index < 0 {
+        //             index += CHARS.len() as i32;
+        //         }
+        //         CHARS.get(index as usize).expect("ETHAN SET THE NUMBERS WRONG :(")
+        //     } else {
+        //         &' '
+        //     }
+        // }).collect::<String>()
+        let mut width = 0.0;
+        props.content.split(' ').map(|s| {
+            s.chars().flat_map(|c| {
+                if width > 1.0 {
+                    width -= 1.0;
+                    return None;
+                } else {
+                    width += if c.is_uppercase() {
+                        uppercase_width
+                    } else if c.is_alphabetic() {
+                        lowercase_width
+                    } else {
+                        punctuation_width
+                    };
+                }
+
+                let rng = (js_sys::Math::random() * CHARS.len() as f64).floor() as i32;
+                let old_index = index;
+                if js_sys::Math::random() > 0.5 {
+                    index -= rng;
+                } else {
+                    index += rng;
+                }
+                index %= CHARS.len() as i32;
+                if index == old_index {
+                    index += 1;
+                    index %= CHARS.len() as i32;
+                }
+                if index < 0 {
+                    index += CHARS.len() as i32;
+                }
+                CHARS.get(index as usize)
+            }).collect::<String>()
+        }).collect::<Vec<String>>().join(" ")
+    });
+
     if props.content.is_empty() {
         html! {}
     } else if *shown {
@@ -167,7 +238,7 @@ pub fn SpoiledText(props: &SpoilableProps) -> Html {
         }
     } else {
         html! {
-            <span class="spoiler" onclick={on_click}>{props.content.clone()}</span>
+            <span class="spoiler" onclick={on_click}>{&*hidden_content}</span>
         }
     }
 }

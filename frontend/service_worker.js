@@ -17,18 +17,18 @@ self.addEventListener('install', function(e) {
 });
 
 /* Serve cached content when offline */
-self.addEventListener('fetch', function(e) {
-  // if request url ends with notification, do not intercept as it is an sse request and should not be cached
-  if (!e.request.url.endsWith("notifications")) {
-    e.respondWith(
-      caches.match(e.request).then(function(response) {
-        return response || fetch(e.request);
-      })
-    );
-  } else {
-    // console.log("not intercepting sse request: " + e.request.url);
-  }
-});
+// self.addEventListener('fetch', function(e) {
+//   // if request url ends with notification, do not intercept as it is an sse request and should not be cached
+//   if (!e.request.url.endsWith("notifications")) {
+//     e.respondWith(
+//       caches.match(e.request).then(function(response) {
+//         return response || fetch(e.request);
+//       })
+//     );
+//   } else {
+//     // console.log("not intercepting sse request: " + e.request.url);
+//   }
+// });
 
 self.addEventListener('push', (e) => {
   let raw_body = e.data.json();

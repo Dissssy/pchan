@@ -16,10 +16,12 @@ pub fn Thread(props: &Props) -> Html {
     let api_ctx = use_context::<Option<ApiContext>>().flatten();
     let pending = use_state(|| false);
     let state = use_state(|| props.thread.clone_with_handle(pending.clone()));
+    let set_watching = use_state(|| None);
 
     if let Some(refresh) = &props.refresh {
         if let Some((window, x, y)) = &**refresh {
             refresh.set(None);
+            set_watching.set(Some(true));
             state.set(props.thread.clone_with_handle(pending.clone()));
             let (window, x, y) = (window.clone(), *x, *y);
             gloo_timers::callback::Timeout::new(10, move || match (x, y) {
@@ -79,7 +81,9 @@ pub fn Thread(props: &Props) -> Html {
                     <ContextProvider<Option<CallbackContext>> context={(*add_text_callback).clone()}>
                         <div class="thread-view">
                             <PostBox override_thread={props.thread.parent_post().thread_post_number.to_string()}/>
-                            <Post post={state.parent_post().clone()} topic={ state.topic() } />
+                            <ContextProvider<UseStateHandle<Option<bool>>> context={set_watching}>
+                                <Post post={state.parent_post().clone()} topic={ state.topic() }/>
+                            </ContextProvider<UseStateHandle<Option<bool>>>>
                             {
                                 if let Some(text) = state.button_text() {
                                     html! {

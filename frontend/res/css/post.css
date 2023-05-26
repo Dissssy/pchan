@@ -281,6 +281,7 @@
   -moz-animation: glow var(--speed) ease-in-out infinite alternate;
   animation: glow var(--speed) ease-in-out infinite alternate;
   cursor: help;
+  overflow-wrap: anywhere;
 }
 
 .spoiler-shown {
@@ -297,6 +298,6 @@
   }
   to {
     text-shadow: 0 0 calc(var(--default) + var(--added)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 7)) var(--link-color);
-    filter: brightness(75%);
+    filter: brightness(90%);
   }
 }

@@ -117,6 +117,19 @@ pub fn PostBox(props: &Props) -> Html {
                         Ok(v) => {
                             if let Some(c) = on_successful {
                                 c.callback.emit(v.clone());
+                                if let Err(e) = api
+                                    .set_watching(
+                                        &v.board_discriminator,
+                                        v.thread_post_number,
+                                        true,
+                                    )
+                                    .await
+                                {
+                                    gloo::console::error!(format!(
+                                        "Failed to set watching: {:?}",
+                                        e
+                                    ));
+                                }
                             }
                             post.reset();
                             state.set(ApiState::Loaded(v))
@@ -143,22 +156,34 @@ pub fn PostBox(props: &Props) -> Html {
                         let this_content = (*content).clone();
                         let reply_text = s.same_board_reply_text();
                         // if the content contains a line that is the same as the reply text, we remove it and return
+                        let mut just_removed = false;
                         let new_content = content
-                            .lines()
-                            .filter(|line| line != &reply_text)
+                            .split('\n')
+                            .filter(|line| {
+                                if just_removed {
+                                    just_removed = false;
+                                    line != &""
+                                } else if line == &reply_text {
+                                    just_removed = true;
+                                    false
+                                } else {
+                                    true
+                                }
+                            })
                             .collect::<Vec<_>>()
                             .join("\n");
+
                         if new_content != this_content {
                             content.set(new_content);
                             return;
                         }
                         // if the content is empty, we can just append the reply text to the content and return
                         if this_content.is_empty() {
-                            content.set(reply_text);
+                            content.set(format!("{}\n", reply_text));
                             return;
                         }
                         // otherwise, we need to add a newline and the reply text
-                        content.set(format!("{}\n{}", this_content, reply_text));
+                        content.set(format!("{}\n{}\n", this_content.trim_end(), reply_text));
                     }));
                 }
             },

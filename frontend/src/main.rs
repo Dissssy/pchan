@@ -151,6 +151,18 @@ fn Root() -> Html {
             .unwrap_or(chrono_tz::Tz::US__Eastern)
     });
 
+    use_effect_with_deps(
+        move |timezone| {
+            if let Ok(tz) = serde_json::to_string(&**timezone) {
+                current_timezone.set(tz);
+            } else {
+                gloo::console::error!("Failed to serialize timezone");
+            }
+            || {}
+        },
+        timezone.clone(),
+    );
+
     match &*api_ctx {
         Some(api_ctx) => {
             html! {

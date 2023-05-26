@@ -109,7 +109,7 @@ impl Api {
             }
         }
     }
-    
+
     #[allow(unused_variables)]
     pub async fn get_board(
         &self,

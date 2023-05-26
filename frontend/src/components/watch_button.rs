@@ -53,6 +53,17 @@ pub fn WatchButton(props: &Props) -> Html {
         })
     };
 
+    let set_watching = use_context::<UseStateHandle<Option<bool>>>();
+
+    if let Some(set_watching) = set_watching {
+        if let Some(b) = *set_watching {
+            set_watching.set(None);
+            if let ApiState::Loaded(_) = *state {
+                state.set(ApiState::Loaded(b));
+            }
+        }
+    }
+
     {
         let state = state.clone();
         let api_ctx = api_ctx;
