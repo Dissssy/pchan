@@ -130,6 +130,7 @@ pub fn Thread(props: &Props) -> Html {
 #[derive(Properties, Clone, PartialEq)]
 pub struct Props {
     pub thread: ThreadState,
+    #[prop_or_default]
     pub refresh: Option<Refresher>,
 }
 
@@ -275,7 +276,7 @@ impl ExpandableThread {
             {
                 Ok(t) => self.full_thread = Some(t),
                 Err(e) => {
-                    log::error!("Error getting thread: {:?}", e);
+                    log::error!("Error getting thread: {}", *e);
                     self.expanded = false;
                 }
             }

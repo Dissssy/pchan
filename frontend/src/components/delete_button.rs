@@ -24,7 +24,7 @@ pub fn DeleteButton(props: &Props) -> Html {
                 let del = match &api_ctx {
                     Some(api_ctx) => match &api_ctx.api {
                         Ok(api) => api.delete_post(&board_discriminator, &post_number).await,
-                        Err(e) => Err(ApiError::Other(AttrValue::from(format!("{e:?}")))),
+                        Err(e) => Err(ApiError::Other(AttrValue::from(format!("{}", **e)))),
                     },
                     _ => Err(ApiError::Other(AttrValue::from("No API context"))),
                 };
@@ -33,7 +33,7 @@ pub fn DeleteButton(props: &Props) -> Html {
                         state.set(DeleteState::Complete(None));
                     }
                     Err(e) => {
-                        state.set(DeleteState::Complete(Some(format!("{e:?}"))));
+                        state.set(DeleteState::Complete(Some(format!("{}", *e))));
                     }
                 }
             });
@@ -94,7 +94,7 @@ pub fn DeleteButton(props: &Props) -> Html {
                     DeleteState::Complete(Some(ref err)) => {
                         html! {
                             <span title={err.clone()}>
-                                {""}
+                                {""}
                             </span>
                         }
                     }

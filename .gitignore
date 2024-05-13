@@ -30,3 +30,5 @@ frontend/res/*.ico
 frontend/unauthorized.html
 frontend/src/api/old
 build.sh
+backend/hmac_key
+backend/Cargo.toml.bak

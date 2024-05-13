@@ -12,45 +12,40 @@ pub fn BannerAd() -> Html {
     {
         let banner = banner.clone();
         let api_ctx = api_ctx;
-        use_effect_with_deps(
-            move |route| {
-                if let ApiState::Loaded(_) = *banner {
-                } else {
-                    banner.set(ApiState::Loading);
-                }
-                let route = route.clone();
-                let api_ctx = api_ctx.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    match api_ctx {
-                        Some(api_ctx) => match api_ctx.api {
-                            Err(e) => {
-                                banner.set(ApiState::Error(e));
-                            }
-                            Ok(api) => {
-                                if let Some(route) = route.and_then(|r| r.board_discriminator()) {
-                                    match api.get_banner(&route).await {
-                                        Err(e) => {
-                                            banner.set(ApiState::Error(e));
-                                        }
-                                        Ok(thisbanner) => {
-                                            banner.set(ApiState::Loaded(thisbanner));
-                                        }
-                                    };
-                                } else {
-                                    banner.set(ApiState::ContextError(AttrValue::from(
-                                        "BoardContext",
-                                    )));
-                                }
-                            }
-                        },
-                        _ => {
-                            banner.set(ApiState::ContextError(AttrValue::from("ApiContext")));
+        use_effect_with(route, move |route| {
+            if let ApiState::Loaded(_) = *banner {
+            } else {
+                banner.set(ApiState::Loading);
+            }
+            let route = route.clone();
+            let api_ctx = api_ctx.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match api_ctx {
+                    Some(api_ctx) => match api_ctx.api {
+                        Err(e) => {
+                            banner.set(ApiState::Error(e));
                         }
+                        Ok(api) => {
+                            if let Some(route) = route.and_then(|r| r.board_discriminator()) {
+                                match api.get_banner(&route).await {
+                                    Err(e) => {
+                                        banner.set(ApiState::Error(e));
+                                    }
+                                    Ok(thisbanner) => {
+                                        banner.set(ApiState::Loaded(thisbanner));
+                                    }
+                                };
+                            } else {
+                                banner.set(ApiState::ContextError(AttrValue::from("BoardContext")));
+                            }
+                        }
+                    },
+                    _ => {
+                        banner.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                     }
-                });
-            },
-            route,
-        );
+                }
+            });
+        });
     }
 
     match banner.standard_html("BannerAd", |banner| {
@@ -74,7 +69,7 @@ pub fn BannerAd() -> Html {
     }) {
         Ok(html) => html,
         Err(e) => {
-            gloo::console::error!(format!("Error rendering BannerAd: {:?}", e));
+            gloo::console::error!(format!("Error rendering BannerAd: {}", *e));
             html! {}
         }
     }

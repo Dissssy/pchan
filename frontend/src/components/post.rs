@@ -20,25 +20,22 @@ pub fn Post(props: &Props) -> Html {
     {
         let props = props.clone();
         let on_click = on_click.clone();
-        use_effect_with_deps(
-            move |callback| {
-                if let Some(c) = callback {
-                    let props = props.clone();
-                    let c = c.clone();
-                    on_click.set(Some(Callback::from(move |e: MouseEvent| {
-                        e.prevent_default();
-                        let reply = common::structs::Reply {
-                            board_discriminator: props.post.board_discriminator.clone(),
-                            post_number: props.post.post_number.to_string(),
-                            thread_post_number: Some(props.post.thread_post_number.to_string()),
-                            external: false,
-                        };
-                        c.callback.emit(reply);
-                    })));
-                }
-            },
-            callback,
-        );
+        use_effect_with(callback, move |callback| {
+            if let Some(c) = callback {
+                let props = props.clone();
+                let c = c.clone();
+                on_click.set(Some(Callback::from(move |e: MouseEvent| {
+                    e.prevent_default();
+                    let reply = common::structs::Reply {
+                        board_discriminator: props.post.board_discriminator.clone(),
+                        post_number: props.post.post_number.to_string(),
+                        thread_post_number: Some(props.post.thread_post_number.to_string()),
+                        external: false,
+                    };
+                    c.callback.emit(reply);
+                })));
+            }
+        });
     }
 
     html! {
@@ -152,5 +149,6 @@ pub struct Props {
     pub post: SafePost,
     #[prop_or_default]
     pub invert: bool,
+    #[prop_or_default]
     pub topic: Option<AttrValue>,
 }

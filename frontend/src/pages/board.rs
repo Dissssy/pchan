@@ -14,43 +14,37 @@ pub fn BoardPage() -> Html {
     {
         let board = board.clone();
         let api_ctx = api_ctx;
-        use_effect_with_deps(
-            |board_ctx| {
-                board.set(ApiState::Loading);
-                let board_ctx = board_ctx.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    match api_ctx {
-                        Some(Some(api_ctx)) => match api_ctx.api {
-                            Err(e) => {
-                                board.set(ApiState::Error(e));
-                            }
-                            Ok(api) => {
-                                if let Some(Some(boardinf)) =
-                                    board_ctx.map(|b| b.board_discriminator())
-                                {
-                                    match api.get_board(&boardinf, false).await {
-                                        Err(e) => {
-                                            board.set(ApiState::Error(e));
-                                        }
-                                        Ok(thisboard) => {
-                                            board.set(ApiState::Loaded(thisboard));
-                                        }
-                                    };
-                                } else {
-                                    board.set(ApiState::ContextError(AttrValue::from(
-                                        "BoardContext",
-                                    )));
-                                }
-                            }
-                        },
-                        _ => {
-                            board.set(ApiState::ContextError(AttrValue::from("ApiContext")));
+        use_effect_with(board_ctx, |board_ctx| {
+            board.set(ApiState::Loading);
+            let board_ctx = board_ctx.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match api_ctx {
+                    Some(Some(api_ctx)) => match api_ctx.api {
+                        Err(e) => {
+                            board.set(ApiState::Error(e));
                         }
+                        Ok(api) => {
+                            if let Some(Some(boardinf)) = board_ctx.map(|b| b.board_discriminator())
+                            {
+                                match api.get_board(&boardinf, false).await {
+                                    Err(e) => {
+                                        board.set(ApiState::Error(e));
+                                    }
+                                    Ok(thisboard) => {
+                                        board.set(ApiState::Loaded(thisboard));
+                                    }
+                                };
+                            } else {
+                                board.set(ApiState::ContextError(AttrValue::from("BoardContext")));
+                            }
+                        }
+                    },
+                    _ => {
+                        board.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                     }
-                });
-            },
-            board_ctx,
-        );
+                }
+            });
+        });
     }
 
     // let callback = if let Some(c) = use_context::<Option<CallbackContext>>().flatten() {
@@ -128,7 +122,7 @@ pub fn BoardPage() -> Html {
                                 html! {
                                     <div class={"board-page-error"}>
                                         <h1>{"Error"}</h1>
-                                        <p>{format!("{e:?}")}</p>
+                                        <p>{format!("{}", *e)}</p>
                                     </div>
                                 }
                             })

@@ -24,8 +24,8 @@ pub fn priveleged_api_endpoints(
                         );
                     }
                 },
-                board.discriminator,
-                board.name,
+                &board.discriminator,
+                &board.name,
             )
             .await
             {
@@ -165,7 +165,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
-                match crate::database::Database::get_board(&mut conn, disc).await {
+                match crate::database::Database::get_board(&mut conn, &disc).await {
                     Ok(board) => match board.with_threads(&mut conn).await {
                         Ok(board) => Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&board),
@@ -205,7 +205,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    disc,
+                    &disc,
                     thread,
                     token.member_hash(),
                 )
@@ -240,7 +240,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    disc,
+                    &disc,
                     thread,
                 )
                 .await
@@ -277,22 +277,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
-                let board =
-                    match crate::database::Database::get_board(&mut conn, disc.clone()).await {
-                        Ok(v) => v,
-                        Err(e) => {
-                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                warp::reply::json(&e.to_string()),
-                            );
-                        }
-                    };
-                let thread = match crate::database::Database::get_raw_thread(
-                    &mut conn,
-                    disc.clone(),
-                    rawthread,
-                )
-                .await
-                {
+                let board = match crate::database::Database::get_board(&mut conn, &disc).await {
                     Ok(v) => v,
                     Err(e) => {
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
@@ -300,6 +285,17 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
+                let thread =
+                    match crate::database::Database::get_raw_thread(&mut conn, &disc, rawthread)
+                        .await
+                    {
+                        Ok(v) => v,
+                        Err(e) => {
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&e.to_string()),
+                            );
+                        }
+                    };
                 let tid = thread.id;
                 let thread = match thread.with_posts(&mut conn).await {
                     Ok(v) => v,
@@ -326,7 +322,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 match crate::database::Database::create_post(
                     &mut conn,
                     board.id,
-                    disc,
+                    &disc,
                     tid,
                     post,
                     token.member_hash(),
@@ -365,7 +361,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    disc,
+                    &disc,
                     post,
                 )
                 .await
@@ -397,7 +393,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    disc,
+                    &disc,
                     post,
                     token.member_hash(),
                 )
@@ -462,14 +458,11 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                                 }
                             }
                         }
-                        let pstream = p.stream();
-                        let value = match pstream
-                            .try_fold(Vec::new(), |mut acc, data| {
-                                acc.put(data);
-                                async move { Ok(acc) }
-                            })
-                            .await
-                        {
+                        let pstream = p.stream().try_fold(Vec::new(), |mut acc, data| {
+                            acc.put(data);
+                            async move { Ok(acc) }
+                        });
+                        let value = match pstream.await {
                             Ok(stream) => stream,
                             Err(e) => {
                                 return Ok::<warp::reply::Json, warp::reject::Rejection>(
@@ -506,6 +499,48 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // PUT /share/{file_path} (will continue as something like /files/mimetype/id.type which we want to capture) - generates a path for a file to be shared that includes the FileSig query parameters
+
+    let sharefile = warp::path!("api" / "v1" / "share" / "files" / ..)
+        .and(warp::path::tail())
+        .and(warp::put())
+        .and(valid_token())
+        .and_then({
+            |tail: warp::path::Tail, _: Token| async move {
+                let file = format!("/files/{}", tail.as_str());
+                // ensure the file exists
+                // println!("file: {}", file);
+                if crate::database::Database::get_file(
+                    &file,
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            );
+                        }
+                    },
+                )
+                .await
+                .is_err()
+                {
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"File not found",
+                    ));
+                }
+
+                // generate a share link
+                let crate::filters::FileSig { bgn, exp, sig } =
+                    crate::filters::FileSig::generate(&file).await;
+
+                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&format!(
+                    "{}?bgn={}&exp={}&sig={}",
+                    file, bgn, exp, sig
+                )))
+            }
+        });
+
     // GET /token - returns the user's token
 
     let gettoken = warp::path!("api" / "v1" / "token")
@@ -524,7 +559,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then({
             |disc: String| async move {
                 match crate::database::Database::get_random_banner(
-                    disc,
+                    &disc,
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
@@ -564,7 +599,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    disc,
+                    &disc,
                     post,
                     token.member_hash(),
                 )
@@ -598,7 +633,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    disc,
+                    &disc,
                     post,
                     token.member_hash(),
                     watching,
@@ -626,6 +661,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(getboard)
                 .or(getboards)
                 .or(uploadfile)
+                .or(sharefile)
                 .or(gettoken)
                 .or(get_watching)
                 .or(put_watching)

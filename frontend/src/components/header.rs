@@ -20,7 +20,7 @@ pub fn Header() -> Html {
             {
                 if post_box {
                     html! {
-                        <PostBox/>
+                        <PostBox override_thread={None::<AttrValue>} />
                     }
                 } else {
                     html! {}

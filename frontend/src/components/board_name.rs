@@ -11,13 +11,10 @@ pub fn BoardName(props: &Props) -> Html {
     {
         let location = location.clone();
         let hovered = hovered.clone();
-        use_effect_with_deps(
-            move |_| {
-                hovered.set(false);
-                || {}
-            },
-            location,
-        );
+        use_effect_with(location, move |_| {
+            hovered.set(false);
+            || {}
+        });
     }
 
     let (board_discriminator, is_thread) = location.map_or((None, false), |b| {
@@ -82,6 +79,7 @@ pub fn BoardName(props: &Props) -> Html {
 pub struct Props {
     pub board: SafeBoard,
     pub view: BoardNameType,
+    #[prop_or_default]
     pub hover: Option<BoardNameType>,
     pub prefix: AttrValue,
     pub first: bool,

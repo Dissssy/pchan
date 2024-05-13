@@ -12,7 +12,7 @@ mod token;
 pub struct Api {
     pub token: AttrValue,
     #[cfg(feature = "cache-base")]
-    pub cache: std::sync::Arc<async_lock::Mutex<typemap_ors::TypeMap>>,
+    pub cache: std::rc::Rc<async_lock::Mutex<typemap_ors::TypeMap>>,
 }
 
 impl std::fmt::Debug for Api {
@@ -44,7 +44,7 @@ impl Api {
         Ok(Self {
             token,
             #[cfg(feature = "cache-base")]
-            cache: std::sync::Arc::new(async_lock::Mutex::new(typemap_ors::TypeMap::new())),
+            cache: std::rc::Rc::new(async_lock::Mutex::new(typemap_ors::TypeMap::new())),
         })
     }
 
@@ -103,7 +103,7 @@ impl Api {
                     Ok(res)
                 }
                 Err(e) => {
-                    gloo::console::error!(format!("Error getting boards: {:?}", e));
+                    gloo::console::error!(format!("Error getting boards: {}", *e));
                     Err(e)
                 }
             }
@@ -181,7 +181,7 @@ impl Api {
                     Ok(res)
                 }
                 Err(e) => {
-                    gloo::console::error!(format!("Error getting board: {:?}", e));
+                    gloo::console::error!(format!("Error getting board: {}", *e));
                     Err(e)
                 }
             }
@@ -262,7 +262,7 @@ impl Api {
                     Ok(res)
                 }
                 Err(e) => {
-                    gloo::console::error!(format!("Error getting thread: {:?}", e));
+                    gloo::console::error!(format!("Error getting thread: {}", *e));
                     Err(e)
                 }
             }
@@ -321,7 +321,7 @@ impl Api {
                     Ok(res)
                 }
                 Err(e) => {
-                    gloo::console::error!(format!("Error getting post: {:?}", e));
+                    gloo::console::error!(format!("Error getting post: {}", *e));
                     Err(e)
                 }
             }
@@ -340,18 +340,19 @@ impl Api {
         let raw_res = gloo_net::http::Request::post("/api/v1/file")
             .header("authorization", &token)
             .body(&form_data)
+            .map_err(|e| ApiError::Gloo(AttrValue::from(format!("{e:?}"))))?
             .send()
             .await
-            .map_err(|e| ApiError::Gloo(AttrValue::from(format!("{e:?}"))))?;
+            .map_err(|e| ApiError::Gloo(AttrValue::from(format!("{e}"))))?;
         let res = raw_res
             .text()
             .await
-            .map_err(|e| ApiError::Gloo(AttrValue::from(format!("{e:?}"))))?;
+            .map_err(|e| ApiError::Gloo(AttrValue::from(format!("{e}"))))?;
         let file_id = serde_json::from_str::<String>(&res).map_err(|e| {
             if !raw_res.ok() {
                 ApiError::Api(AttrValue::from(raw_res.status_text()))
             } else {
-                ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}")))
+                ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}")))
             }
         })?;
         if file_id.contains(' ') {
@@ -359,6 +360,15 @@ impl Api {
         } else {
             Ok(AttrValue::from(file_id))
         }
+    }
+
+    pub async fn share_file(
+        &self,
+        file: &str, // /files/mimetype/id.ext
+    ) -> Result<String, ApiError> {
+        // PUT /api/v1/share/files/mimetype/id.ext
+        let token = self.formatted_token();
+        standard_put::<String, ()>(&format!("/api/v1/share{}", file), &token, &()).await
     }
 
     pub async fn create_thread(
@@ -505,6 +515,19 @@ pub enum ApiError {
     // TODO: add error types :(
 }
 
+impl std::ops::Deref for ApiError {
+    type Target = AttrValue;
+
+    fn deref(&self) -> &Self::Target {
+        match self {
+            Self::Gloo(v) => v,
+            Self::Serde(v) => v,
+            Self::Api(v) => v,
+            Self::Other(v) => v,
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub enum ApiState<T> {
     Pending,
@@ -645,7 +668,7 @@ where
 
     serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
         Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}"))),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
     })
 }
 
@@ -670,7 +693,7 @@ where
 
     serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
         Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}"))),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
     })
 }
 
@@ -698,7 +721,7 @@ where
 
     serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
         Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}"))),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
     })
 }
 
@@ -726,6 +749,6 @@ where
 
     serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
         Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e:?} SERDE ERROR FROM {res}"))),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
     })
 }

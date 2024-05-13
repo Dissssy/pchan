@@ -126,8 +126,8 @@ pub fn PostBox(props: &Props) -> Html {
                                     .await
                                 {
                                     gloo::console::error!(format!(
-                                        "Failed to set watching: {:?}",
-                                        e
+                                        "Failed to set watching: {}",
+                                        *e
                                     ));
                                 }
                             }
@@ -146,49 +146,46 @@ pub fn PostBox(props: &Props) -> Html {
     let emitter = use_context::<CallbackEmitterContext>();
     {
         let post = post.clone();
-        use_effect_with_deps(
-            move |post| {
-                if let Some(emitter) = emitter {
-                    let post = post.clone();
-                    emitter.callback.emit(Callback::from(move |s: Reply| {
-                        post.opened.set(true);
-                        let content = post.content.clone();
-                        let this_content = (*content).clone();
-                        let reply_text = s.same_board_reply_text();
-                        // if the content contains a line that is the same as the reply text, we remove it and return
-                        let mut just_removed = false;
-                        let new_content = content
-                            .split('\n')
-                            .filter(|line| {
-                                if just_removed {
-                                    just_removed = false;
-                                    line != &""
-                                } else if line == &reply_text {
-                                    just_removed = true;
-                                    false
-                                } else {
-                                    true
-                                }
-                            })
-                            .collect::<Vec<_>>()
-                            .join("\n");
+        use_effect_with(post, move |post| {
+            if let Some(emitter) = emitter {
+                let post = post.clone();
+                emitter.callback.emit(Callback::from(move |s: Reply| {
+                    post.opened.set(true);
+                    let content = post.content.clone();
+                    let this_content = (*content).clone();
+                    let reply_text = s.same_board_reply_text();
+                    // if the content contains a line that is the same as the reply text, we remove it and return
+                    let mut just_removed = false;
+                    let new_content = content
+                        .split('\n')
+                        .filter(|line| {
+                            if just_removed {
+                                just_removed = false;
+                                line != &""
+                            } else if line == &reply_text {
+                                just_removed = true;
+                                false
+                            } else {
+                                true
+                            }
+                        })
+                        .collect::<Vec<_>>()
+                        .join("\n");
 
-                        if new_content != this_content {
-                            content.set(new_content);
-                            return;
-                        }
-                        // if the content is empty, we can just append the reply text to the content and return
-                        if this_content.is_empty() {
-                            content.set(format!("{}\n", reply_text));
-                            return;
-                        }
-                        // otherwise, we need to add a newline and the reply text
-                        content.set(format!("{}\n{}\n", this_content.trim_end(), reply_text));
-                    }));
-                }
-            },
-            post,
-        );
+                    if new_content != this_content {
+                        content.set(new_content);
+                        return;
+                    }
+                    // if the content is empty, we can just append the reply text to the content and return
+                    if this_content.is_empty() {
+                        content.set(format!("{}\n", reply_text));
+                        return;
+                    }
+                    // otherwise, we need to add a newline and the reply text
+                    content.set(format!("{}\n{}\n", this_content.trim_end(), reply_text));
+                }));
+            }
+        });
     }
 
     let on_input_name = post.name_change_callback(possible_name.clone());
@@ -255,7 +252,7 @@ pub fn PostBox(props: &Props) -> Html {
                                     ApiState::Loaded(_) => html! { <div class="post-box-success"><span>{"Success!"}</span></div> },
                                     ApiState::Error(ApiError::Api(e)) => html! { <div class="post-box-error"><span>{e}</span></div> },
                                     ApiState::Error(e) => {
-                                        gloo::console::error!(format!("Error: {:?}", e));
+                                        gloo::console::error!(format!("Error: {}", **e));
                                         html! { <div class="post-box-error"><span>{"Unknown Error! Check console for details."}</span></div> }
                                     }
                                     ApiState::ContextError(ref e) => html! { <div class="post-box-error"><span>{"Context Error: "}{e}</span></div> },

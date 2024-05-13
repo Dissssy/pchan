@@ -78,7 +78,7 @@ pub fn Home() -> Html {
                             html! {
                                 <div class={"board-page-error"}>
                                     <h1>{"Error"}</h1>
-                                    <p>{format!("{e:?}")}</p>
+                                    <p>{format!("{}", *e)}</p>
                                 </div>
                             }
                         })

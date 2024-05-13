@@ -171,77 +171,73 @@ pub fn ThreadPage() -> Html {
         let thread = thread.clone();
         let scroll_to_bottom = scroll_to_bottom.clone();
         let api_ctx = api_ctx;
-        use_effect_with_deps(
-            |route_ctx| {
-                thread.set(ApiState::Loading);
-                let route_ctx = route_ctx.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    match api_ctx {
-                        Some(Some(api_ctx)) => match api_ctx.api {
-                            Err(e) => {
-                                thread.set(ApiState::Error(e));
-                            }
-                            Ok(api) => {
-                                if let Some(route_ctx) = route_ctx {
-                                    match (route_ctx.board_discriminator(), route_ctx.thread_id()) {
-                                        (Some(boardinf), Some(threadinf)) => {
-                                            match api.get_thread(&boardinf, &threadinf, true).await
-                                            {
-                                                Err(e) => {
-                                                    thread.set(ApiState::Error(e));
-                                                }
-                                                Ok(thisthread) => {
-                                                    if *scroll_to_bottom {
-                                                        gloo_timers::callback::Timeout::new(
-                                                            100,
-                                                            move || {
-                                                                if let Some(window) = web_sys::window() {
-                                                                    window
-                                                                    .scroll_by_with_x_and_y(
-                                                                        0.0, 10000.0,
-                                                                    );
-                                                                } else {
-                                                                    gloo::console::warn!("Failed to scroll to bottom")
-                                                                }
-                                                            },
-                                                        )
-                                                        .forget();
-                                                    }
-                                                    thread.set(ApiState::Loaded(thisthread));
-                                                }
-                                            };
-                                        }
-                                        (None, Some(_)) => {
-                                            thread.set(ApiState::ContextError(AttrValue::from(
-                                                "BoardContext",
-                                            )));
-                                        }
-                                        (Some(_), None) => {
-                                            thread.set(ApiState::ContextError(AttrValue::from(
-                                                "ThreadContext",
-                                            )));
-                                        }
-                                        (None, None) => {
-                                            thread.set(ApiState::ContextError(AttrValue::from(
-                                                "RouteContext",
-                                            )));
-                                        }
-                                    }
-                                } else {
-                                    thread.set(ApiState::ContextError(AttrValue::from(
-                                        "RouteContext",
-                                    )));
-                                }
-                            }
-                        },
-                        _ => {
-                            thread.set(ApiState::ContextError(AttrValue::from("ApiContext")));
+        use_effect_with(route_ctx, |route_ctx| {
+            thread.set(ApiState::Loading);
+            let route_ctx = route_ctx.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match api_ctx {
+                    Some(Some(api_ctx)) => match api_ctx.api {
+                        Err(e) => {
+                            thread.set(ApiState::Error(e));
                         }
+                        Ok(api) => {
+                            if let Some(route_ctx) = route_ctx {
+                                match (route_ctx.board_discriminator(), route_ctx.thread_id()) {
+                                    (Some(boardinf), Some(threadinf)) => {
+                                        match api.get_thread(&boardinf, &threadinf, true).await {
+                                            Err(e) => {
+                                                thread.set(ApiState::Error(e));
+                                            }
+                                            Ok(thisthread) => {
+                                                if *scroll_to_bottom {
+                                                    gloo_timers::callback::Timeout::new(
+                                                        100,
+                                                        move || {
+                                                            if let Some(window) = web_sys::window()
+                                                            {
+                                                                window.scroll_by_with_x_and_y(
+                                                                    0.0, 10000.0,
+                                                                );
+                                                            } else {
+                                                                gloo::console::warn!(
+                                                                    "Failed to scroll to bottom"
+                                                                )
+                                                            }
+                                                        },
+                                                    )
+                                                    .forget();
+                                                }
+                                                thread.set(ApiState::Loaded(thisthread));
+                                            }
+                                        };
+                                    }
+                                    (None, Some(_)) => {
+                                        thread.set(ApiState::ContextError(AttrValue::from(
+                                            "BoardContext",
+                                        )));
+                                    }
+                                    (Some(_), None) => {
+                                        thread.set(ApiState::ContextError(AttrValue::from(
+                                            "ThreadContext",
+                                        )));
+                                    }
+                                    (None, None) => {
+                                        thread.set(ApiState::ContextError(AttrValue::from(
+                                            "RouteContext",
+                                        )));
+                                    }
+                                }
+                            } else {
+                                thread.set(ApiState::ContextError(AttrValue::from("RouteContext")));
+                            }
+                        }
+                    },
+                    _ => {
+                        thread.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                     }
-                });
-            },
-            route_ctx,
-        );
+                }
+            });
+        });
     }
 
     let on_successful_post = {
@@ -298,7 +294,7 @@ pub fn ThreadPage() -> Html {
                         html! {
                             <div class={"thread-page-error"}>
                                 <h1>{"Error"}</h1>
-                                <p>{format!("{e:?}")}</p>
+                                <p>{format!("{}", *e)}</p>
                             </div>
                         }
                     })

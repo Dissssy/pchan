@@ -98,14 +98,14 @@ pub fn ThemeEditor() -> Html {
                         html! {
                                 <>
                                     <ColorEditor label="Primary Color" field={theme.primary_color.clone()} position={Position::First} />
-                                    <ColorEditor label="Secondary Color" field={theme.secondary_color.clone()} />
-                                    <ColorEditor label="Border Color" field={theme.border_color.clone()} />
-                                    <ColorEditor label="Text Color" field={theme.text_color.clone()} />
-                                    <ColorEditor label="Secondary Text Color" field={theme.secondary_text_color.clone()} />
-                                    <ColorEditor label="Link Color" field={theme.link_color.clone()} />
-                                    <ColorEditor label="Bluetext Color" field={theme.bluetext_color.clone()} />
-                                    <ColorEditor label="Peetext Color" field={theme.peetext_color.clone()} />
-                                    <ColorEditor label="Topic Color" field={theme.topic_color.clone()} />
+                                    <ColorEditor label="Secondary Color" field={theme.secondary_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Border Color" field={theme.border_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Text Color" field={theme.text_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Secondary Text Color" field={theme.secondary_text_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Link Color" field={theme.link_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Bluetext Color" field={theme.bluetext_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Peetext Color" field={theme.peetext_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Topic Color" field={theme.topic_color.clone()} position={Position::Middle} />
                                     <ColorEditor label="Error Color" field={theme.error_color.clone()} position={Position::Last} />
                                     //<SizeEditor label="Border Width" field="border_width" />
                                     //<BorderTypeEditor label="Border Type" field="border_type" />

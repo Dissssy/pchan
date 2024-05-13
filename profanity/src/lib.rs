@@ -133,7 +133,7 @@ where
     let mut orig_chars = string.chars().collect::<Vec<char>>();
 
     for word in scrunkly {
-        let categories = vec![
+        let categories = [
             Some(word.category), /* word.category_2, word.category_3 */
         ];
         if categories.iter().any(|x| {

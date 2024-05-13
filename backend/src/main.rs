@@ -1,4 +1,4 @@
-#![feature(async_iterator)]
+#![feature(async_iterator, lint_reasons)]
 #![warn(
     clippy::map_unwrap_or,
     clippy::unwrap_used,
@@ -16,15 +16,19 @@
     clippy::manual_string_new
 )]
 
-use std::sync::Arc;
+use std::{
+    io::{Read as _, Write as _},
+    sync::Arc,
+};
 
+use base64::Engine;
 use diesel_async::pooled_connection::deadpool::Pool;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::AsyncPgConnection;
+use std::os::linux::fs::MetadataExt;
 
-use reqwest::header::HeaderValue;
 use tokio::sync::Mutex;
-use warp::{Filter, Reply};
+use warp::{http::HeaderValue, Filter, Reply};
 
 mod database;
 mod endpoints;
@@ -42,7 +46,9 @@ use std::collections::HashMap;
 // use crate::database::Users;
 use profanity::Profanity;
 
-use crate::filters::{optional_token, user_agent_is_scraper, valid_token, Token};
+use crate::filters::{
+    optional_file_sig, optional_token, user_agent_is_scraper, valid_token, FileSig, Token,
+};
 
 lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
@@ -60,8 +66,8 @@ fn is_safe_mimetype(mimetype: &str) -> bool {
     let mimetype = mimetype.to_lowercase();
     // println!("mimetype: {}", mimetype);
     // if the Content-Type header is not video/* audio/* or image/*, then force download. also check for svg because those can contain javascript
-    let can_contain = vec!["video/", "audio/", "image/", "NO MIMETYPE"];
-    let overrides = vec!["svg"];
+    let can_contain = ["video/", "audio/", "image/", "NO MIMETYPE"];
+    let overrides = ["svg"];
 
     // if the mimetype contains any of the can_contain strings, then it's not bad UNLESS it also contains any of the overrides
     can_contain.iter().any(|s| {
@@ -76,6 +82,7 @@ fn is_safe_mimetype(mimetype: &str) -> bool {
 #[tokio::main]
 async fn main() {
     env_logger::init();
+
     // println!("Starting backend with:");
 
     // {
@@ -95,55 +102,41 @@ async fn main() {
             warp::fs::dir(env!("FILE_STORAGE_PATH"))
                 .and(warp::path::full())
                 .and(optional_token())
+                .and(optional_file_sig())
                 .and_then(
                     |reply: warp::filters::fs::File,
                      path: warp::path::FullPath,
-                     token: Option<Token>| async move {
+                     token: Option<Token>,
+                     file_sig: Option<FileSig>| async move {
                         let path = path.as_str();
 
-                        match (path.ends_with("-thumb.jpg"), token.is_some()) {
-                            (_, true) => {
-                                let mut resp = reply.into_response();
-                                if let Some(content_type) =
-                                    resp.headers().get(warp::http::header::CONTENT_TYPE)
-                                {
-                                    let content_type =
-                                        content_type.to_str().unwrap_or("NO MIMETYPE");
-                                    if !is_safe_mimetype(content_type) {
-                                        println!(
-                                            "Forcing download of file with mimetype {}",
-                                            content_type
-                                        );
-                                        resp.headers_mut().insert(
-                                            warp::http::header::CONTENT_DISPOSITION,
-                                            HeaderValue::from_static("attachment"),
-                                        );
-                                    }
-                                }
-                                Ok(resp)
+                        let mut resp = reply.into_response();
+                        if let Some(content_type) =
+                            resp.headers().get(warp::http::header::CONTENT_TYPE)
+                        {
+                            let content_type = content_type.to_str().unwrap_or("NO MIMETYPE");
+                            if !is_safe_mimetype(content_type) {
+                                println!("Forcing download of file with mimetype {}", content_type);
+                                resp.headers_mut().insert(
+                                    warp::http::header::CONTENT_DISPOSITION,
+                                    HeaderValue::from_static("attachment"),
+                                );
                             }
-                            (true, _) => {
-                                let mut resp = reply.into_response();
-                                if let Some(content_type) =
-                                    resp.headers().get(warp::http::header::CONTENT_TYPE)
-                                {
-                                    let content_type =
-                                        content_type.to_str().unwrap_or("NO MIMETYPE");
-                                    if !is_safe_mimetype(content_type) {
-                                        println!(
-                                            "Forcing download of file with mimetype {}",
-                                            content_type
-                                        );
-                                        resp.headers_mut().insert(
-                                            warp::http::header::CONTENT_DISPOSITION,
-                                            HeaderValue::from_static("attachment"),
-                                        );
-                                    }
-                                }
-                                Ok(resp)
-                            }
-                            _ => Err(warp::reject::reject()),
                         }
+
+                        if path.ends_with("-thumb.jpg") || token.is_some() {
+                            return Ok(resp);
+                        }
+
+                        if path.contains("/files/") {
+                            if let Some(file_sig) = file_sig {
+                                if file_sig.validates(path).await {
+                                    return Ok(resp);
+                                }
+                            }
+                        }
+
+                        Err(warp::reject::reject())
                     },
                 )
                 .or(valid_token().map(|_| {}).untuple_one().and(
@@ -185,30 +178,64 @@ async fn main() {
     //     resp
     // });
 
-    let is_scraper = user_agent_is_scraper().and(warp::path::full()).and_then(
+    let is_scraper = user_agent_is_scraper().and(warp::path::full()).and(crate::filters::optional_file_sig()).and(
+        crate::filters::optional_file()
+    ).and_then(
         // templating the scraping page by serving up a body with the right headers
-        |path: warp::path::FullPath| async move {
+        |path: warp::path::FullPath, sig: Option<FileSig>, raw_file: Option<warp::fs::File>| async move {
             // extract file path from url. it is just everything after the tld
             let conn = &mut crate::POOL.get().await.map_err(|_| {
                 warp::reject::reject()
             })?;
             let path = path.as_str();
-            let finally = match path.split_once('/').map(|(_, p)| p) {
+            let finally = match path.split_once('/').map(|(_, p)| format!("/{}", p)) {
                 Some(p) => {
                     match crate::database::Database::get_file(
+                        &p,
                         conn,
-                        format!("/{}", p),
                     ).await {
                         Ok(file) => {
                             Some(format!("https://pchan.p51.nl{}", if file.spoiler {
+                                // println!("found spoiler");
                                 crate::database::Database::get_random_spoiler(conn).await.map_err(|_| {
                                     warp::reject::reject()
                                 })?
+                            } else if let Some(sig) = sig {
+                                // println!("found sig");
+                                // println!("path: {}", p);
+                                if sig.validates(&p).await {
+                                    // println!("{:?}", raw_file);
+                                    if let Some(raw_file) = raw_file {
+                                        // println!("valid file");
+                                        // determine file size
+                                        match std::fs::metadata(raw_file.path()) {
+                                            Ok(meta) => {
+                                                if meta.st_size() > 10 * 1024 * 1024 || !p.contains("/image/") {
+                                                    file.thumbnail
+                                                } else {
+                                                    return Ok(raw_file.into_response());
+                                                }
+                                            }
+                                            Err(e) => {
+                                                println!("Error getting file metadata: {e}");
+                                                file.thumbnail
+                                            }
+                                        }
+                                    } else {
+                                        // println!("no raw file? for path {}", p);
+                                        file.thumbnail
+                                    }
+                                } else {
+                                    // println!("no valid sig");
+                                    file.thumbnail
+                                }
                             } else {
+                                // println!("no sig");
                                 file.thumbnail
                             }))
                         }
                         Err(_) => {
+                            // println!("no file found");
                             None
                         }
                     }
@@ -237,7 +264,7 @@ async fn main() {
                     </html>
                     "#,
                     finally.unwrap_or("https://pchan.p51.nl/res/icon-256.png".to_owned())
-            )))
+            )).into_response())
         },
     );
 
@@ -253,18 +280,36 @@ async fn main() {
             .or(icon)
             .or(warp::any()
                 .and(warp::cookie::optional::<String>("token"))
-                .then(|token: Option<String>| async move {
-                    match token {
-                        None => warp::http::Response::builder()
-                            .header("Location", "/login")
-                            .status(302)
-                            .body(String::new()),
-                        Some(_) => warp::http::Response::builder()
-                            .header("Location", "/unauthorized")
-                            .status(302)
-                            .body(String::new()),
-                    }
-                })));
+                .and(warp::path::full())
+                .then(
+                    |token: Option<String>, path: warp::filters::path::FullPath| async move {
+                        match token {
+                            None => warp::http::Response::builder()
+                                .header(
+                                    "Location",
+                                    format!(
+                                        "/login?redirect={}",
+                                        match encode_checksum_str(path.as_str()) {
+                                            Ok(x) => x,
+                                            Err(e) => {
+                                                eprintln!("Error encoding checksum: {e}");
+                                                return warp::http::Response::builder()
+                                                    .header("Location", "/unauthorized")
+                                                    .status(302)
+                                                    .body(String::new());
+                                            }
+                                        }
+                                    ),
+                                )
+                                .status(302)
+                                .body(String::new()),
+                            Some(_) => warp::http::Response::builder()
+                                .header("Location", "/unauthorized")
+                                .status(302)
+                                .body(String::new()),
+                        }
+                    },
+                )));
 
     let (sendkill, kill) = tokio::sync::oneshot::channel::<()>();
     let (killreply, killrecv) = tokio::sync::oneshot::channel::<()>();
@@ -354,4 +399,51 @@ async fn get_all_entries(dir: &str) -> anyhow::Result<Vec<tokio::fs::DirEntry>> 
         }
     }
     Ok(return_files)
+}
+
+fn encode_checksum_str(s: &str) -> anyhow::Result<String> {
+    // encode the string with a checksum and encrypt it using our secret key (generated at startup, does not persist)
+    // random key is at crate::statics::RANDOM_KEY;
+
+    // checksum is crc32
+
+    let checksum = {
+        let mut hasher = crc32fast::Hasher::new();
+        hasher.update(s.as_bytes());
+        hasher.finalize()
+    };
+    let mut s = s.as_bytes().to_vec();
+    s.extend_from_slice(&checksum.to_be_bytes());
+    let mut key = statics::RANDOM_KEY.iter().cycle();
+    // simple xor encryption
+    let s = s
+        .iter()
+        .map(|x| x ^ key.next().expect("KEY RAN OUT???"))
+        .collect::<Vec<u8>>();
+    let mut compressor = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
+    compressor.write_all(&s)?;
+    let s = compressor.finish()?;
+    Ok(statics::BASE64_ENGINE.encode(s))
+}
+
+fn decode_checksum_str(s: &str) -> anyhow::Result<String> {
+    // decrypt the string and check the checksum
+    let s = statics::BASE64_ENGINE.decode(s.as_bytes())?;
+    let mut decompressor = flate2::read::GzDecoder::new(&s[..]);
+    let mut s = Vec::new();
+    decompressor.read_to_end(&mut s)?;
+    let mut key = statics::RANDOM_KEY.iter().cycle();
+    let s = s
+        .iter()
+        .map(|x| x ^ key.next().expect("KEY RAN OUT???"))
+        .collect::<Vec<u8>>();
+    let (s, checksum) = s.split_at(s.len() - 4);
+    let mut hasher = crc32fast::Hasher::new();
+    hasher.update(s);
+    if hasher.finalize() == u32::from_be_bytes([checksum[0], checksum[1], checksum[2], checksum[3]])
+    {
+        Ok(String::from_utf8(s.to_vec())?)
+    } else {
+        Err(anyhow::anyhow!("Checksum failed"))
+    }
 }

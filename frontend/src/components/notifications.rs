@@ -16,7 +16,8 @@ pub fn NotificationBox() -> Html {
         let pop = pop.clone();
         let active_notifications = active_notifications.clone();
         let open = open.clone();
-        use_effect_with_deps(
+        use_effect_with(
+            (pop, active_notifications, open),
             move |(pop, active_notifications, open)| {
                 if let Some(tpop) = **pop {
                     let mut cloned = active_notifications.to_vec();
@@ -28,7 +29,6 @@ pub fn NotificationBox() -> Html {
                     pop.set(None);
                 }
             },
-            (pop, active_notifications, open),
         );
     }
 

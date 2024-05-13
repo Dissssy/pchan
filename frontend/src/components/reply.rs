@@ -25,38 +25,35 @@ pub fn Reply(props: &Props) -> Html {
         let post = post.clone();
         let api_ctx = api_ctx;
         let reply = props.reply.clone();
-        use_effect_with_deps(
-            move |_| {
-                post.set(ApiState::Loading);
-                let reply = reply.clone();
-                wasm_bindgen_futures::spawn_local(async move {
-                    match api_ctx {
-                        Some(Some(api_ctx)) => match api_ctx.api {
-                            Err(e) => {
-                                post.set(ApiState::Error(e));
-                            }
-                            Ok(api) => {
-                                match api
-                                    .get_post(&reply.board_discriminator, &reply.post_number, false)
-                                    .await
-                                {
-                                    Err(e) => {
-                                        post.set(ApiState::Error(e));
-                                    }
-                                    Ok(thispost) => {
-                                        post.set(ApiState::Loaded(thispost));
-                                    }
-                                };
-                            }
-                        },
-                        _ => {
-                            post.set(ApiState::ContextError(AttrValue::from("ApiContext")));
+        use_effect_with(route, move |_| {
+            post.set(ApiState::Loading);
+            let reply = reply.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                match api_ctx {
+                    Some(Some(api_ctx)) => match api_ctx.api {
+                        Err(e) => {
+                            post.set(ApiState::Error(e));
                         }
+                        Ok(api) => {
+                            match api
+                                .get_post(&reply.board_discriminator, &reply.post_number, false)
+                                .await
+                            {
+                                Err(e) => {
+                                    post.set(ApiState::Error(e));
+                                }
+                                Ok(thispost) => {
+                                    post.set(ApiState::Loaded(thispost));
+                                }
+                            };
+                        }
+                    },
+                    _ => {
+                        post.set(ApiState::ContextError(AttrValue::from("ApiContext")));
                     }
-                });
-            },
-            route,
-        );
+                }
+            });
+        });
     }
 
     // let expanded = use_state(|| false);

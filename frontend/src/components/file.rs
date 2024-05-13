@@ -1,4 +1,8 @@
-use crate::components::{OffsetType, ParentOffset};
+use crate::{
+    api::ApiError,
+    components::{OffsetType, ParentOffset},
+    ApiContext,
+};
 
 use super::HoveredOrExpandedState;
 use yew::prelude::*;
@@ -6,8 +10,11 @@ use yew_hooks::use_local_storage;
 
 #[function_component]
 pub fn File(props: &Props) -> Html {
+    let share_state = use_state(|| ShareState::None);
     let file_state = use_state(|| HoveredOrExpandedState::None);
     let spoiler = props.file.spoiler;
+
+    let api_ctx = use_context::<Option<ApiContext>>().flatten();
 
     let emojis = use_local_storage::<bool>("emojis".to_owned()).unwrap_or(true);
 
@@ -107,6 +114,51 @@ pub fn File(props: &Props) -> Html {
         });
     });
 
+    let on_click_share = {
+        let path = props.file.path.clone();
+        let share_state = share_state.clone();
+        Callback::from(move |e: MouseEvent| {
+            e.prevent_default();
+            let api_ctx = api_ctx.clone();
+
+            if *share_state != ShareState::Pending {
+                share_state.set(ShareState::Pending);
+                let path = path.clone();
+                let share_state = share_state.clone();
+
+                wasm_bindgen_futures::spawn_local(async move {
+                    let path = match &api_ctx {
+                        Some(api_ctx) => match &api_ctx.api {
+                            Ok(api) => api.share_file(&path).await,
+                            Err(e) => Err(ApiError::Other(AttrValue::from(format!("{}", **e)))),
+                        },
+                        _ => Err(ApiError::Other(AttrValue::from("No API context"))),
+                    };
+
+                    let path = match path {
+                        Ok(path) => path,
+                        Err(e) => {
+                            share_state.set(ShareState::Error(format!("{}", *e)));
+                            return;
+                        }
+                    };
+
+                    if let Some(window) = web_sys::window() {
+                        if let Some(clip) = window.navigator().clipboard() {
+                            let _ = clip.write_text(&format!("{}{}", env!("URL"), path));
+                            share_state.set(ShareState::Copied);
+                        } else {
+                            share_state
+                                .set(ShareState::Error("Clipboard not available".to_string()));
+                        }
+                    } else {
+                        share_state.set(ShareState::Error("Window not available".to_string()));
+                    }
+                });
+            }
+        })
+    };
+
     html! {
         <div class="post-file-container" draggable="false">
             // <div class="post-file-header">
@@ -151,6 +203,23 @@ pub fn File(props: &Props) -> Html {
                         }
                     </span>
                 }
+                <span class="post-share" title={match *share_state {
+                    ShareState::Error(ref e) => format!("Error: {}", e),
+                    _ => "Share this file (link will be copied to clipboard)".to_string()
+                }}>
+                    <a onclick={on_click_share} draggable="false">
+                        { match (&*share_state, emojis) {
+                            (ShareState::None, true) => "󰤲",
+                            (ShareState::None, false) => "Share",
+                            (ShareState::Pending, true) => "",
+                            (ShareState::Pending, false) => "Creating...",
+                            (ShareState::Copied, true) => "",
+                            (ShareState::Copied, false) => "Copied",
+                            (ShareState::Error(_), true) => "",
+                            (ShareState::Error(_), false) => "Error",
+                        } }
+                    </a>
+                </span>
             // </div>
             <div class="post-file-contents">
                 <a href={props.file.path.clone()} onclick={on_click_without_expanded} draggable="false">
@@ -250,4 +319,12 @@ fn file_html(file: &common::structs::FileInfo) -> Html {
             }
         },
     }
+}
+
+#[derive(Clone, PartialEq)]
+pub enum ShareState {
+    None,
+    Pending,
+    Copied,
+    Error(String),
 }

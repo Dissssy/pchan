@@ -31,98 +31,92 @@ pub fn use_server_sent_event(
     {
         let inner = inner.clone();
         let passer = passer.clone();
-        use_effect_with_deps(
-            move |(inner, passer)| {
-                let passed = (**passer).clone();
-                if let Some(passed) = passed {
-                    let mut cloned = inner.to_vec();
-                    cloned.push(passed);
-                    inner.set(cloned);
-                }
-                passer.set(None);
-                || {}
-            },
-            (inner, passer),
-        );
+        use_effect_with((inner, passer), move |(inner, passer)| {
+            let passed = (**passer).clone();
+            if let Some(passed) = passed {
+                let mut cloned = inner.to_vec();
+                cloned.push(passed);
+                inner.set(cloned);
+            }
+            passer.set(None);
+            || {}
+        });
     }
 
     {
         let passer = passer.setter();
-        use_effect_with_deps(
-            move |nav_info| {
-                let nav_info = nav_info.clone();
-                let (canceler, mut cancel) = oneshot::channel::<()>();
-                wasm_bindgen_futures::spawn_local(async move {
-                    gloo::console::info!("event source spawned");
-                    let mut stream =
-                        match gloo_net::eventsource::futures::EventSource::new(&match nav_info {
-                            Some((discrim, thread)) => {
-                                format!("/api/v1/board/{}/thread/{}/notifications", discrim, thread)
-                            }
-                            None => "/api/v1/notifications".to_owned(),
-                        }) {
-                            Ok(s) => s,
-                            Err(e) => {
-                                log::error!("failed to create event source: {:?}", e);
-                                return;
-                            }
-                        };
+        use_effect_with(nav_info, move |nav_info| {
+            let nav_info = nav_info.clone();
+            let (canceler, mut cancel) = oneshot::channel::<()>();
+            wasm_bindgen_futures::spawn_local(async move {
+                gloo::console::info!("event source spawned");
+                let mut stream =
+                    match gloo_net::eventsource::futures::EventSource::new(&match nav_info {
+                        Some((discrim, thread)) => {
+                            format!("/api/v1/board/{}/thread/{}/notifications", discrim, thread)
+                        }
+                        None => "/api/v1/notifications".to_owned(),
+                    }) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            log::error!("failed to create event source: {:?}", e);
+                            return;
+                        }
+                    };
 
-                    let mut event_types = event_types.clone();
-                    event_types.push("close");
-                    event_types.push("open");
+                let mut event_types = event_types.clone();
+                event_types.push("close");
+                event_types.push("open");
 
-                    let subs = event_types
-                        .iter()
-                        .cloned()
-                        .flat_map(|e| stream.subscribe(e))
-                        .collect::<Vec<_>>();
+                let subs = event_types
+                    .iter()
+                    .cloned()
+                    .flat_map(|e| stream.subscribe(e))
+                    .collect::<Vec<_>>();
 
-                    let mut all = futures::stream::select_all(subs);
+                let mut all = futures::stream::select_all(subs);
 
-                    loop {
-                        futures::select! {
-                            v = all.next() => {
-                                if let Some(Ok((event_type, msg))) = v {
-                                    use gloo::utils::format::JsValueSerdeExt;
-                                    if let Some(event) = match event_type.as_str() {
-                                        "open" => Some(PushMessage::Open),
-                                        "new_post" => serde_json::from_str(
-                                            msg.data()
-                                                .into_serde::<String>()
-                                                .unwrap_or_default()
-                                                .as_str(),
-                                        )
-                                        .map(|p: common::structs::SafePost| PushMessage::NewPost(Arc::new(p)))
-                                        .map_err(|e| {
-                                            gloo::console::error!(format!("failed to parse new_post: {:?}", e))
-                                        })
-                                        .ok(),
-                                        "close" => Some(PushMessage::Close),
-                                        miss => {
-                                            gloo::console::warn!(format!("unknown event type: `{}`", miss));
-                                            None
-                                        }
-                                    } {
-                                        gloo::console::info!(format!("got event: {:?}", event));
-                                        passer.set(Some(event));
+                loop {
+                    futures::select! {
+                        v = all.next() => {
+                            if let Some(Ok((event_type, msg))) = v {
+                                use gloo::utils::format::JsValueSerdeExt;
+                                if let Some(event) = match event_type.as_str() {
+                                    "open" => Some(PushMessage::Open),
+                                    "new_post" => serde_json::from_str(
+                                        msg.data()
+                                            .into_serde::<String>()
+                                            .unwrap_or_default()
+                                            .as_str(),
+                                    )
+                                    .map(|p: common::structs::SafePost| PushMessage::NewPost(Arc::new(p)))
+                                    .map_err(|e| {
+                                        gloo::console::error!(format!("failed to parse new_post: {:?}", e))
+                                    })
+                                    .ok(),
+                                    "close" => Some(PushMessage::Close),
+                                    miss => {
+                                        gloo::console::warn!(format!("unknown event type: `{}`", miss));
+                                        None
                                     }
+                                } {
+                                    gloo::console::info!(format!("got event: {:?}", event));
+                                    passer.set(Some(event));
                                 }
                             }
-                            _ = cancel => {
-                                break;
-                            }
+                        }
+                        _ = cancel => {
+                            break;
                         }
                     }
-                    gloo::console::info!("event source canceled");
-                });
-
-                || {
-                    canceler.send(()).ok();
                 }
-            },
-            nav_info,
-        );
+                gloo::console::info!("event source canceled");
+            });
+
+            || {
+                canceler.send(()).ok();
+            }
+        });
     }
     ServerSentEventHandle { inner }
 }

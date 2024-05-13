@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Reply};
 
-use crate::filters::Token;
+use crate::{decode_checksum_str, filters::Token};
 
 pub mod api;
 
@@ -93,7 +93,10 @@ pub fn other_endpoints(
                     Ok(true) => Ok::<_, warp::reject::Rejection>(
                         warp::reply::with_header(
                             warp::http::Response::builder()
-                                .header("Location", "/")
+                                .header(
+                                    "Location",
+                                    decode_checksum_str(&q.state).unwrap_or("/".to_string()),
+                                )
                                 .status(302)
                                 .body(String::new())
                                 .expect("Failed to build login redirect response"),
@@ -106,7 +109,7 @@ pub fn other_endpoints(
                         .into_response(),
                     ),
                     _ => Ok(warp::http::Response::builder()
-                        .header("Location", "/login")
+                        .header("Location", "/unauthorized")
                         .status(302)
                         .body(String::new())
                         .expect("Failed to build login redirect response")
@@ -115,13 +118,19 @@ pub fn other_endpoints(
             }
         });
 
-    let oauth = warp::path!("login").then(|| async move {
-        Ok(warp::redirect(warp::http::Uri::from_static(env!(
-            "OAUTH_URL"
-        ))))
-        .into_response()
-    });
-
+    let oauth = warp::path!("login")
+        .and(warp::query::query::<LoginQuery>())
+        .then(|LoginQuery { redirect }| async move {
+            warp::http::Response::builder()
+                .header(
+                    "Location",
+                    format!("{}&state={}", env!("OAUTH_URL"), redirect),
+                )
+                .status(302)
+                .body(String::new())
+                .expect("Failed to build login redirect response")
+                .into_response()
+        });
     oauth.or(login)
 }
 
@@ -147,4 +156,10 @@ pub struct DiscordUser {
 #[derive(Debug, Deserialize)]
 pub struct CallbackQuery {
     pub code: String,
+    pub state: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct LoginQuery {
+    pub redirect: String,
 }

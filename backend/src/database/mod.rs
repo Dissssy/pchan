@@ -14,6 +14,7 @@ use diesel::PgArrayExpressionMethods;
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
 use profanity::replace_possible_profanity;
+use web_push::WebPushClient as _;
 // use serde_json::json;
 // use web_push::SubscriptionInfo;
 // use web_push::VapidSignatureBuilder;
@@ -28,7 +29,7 @@ use crate::schema::Banner;
 use crate::schema::Post;
 
 // pub struct Users {
-//     valid_users: Vec<String>,
+//     valid_users: Vec<&str>,
 // }
 
 // impl Users {
@@ -44,7 +45,7 @@ use crate::schema::Post;
 //                 let mut auth = flate2::read::GzDecoder::new(auth.as_slice());
 //                 let _ = auth.read_to_end(&mut bytes);
 //             }
-//             let auth: Vec<String> = postcard::from_bytes(&bytes).unwrap_or_default();
+//             let auth: Vec<&str> = postcard::from_bytes(&bytes).unwrap_or_default();
 //             self.valid_users = auth;
 //         }
 
@@ -64,7 +65,7 @@ use crate::schema::Post;
 //         self.valid_users.push(token);
 //         Ok(())
 //     }
-//     pub async fn sync_auth(&mut self, tokens: Vec<String>) -> Result<()> {
+//     pub async fn sync_auth(&mut self, tokens: Vec<&str>) -> Result<()> {
 //         self.valid_users = tokens;
 //         Ok(())
 //     }
@@ -79,8 +80,8 @@ pub struct Database;
 impl Database {
     pub async fn create_board(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        new_discriminator: String,
-        new_name: String,
+        new_discriminator: &str,
+        new_name: &str,
     ) -> Result<()> {
         use crate::schema::boards::dsl::*;
 
@@ -104,7 +105,7 @@ impl Database {
 
     pub async fn get_board(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discim: String,
+        discim: &str,
     ) -> Result<crate::schema::Board> {
         use crate::schema::boards::dsl::*;
 
@@ -117,7 +118,7 @@ impl Database {
 
     pub async fn get_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discriminator: String,
+        discriminator: &str,
         number: i64,
     ) -> Result<SafePost> {
         Self::get_raw_post(conn, discriminator, number)
@@ -128,11 +129,11 @@ impl Database {
 
     pub async fn get_raw_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discriminator: String,
+        discriminator: &str,
         number: i64,
     ) -> Result<crate::schema::Thread> {
         use crate::schema::threads::dsl::*;
-        let tpost = Self::get_raw_post(conn, discriminator.clone(), number).await?;
+        let tpost = Self::get_raw_post(conn, discriminator, number).await?;
         let this_board = Self::get_board(conn, discriminator).await?;
         Ok(threads
             .filter(board.eq(this_board.id))
@@ -156,7 +157,7 @@ impl Database {
 
     async fn get_raw_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discriminator: String,
+        discriminator: &str,
         number: i64,
     ) -> Result<Post> {
         use crate::schema::posts::dsl::*;
@@ -171,11 +172,11 @@ impl Database {
 
     pub async fn delete_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discriminator: String,
+        discriminator: &str,
         number: i64,
         token: MemberToken,
     ) -> Result<i64> {
-        let tpost = Self::get_raw_post(conn, discriminator.clone(), number).await?;
+        let tpost = Self::get_raw_post(conn, discriminator, number).await?;
         let tauthor = tpost.actual_author == *token.post_hash(&tpost.id.to_string());
         let tadmin = Self::is_admin(conn, token, tpost.board).await?;
 
@@ -272,11 +273,11 @@ impl Database {
     }
     pub async fn get_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        discriminator: String,
+        discriminator: &str,
         number: i64,
     ) -> Result<ThreadWithPosts> {
         use crate::schema::threads::dsl::*;
-        let this_board = Self::get_board(conn, discriminator.clone()).await?;
+        let this_board = Self::get_board(conn, discriminator).await?;
         let this_post = Self::get_raw_post(conn, discriminator, number).await?;
         let results = threads
             .filter(board.eq(this_board.id))
@@ -317,7 +318,7 @@ impl Database {
 
     pub async fn create_thread(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        tboard: String,
+        tboard: &str,
         mut thread: CreateThread,
         token: MemberToken,
     ) -> Result<ThreadWithPosts> {
@@ -335,7 +336,7 @@ impl Database {
             return Err(anyhow::anyhow!("No file provided"));
         }
 
-        let this_board = Self::get_board(conn, tboard.clone()).await?;
+        let this_board = Self::get_board(conn, tboard).await?;
 
         let mut t = insert_into(threads)
             .values((
@@ -365,7 +366,7 @@ impl Database {
     pub async fn create_post(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tboard: i64,
-        discriminator: String,
+        discriminator: &str,
         tthread: i64,
         mut post: CreatePost,
         token: MemberToken,
@@ -373,7 +374,7 @@ impl Database {
     ) -> Result<crate::schema::Post> {
         use crate::schema::posts::dsl::*;
 
-        post.content = post.content.trim().to_owned();
+        post.content = post.content.trim().to_string();
         if post.content.is_empty() && post.file.is_none() {
             return Err(anyhow::anyhow!(
                 "Either content or an file must be provided for any post"
@@ -386,10 +387,7 @@ impl Database {
         post.author = post.author.map(|string| {
             replace_possible_profanity(string, &crate::PROFANITY, || crate::QUOTES.random_quote())
         });
-        let this_post_number = Self::get_board(conn, discriminator.clone())
-            .await?
-            .post_count
-            + 1;
+        let this_post_number = Self::get_board(conn, discriminator).await?.post_count + 1;
         // THIS LINE, THE THREAD DOESNT EXIST LOOOL
         let thread_post_number = match thread_post_number(tthread, conn).await {
             Ok(v) => v,
@@ -400,7 +398,7 @@ impl Database {
             .content
             .split_whitespace()
             .flat_map(|x| {
-                common::structs::Reply::from_str(x, &discriminator, &thread_post_number.to_string())
+                common::structs::Reply::from_str(x, discriminator, &thread_post_number.to_string())
             })
             .collect::<Vec<common::structs::Reply>>();
         let mut replieses = Vec::new();
@@ -408,7 +406,7 @@ impl Database {
         for reply in replies {
             let this_post = Self::get_raw_post(
                 conn,
-                reply.board_discriminator,
+                &reply.board_discriminator,
                 reply.post_number.parse::<i64>()?,
             )
             .await
@@ -511,7 +509,7 @@ impl Database {
 
         let thread_topic = Self::get_thread(
             &mut conn,
-            safe.board_discriminator.clone(),
+            &safe.board_discriminator,
             safe.thread_post_number,
         )
         .await
@@ -597,8 +595,8 @@ impl Database {
     }
 
     pub async fn get_file(
+        path: &str,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        path: String,
     ) -> Result<FileInfo> {
         use crate::schema::files::dsl::*;
         let file = files
@@ -610,12 +608,12 @@ impl Database {
     }
 
     pub async fn get_random_banner(
-        board_discriminator: String,
+        board_discriminator: &str,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     ) -> Result<common::structs::Banner> {
         use crate::schema::banners::dsl::*;
         use diesel::query_dsl::methods::OrFilterDsl;
-        let board = Self::get_board(conn, board_discriminator.clone()).await?;
+        let board = Self::get_board(conn, board_discriminator).await?;
 
         let banner = banners
             .or_filter(boards.contains(vec![board.id]))
@@ -727,7 +725,7 @@ impl Database {
     // pub async fn set_user_push_url(
     //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     //     token: MemberToken,
-    //     push_url: Option<String>,
+    //     push_url: Option<&str>,
     // ) -> Result<()> {
     //     use crate::schema::members::dsl::*;
 
@@ -755,7 +753,7 @@ impl Database {
 
     pub async fn get_watching(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        disc: String,
+        disc: &str,
         post: i64,
         token: MemberToken,
     ) -> Result<bool> {
@@ -777,7 +775,7 @@ impl Database {
 
     pub async fn set_watching(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        disc: String,
+        disc: &str,
         post: i64,
         token: MemberToken,
         set_watching: bool,
@@ -899,11 +897,11 @@ impl Database {
             &subscription_info,
         )?;
 
-        let mut builder = web_push::WebPushMessageBuilder::new(&subscription_info)?;
+        let mut builder = web_push::WebPushMessageBuilder::new(&subscription_info);
         builder.set_payload(web_push::ContentEncoding::Aes128Gcm, payload);
         builder.set_vapid_signature(sig_builder.build()?);
 
-        let client = web_push::WebPushClient::new()?;
+        let client = web_push::IsahcWebPushClient::new()?;
 
         client.send(builder.build()?).await?;
         Ok(())

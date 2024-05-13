@@ -106,20 +106,20 @@ impl UnclaimedFiles {
                                 }
                             };
 
-                            let font = match rusttype::Font::try_from_vec(
+                            let font = match ab_glyph::FontVec::try_from_vec(
                                 (*crate::statics::FONT).to_vec(),
                             ) {
-                                Some(f) => f,
-                                None => {
-                                    println!("Failed to load font");
+                                Ok(f) => f,
+                                Err(e) => {
+                                    println!("Failed to load font: {e:?}");
                                     return Err(diskfilepath);
                                 }
                             };
 
                             let scale = if is_thread_post {
-                                rusttype::Scale { x: 75.0, y: 75.0 }
+                                ab_glyph::PxScale { x: 75.0, y: 75.0 }
                             } else {
-                                rusttype::Scale { x: 30.0, y: 30.0 }
+                                ab_glyph::PxScale { x: 30.0, y: 30.0 }
                             };
 
                             // draw_text_mut(canvas, color, x, y, scale, font, text)
