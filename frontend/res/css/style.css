@@ -1,7 +1,10 @@
 *:not(#allow-select) {
-  -webkit-user-select: none; /* Safari */
-  -ms-user-select: none; /* IE 10 and IE 11 */
-  user-select: none; /* Standard syntax */
+  -webkit-user-select: none;
+  /* Safari */
+  -ms-user-select: none;
+  /* IE 10 and IE 11 */
+  user-select: none;
+  /* Standard syntax */
 }
 
 .everything {
@@ -9,6 +12,24 @@
   margin: 0em;
   width: 100%;
   height: 100%;
+}
+
+input[type=text] {
+  width: 100%;
+  box-sizing: border-box;
+  border: var(--border-width) var(--border-type) var(--border-color);
+  background-color: var(--secondary-color);
+  color: var(--text-color);
+}
+
+textarea {
+  resize: none;
+  box-sizing: border-box;
+  width: 100%;
+  height: 100%;
+  border: var(--border-width) var(--border-type) var(--border-color);
+  background-color: var(--secondary-color);
+  color: var(--text-color);
 }
 
 /* *:not(#ignore-transition) {
@@ -81,16 +102,34 @@ body {
 }
 
 @media (min-width: 60rem) and (max-aspect-ratio: 1/1) {
+
   /* the resolution is too high and the aspect ratio is too low. increase the font size */
   html {
     font-size: 1.5rem;
   }
-  
+
   .post-file-thumbnail img {
     width: 15vw !important;
   }
-  
+
   .left-file .post-file .post-file-container .post-file-contents a .post-file-thumbnail img {
     width: 25vw !important;
+  }
+}
+
+.glowing-box {
+  -webkit-animation: box-glow var(--speed) ease-in-out infinite alternate;
+  -moz-animation: box-glow var(--speed) ease-in-out infinite alternate;
+  animation: box-glow var(--speed) ease-in-out infinite alternate;
+}
+
+@keyframes box-glow {
+  from {
+    box-shadow: 0 0 var(--default) #fff, 0 0 calc(var(--default) + var(--added)) #fff, 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color);
+  }
+
+  to {
+    box-shadow: 0 0 calc(var(--default) + var(--added)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 7)) var(--link-color);
+    filter: brightness(90%);
   }
 }

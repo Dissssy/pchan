@@ -71,11 +71,17 @@ pub fn Post(props: &Props) -> Html {
                     {
                         if let Some(on_click) = &*on_click {
                             html! {
-                                <span class="post-number" onclick={on_click}>{ format!("#{}", props.post.post_number) }</span>
+                                <a href={
+                                    if props.topic.is_some() {
+                                        format!("/{}/thread/{}", props.post.board_discriminator, props.post.thread_post_number)
+                                    } else {
+                                        format!("/{}/thread/{}#{}", props.post.board_discriminator, props.post.thread_post_number, props.post.post_number)
+                                    }
+                                } class="post-number" onclick={on_click}>{ format!("#{}", props.post.post_number) }</a>
                             }
                         } else {
                             html! {
-                                <span class="post-number">{ format!("#{}", props.post.post_number) }</span>
+                                <a href={format!("/{}/thread/{}#{}", props.post.board_discriminator, props.post.thread_post_number, props.post.post_number)} class="post-number">{ format!("#{}", props.post.post_number) }</a>
                             }
                         }
                     }

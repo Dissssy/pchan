@@ -143,6 +143,11 @@ pub fn File(props: &Props) -> Html {
                         }
                     };
 
+                    if path.contains(' ') {
+                        share_state.set(ShareState::Error(path));
+                        return;
+                    }
+
                     if let Some(window) = web_sys::window() {
                         if let Some(clip) = window.navigator().clipboard() {
                             let _ = clip.write_text(&format!("{}{}", env!("URL"), path));

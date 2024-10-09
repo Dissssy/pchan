@@ -86,7 +86,11 @@ pub fn other_endpoints(
                         .await
                         .map_err(|_| warp::reject::reject())?;
 
-                    crate::database::Database::is_valid_token(&mut conn, token.member_hash()).await
+                    crate::database_bindings::Database::is_valid_token(
+                        &mut conn,
+                        token.member_hash(),
+                    )
+                    .await
                 };
 
                 match is_auth {

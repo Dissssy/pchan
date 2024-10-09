@@ -1,14 +1,15 @@
 Frontend:
     - Truncate posts that are too long in board view
     - Error messages when thread fails to load automatically instead of redirecting to 404
-    - FINISH REWRITE
 
 Backend:
     - Moderation tools
     - Seperate login code out into its own function to simplify the OAuth flow readability
+    - Finish checking for permission to access a private board on different endpoints, boards and threads are done, posts are in threads so thats fine, maybe files can work?
+
 Shared:
     - Way to watch threads and know you are watching them (maybe some eye icon and two api endpoints, one that tells you if you're watching a thread, and one that sets watching the thread
-    
+    - Migrate to JWT instead of the current token system
 
 Long term goals:
     - Federation? probably the ability to issue two way tokens between instances that allow access to the API endpoints for the opposite instance
@@ -16,6 +17,9 @@ Long term goals:
     - Learn how to use the github issue tracker LOOOL
 
 Complete:
+    - Way to invite users (/api/v1/board/{board}/invite?info={Invite name identifier thing}) @done
+    - Way to accept invitations (/api/v1/consume_code?info={Invite code from the invite link}) @done
+    - FINISH REWRITE @done
     - SSE for new threads and posts! @done
     - Exponendial backoff retry @done
     - Thread links from board view @done

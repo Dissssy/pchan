@@ -1,4 +1,5 @@
-.post, .parent-post {
+.post,
+.parent-post {
   border-radius: var(--border-radius);
   height: min-content;
   width: fit-content;
@@ -19,13 +20,14 @@
   width: auto !important;
 }
 
-.post {  
+.post {
   margin-block: 0.4rem;
   background-color: var(--primary-color);
   height: min-content;
 }
 
-.post #invert, .parent-post #invert {
+.post #invert,
+.parent-post #invert {
   background-color: var(--secondary-color);
   height: min-content;
 }
@@ -72,9 +74,13 @@
   grid-row-end: 1;
   grid-column-start: 1;
   grid-column-end: 1;
-  /*! width: min-content !important; */  
+  /*! width: min-content !important; */
   height: min-content !important;
   /*! z-index: 1; */
+}
+
+.post-file-contents {
+  min-height: 2.5em;
 }
 
 .parent-post-file * {
@@ -136,7 +142,7 @@
   height: min-content;
   /*! position: none; */
   z-index: 0;
-  backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
+  background: rgba(0, 0, 0, 0.5);
   color: var(--link-color);
   padding-inline: 0.1rem;
   border-radius: 0 0 0 var(--border-radius);
@@ -155,7 +161,7 @@
   height: min-content;
   /*! position: none; */
   z-index: 0;
-  backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
+  background: rgba(0, 0, 0, 0.5);
   color: var(--link-color);
   padding-inline: 0.1rem;
   border-radius: 0 var(--border-radius) 0 0;
@@ -174,7 +180,7 @@
   width: min-content;
   height: min-content;
   z-index: 0;
-  backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
+  background: rgba(0, 0, 0, 0.5);
   color: var(--link-color);
   padding-inline: 0.1rem;
   border-radius: var(--border-radius) 0 0 0;
@@ -192,7 +198,7 @@
   margin-right: auto;
   z-index: 0;
   width: min-content;
-  backdrop-filter: blur(0.1em) saturate(10000%) brightness(20%);
+  background: rgba(0, 0, 0, 0.5);
   color: var(--link-color);
   padding-inline: 0.1rem;
   border-radius: 0 0 var(--border-radius) 0;
@@ -283,14 +289,16 @@
 
 @keyframes blurin {
   from {
-    filter: blur(1em);
+    filter: blur(10px);
   }
+
   to {
-    filter: blur(0em);
+    filter: blur(0px);
   }
 }
 
-.floating-image  .post-media-error a:link, .floating-image  .post-media-error a:visited {
+.floating-image .post-media-error a:link,
+.floating-image .post-media-error a:visited {
   color: var(--primary-color);
 }
 
@@ -313,10 +321,17 @@
   cursor: help;
 }
 
+.glowing-text {
+  -webkit-animation: glow var(--speed) ease-in-out infinite alternate;
+  -moz-animation: glow var(--speed) ease-in-out infinite alternate;
+  animation: glow var(--speed) ease-in-out infinite alternate;
+}
+
 @keyframes glow {
   from {
     text-shadow: 0 0 var(--default) #fff, 0 0 calc(var(--default) + var(--added)) #fff, 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color);
   }
+
   to {
     text-shadow: 0 0 calc(var(--default) + var(--added)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 2)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 3)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 4)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 5)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 6)) var(--link-color), 0 0 calc(var(--default) + calc(var(--added) * 7)) var(--link-color);
     filter: brightness(90%);

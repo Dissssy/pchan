@@ -1,4 +1,4 @@
-#![feature(async_iterator, lint_reasons)]
+#![feature(async_iterator)]
 #![warn(
     clippy::map_unwrap_or,
     clippy::unwrap_used,
@@ -15,7 +15,7 @@
     clippy::implicit_clone,
     clippy::manual_string_new
 )]
-
+#![allow(clippy::needless_return)]
 use std::{
     io::{Read as _, Write as _},
     sync::Arc,
@@ -30,11 +30,11 @@ use std::os::linux::fs::MetadataExt;
 use tokio::sync::Mutex;
 use warp::{http::HeaderValue, Filter, Reply};
 
-mod database;
+mod database_bindings;
 mod endpoints;
 mod filters;
 mod push;
-pub mod schema;
+// pub mod schema;
 mod statics;
 mod unclaimedfiles;
 use unclaimedfiles::UnclaimedFiles;
@@ -43,7 +43,7 @@ use quotes::Quotes;
 
 use std::collections::HashMap;
 
-// use crate::database::Users;
+// use crate::database_bindings::Users;
 use profanity::Profanity;
 
 use crate::filters::{
@@ -190,19 +190,18 @@ async fn main() {
             let path = path.as_str();
             let finally = match path.split_once('/').map(|(_, p)| format!("/{}", p)) {
                 Some(p) => {
-                    match crate::database::Database::get_file(
+                    match crate::database_bindings::Database::get_file(
                         &p,
                         conn,
                     ).await {
                         Ok(file) => {
                             Some(format!("https://pchan.p51.nl{}", if file.spoiler {
                                 // println!("found spoiler");
-                                crate::database::Database::get_random_spoiler(conn).await.map_err(|_| {
+                                database::get_random_spoiler(conn).await.map_err(|_| {
                                     warp::reject::reject()
                                 })?
                             } else if let Some(sig) = sig {
                                 // println!("found sig");
-                                // println!("path: {}", p);
                                 if sig.validates(&p).await {
                                     // println!("{:?}", raw_file);
                                     if let Some(raw_file) = raw_file {
@@ -350,7 +349,7 @@ async fn main() {
                             continue;
                         }
                     };
-                    let files_in_db = match database::Database::get_all_files(&mut db).await {
+                    let files_in_db = match database_bindings::Database::get_all_files(&mut db).await {
                         Ok(x) => x,
                         Err(e) => {
                             println!("Error getting files from database: {e}");

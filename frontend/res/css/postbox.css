@@ -7,7 +7,8 @@
   border-radius: var(--border-radius);
 }
 
-textarea, input {
+textarea,
+input {
   font-family: "ArimoNF";
 }
 
@@ -27,6 +28,7 @@ textarea, input {
 
 .post-box-meta {
   display: flex;
+  flex-direction: row-reverse;
   justify-content: center;
 }
 
@@ -44,6 +46,7 @@ textarea, input {
   flex-direction: row;
   flex-basis: -moz-available;
   flex-basis: -webkit-fill-available;
+  width: 100%;
 }
 
 .post-box-name {
@@ -60,35 +63,20 @@ textarea, input {
   width: 100%;
 }
 
-.post-box-name input {
-  width: 100%;
-  box-sizing: border-box;
-  border: var(--border-width) var(--border-type) var(--border-color);
-  background-color: var(--secondary-color);
-  color: var(--text-color);
-}
-
-
-.post-box-code {
-  width: 6rem;
+.post-box-moderator {
   padding: 0.2rem;
 }
 
-.post-box-code#sloppytoppy {
+.post-box-moderator#sloppytoppy {
   border-top: var(--border-width) var(--border-type) var(--border-color);
 }
 
-.post-box-code#notop {
+.post-box-moderator#notop {
   border-right: var(--border-width) var(--border-type) var(--border-color);
 }
 
-.post-box-code input {
-  width: 100%;
-  box-sizing: border-box;
+.post-box-moderator input {
   font-family: "Code";
-  border: var(--border-width) var(--border-type) var(--border-color);
-  background-color: var(--secondary-color);
-  color: var(--text-color);
 }
 
 .post-box-topic {
@@ -98,14 +86,6 @@ textarea, input {
   border-top: var(--border-width) var(--border-type) var(--border-color);
 }
 
-.post-box-topic input {
-  box-sizing: border-box;
-  width: 100%;
-  border: var(--border-width) var(--border-type) var(--border-color);
-  background-color: var(--secondary-color);
-  color: var(--text-color);
-}
-
 .post-box-content {
   padding: 0.2rem;
   width: auto;
@@ -113,16 +93,6 @@ textarea, input {
   padding-bottom: 0.3rem;
   border-bottom: var(--border-width) var(--border-type) var(--border-color);
   border-top: var(--border-width) var(--border-type) var(--border-color);
-}
-
-.post-box-content textarea {
-  resize: none;
-  box-sizing: border-box;
-  width: 100%;
-  height: 100%;
-  border: var(--border-width) var(--border-type) var(--border-color);
-  background-color: var(--secondary-color);
-  color: var(--text-color);
 }
 
 .post-box-file {

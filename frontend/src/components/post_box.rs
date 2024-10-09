@@ -13,7 +13,7 @@ use crate::{
 #[function_component]
 pub fn PostBox(props: &Props) -> Html {
     let possible_name = use_local_storage::<String>("name".to_string());
-    let possible_code = use_local_storage::<String>("code".to_string());
+    let possible_moderator = use_local_storage::<bool>("moderator".to_string());
     let routeinfo = use_route::<BaseRoute>().map(|route| {
         (
             route.board_discriminator(),
@@ -30,14 +30,10 @@ pub fn PostBox(props: &Props) -> Html {
 
     let show_box = use_state(|| false);
 
-    let open_hovered = use_state(|| false);
-    let close_hovered = use_state(|| false);
-    let spoiler_hovered = use_state(|| false);
-
     let post = CreatePostInfo {
         opened: show_box,
-        name: use_state(|| return possible_name.as_ref().unwrap_or(&String::new()).clone()),
-        code: use_state(|| return possible_code.as_ref().unwrap_or(&String::new()).clone()),
+        name: use_state(|| possible_name.as_ref().unwrap_or(&String::new()).clone()),
+        moderator: use_state(|| *possible_moderator.as_ref().unwrap_or(&false)),
         topic: use_state(String::new),
         content: use_state(String::new),
         file: use_state(|| None),
@@ -87,7 +83,7 @@ pub fn PostBox(props: &Props) -> Html {
                     let create_post = CreatePost {
                         author: Some((*post.name).clone()).filter(|name| !name.is_empty()),
                         content: (*post.content).clone(),
-                        code: Some((*post.code).clone()).filter(|code| !code.is_empty()),
+                        moderator: *post.moderator,
                         file,
                     };
 
@@ -189,7 +185,7 @@ pub fn PostBox(props: &Props) -> Html {
     }
 
     let on_input_name = post.name_change_callback(possible_name.clone());
-    let on_input_code = post.code_change_callback(possible_code.clone());
+    let on_input_moderator = post.moderator_change_callback(possible_moderator.clone());
     let on_input_topic = post.topic_change_callback();
     let on_input_content = post.content_change_callback();
     let on_change_file = post.file_change_callback();
@@ -203,16 +199,32 @@ pub fn PostBox(props: &Props) -> Html {
                         <div class="post-box-meta">
                             <a
                                 onclick={ let opened = post.opened.clone(); Callback::from(move |e: MouseEvent| {e.prevent_default(); opened.set(!*opened)})}
-                                onmouseover={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(true)) }
-                                onmouseout={ let close_hovered = close_hovered.clone(); Callback::from(move |_| close_hovered.set(false)) }>
-                                { if *post.opened { if *open_hovered { if emojis { "󱀈" } else { "Open" } } else if emojis { "󱀈" } else { "Open" } } else if *close_hovered { if emojis { "󱀉" } else { "Cloes" } } else if emojis { "󱀉" } else { "Close" } }
+                                >
+                                {
+                                    if *post.opened {
+                                        if emojis { "󱀈" } else { "Close" }
+                                    } else {
+                                        // i will not collapse this.
+                                        if emojis { "󱀉" } else { "Open" }
+                                    }
+                                }
                             </a>
                             <div class="post-box-meta-inputs" style={ if *post.opened { "" } else { "display: none;" } }>
                                 <div class="post-box-name" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
                                     <input type="text" placeholder="Anonymous" value={possible_name.as_ref().unwrap_or(&String::new()).clone()} oninput={on_input_name} />
                                 </div>
-                                <div class="post-box-code" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
-                                    <input type="text" placeholder="secret code" value={post.upper_code_val()} oninput={on_input_code} />
+                                <div class="post-box-moderator" id={ if thread.is_some() { "notop" } else { "sloppytoppy" } }>
+                                    {
+                                        if *post.moderator {
+                                            html! {
+                                                <a title="Post as Moderator" onclick={on_input_moderator.clone()}>{ if emojis { "󱢾" } else { "Moderator" } }</a>
+                                            }
+                                        } else {
+                                            html! {
+                                                <a title="Post as user" onclick={on_input_moderator.clone()}>{ if emojis { "" } else { "User" } }</a>
+                                            }
+                                        }
+                                    }
                                 </div>
                                 {
                                     if thread.is_none() {
@@ -231,15 +243,17 @@ pub fn PostBox(props: &Props) -> Html {
                             <textarea value={(*post.content).clone()} placeholder={ format!("Content ({})",  if thread.is_some() { if post.file.is_none() { "Or File" } else { "Optional" } } else { "Optional" })} oninput={on_input_content} />
                         </div>
                         <div class="post-box-file" style={ if *post.opened { "" } else { "display: none;" } }>
-                            <a title="spoiler" onclick={on_click_spoiler.clone()}
-                                onmouseover={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(true)) }
-                                onmouseout={ let spoiler_hovered = spoiler_hovered.clone(); Callback::from(move |_| spoiler_hovered.set(false)) }
-                            >{ match (*post.spoiler, *spoiler_hovered) {
-                                ( true,  true) => if emojis { "󰀨" } else { "UnSpoiler" }, // file is spoilered and also currently hovered
-                                ( true, false) => if emojis { "󰀨" } else { "UnSpoiler" }, // file is spoilered but not hovered
-                                (false,  true) => if emojis { "" } else { "Spoiler" }, // file is not spoilered but hovered
-                                (false, false) => if emojis { "" } else { "Spoiler" }, // file is not spoilered and not hovered
-                            } }</a>
+                            <a title={ if *post.spoiler { "File will be hidden" } else { "File will be shown" } } onclick={on_click_spoiler.clone()}
+                            >
+                                {
+                                    if *post.spoiler {
+                                        if emojis { "󰛑" } else { "File will be hidden" }
+                                    } else {
+                                        // i will not collapse this.
+                                        if emojis { "󰛐" } else { "File will be shown" }
+                                    }
+                                }
+                            </a>
                             <input type="file" onchange={on_change_file} />
                             <span>{format!("({})", if thread.is_some() { if post.content.is_empty() { "Or Content" } else { "Optional" } } else { "Required" })}</span>
                         </div>
@@ -280,7 +294,7 @@ pub struct Props {
 pub struct CreatePostInfo {
     pub opened: UseStateHandle<bool>,
     pub name: UseStateHandle<String>,
-    pub code: UseStateHandle<String>,
+    pub moderator: UseStateHandle<bool>,
     pub topic: UseStateHandle<String>,
     pub content: UseStateHandle<String>,
     pub file: UseStateHandle<Option<web_sys::File>>,
@@ -288,10 +302,6 @@ pub struct CreatePostInfo {
 }
 
 impl CreatePostInfo {
-    pub fn upper_code_val(&self) -> String {
-        self.code.to_uppercase()
-    }
-
     pub fn name_change_callback(
         &self,
         name_storage: UseLocalStorageHandle<String>,
@@ -305,15 +315,18 @@ impl CreatePostInfo {
         })
     }
 
-    pub fn code_change_callback(
+    pub fn moderator_change_callback(
         &self,
-        code_storage: UseLocalStorageHandle<String>,
-    ) -> Callback<InputEvent> {
-        let code = self.code.clone();
-        Callback::from(move |e: InputEvent| {
-            if let Some(value) = crate::helpers::on_input_to_string(e).map(|s| s.value()) {
-                code_storage.set(value.clone());
-                code.set(value);
+        moderator_storage: UseLocalStorageHandle<bool>,
+    ) -> Callback<MouseEvent> {
+        let moderator = self.moderator.clone();
+        Callback::from(move |_: MouseEvent| {
+            if let Some(value) = moderator_storage.map(|s| !s) {
+                moderator_storage.set(value);
+                moderator.set(value);
+            } else {
+                moderator_storage.set(!*moderator);
+                moderator.set(!*moderator);
             }
         })
     }

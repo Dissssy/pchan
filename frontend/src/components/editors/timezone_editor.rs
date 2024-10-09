@@ -25,11 +25,21 @@ pub fn TimezoneEditor() -> Html {
         }
         Some(tz) => {
             let name = tz.name();
+            let this_search = search
+                .to_lowercase()
+                .replace("_", "")
+                .replace("/", "")
+                .replace(" ", "");
             let list_of_timezones = list
                 .iter()
                 .filter(|thistz| {
                     if search.len() > 0 {
-                        thistz.to_lowercase().contains(&search.to_lowercase())
+                        thistz
+                            .to_lowercase()
+                            .replace(" ", "")
+                            .replace("_", "")
+                            .replace("/", "")
+                            .contains(&this_search)
                     } else {
                         true
                     }
@@ -41,16 +51,22 @@ pub fn TimezoneEditor() -> Html {
             html! {
                 <div class="timezone-editor">
                     <span>{format!("Current Timezone: {}", name)}</span>
-                    <input
-                        type="text"
-                        placeholder="Search"
-                        value={(*search).clone()}
-                        oninput={move |e: InputEvent| {
-                            if let Some(e) = on_input_to_string(e) {
-                                search.set(e.value());
-                            }
-                        }}
-                    />
+                    <div class="timezone-editor-search">
+                        <input
+                            type="text"
+                            placeholder="Search"
+                            value={(*search).clone()}
+                            oninput={move |e: InputEvent| {
+                                if let Some(e) = on_input_to_string(e) {
+                                    search.set(e.value());
+                                }
+                            }}
+                        />
+                        <span class="timezone-editor-results-count">
+                            {format!("{} results", list_of_timezones.len())}
+                        </span>
+                    </div>
+
                     <select
                         onchange={move |e: Event| {
                             if let Some(change) = on_change_select_element(e) {
@@ -64,9 +80,10 @@ pub fn TimezoneEditor() -> Html {
                             }
                         }}
                     >
+                        <option selected=true disabled=true> { "Choose here" } </option>
                         {for list_of_timezones.iter().map(|thistz| {
                             html! {
-                                <option value={*thistz} selected={name == *thistz}>{thistz}</option>
+                                <option value={*thistz}>{thistz}</option>
                             }
                         })}
                     </select>

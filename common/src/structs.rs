@@ -8,8 +8,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct BoardWithThreads {
-    pub name: String,
-    pub discriminator: String,
+    pub info: SafeBoard,
     pub threads: Vec<ThreadWithLazyPosts>,
 }
 
@@ -17,14 +16,17 @@ pub struct BoardWithThreads {
 pub struct SafeBoard {
     pub name: String,
     pub discriminator: String,
+    pub private: bool,
 }
 
 impl From<BoardWithThreads> for SafeBoard {
     fn from(b: BoardWithThreads) -> Self {
-        Self {
-            name: b.name,
-            discriminator: b.discriminator,
-        }
+        // Self {
+        //     name: b.name,
+        //     discriminator: b.discriminator,
+        //     private: b.private,
+        // }
+        b.info
     }
 }
 
@@ -66,18 +68,15 @@ pub enum User {
 }
 
 impl User {
-    pub fn with_code(s: Option<String>, code: Option<String>) -> Self {
+    pub fn load_from(s: Option<String>, moderator: bool) -> Self {
         match s {
-            Some(s) => match code {
-                Some(code) => {
-                    if code == env!("SUPER_SECRET_MOD_CODE") {
-                        Self::Mod(s)
-                    } else {
-                        Self::Named(s)
-                    }
+            Some(s) => {
+                if moderator {
+                    Self::Mod(s)
+                } else {
+                    Self::Named(s)
                 }
-                None => Self::Named(s),
-            },
+            }
             None => Self::Anonymous,
         }
     }
@@ -99,6 +98,13 @@ pub struct FileInfo {
     pub thumbnail: String,
     pub hash: String,
     pub spoiler: bool,
+    pub board: Option<MicroBoardInfo>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct MicroBoardInfo {
+    pub discriminator: String,
+    pub private: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -112,7 +118,7 @@ pub struct CreatePost {
     pub file: Option<CreateFile>,
     pub content: String,
     pub author: Option<String>,
-    pub code: Option<String>,
+    pub moderator: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -212,4 +218,16 @@ pub enum PushMessage {
     Open,
     NewPost(Arc<SafePost>),
     Close,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SubscriptionData {
+    pub endpoint: String,
+    pub keys: SubscriptionKeys,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+pub struct SubscriptionKeys {
+    pub auth: String,
+    pub p256dh: String,
 }

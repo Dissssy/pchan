@@ -37,6 +37,8 @@ pub enum BaseRoute {
     Home,
     #[at("/settings")]
     Settings,
+    #[at("/redeem")]
+    Redeem,
     #[at("/:board_discriminator/")]
     BoardPage { board_discriminator: String },
     #[at("/:board_discriminator/thread/:thread_id")]
@@ -209,6 +211,11 @@ fn switch(routes: BaseRoute) -> Html {
         BaseRoute::Settings => {
             html! {
                 <pages::Settings/>
+            }
+        }
+        BaseRoute::Redeem => {
+            html! {
+                <pages::Redeem/>
             }
         }
         BaseRoute::BoardPage {

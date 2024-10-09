@@ -4,6 +4,8 @@ target
 depricated
 frontend/dist
 frontend/olddist
+frontend/newolddist
+frontend/res-bak
 Cargo.lock
 backend/migrations
 backend/auth.bin.gz
@@ -32,3 +34,5 @@ frontend/src/api/old
 build.sh
 backend/hmac_key
 backend/Cargo.toml.bak
+stage
+run_server.sh

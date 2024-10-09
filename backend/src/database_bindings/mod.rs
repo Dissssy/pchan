@@ -9,6 +9,7 @@ use diesel::dsl::now;
 use diesel::insert_into;
 use diesel::query_dsl::methods::FilterDsl;
 use diesel::query_dsl::methods::OrderDsl;
+use diesel::BoolExpressionMethods as _;
 use diesel::ExpressionMethods;
 use diesel::PgArrayExpressionMethods;
 use diesel_async::RunQueryDsl;
@@ -21,12 +22,13 @@ use web_push::WebPushClient as _;
 // use web_push::WebPushClient;
 // use web_push::WebPushMessageBuilder;
 
-use crate::endpoints::api::SubscriptionData;
 use crate::filters::MemberToken;
+use common::structs::SubscriptionData;
 // use crate::endpoints::api::SubscriptionData;
-use crate::schema::thread_post_number;
-use crate::schema::Banner;
-use crate::schema::Post;
+use database::thread_post_number;
+use database::Banner;
+use database::Post;
+use database::UserTag;
 
 // pub struct Users {
 //     valid_users: Vec<&str>,
@@ -83,7 +85,7 @@ impl Database {
         new_discriminator: &str,
         new_name: &str,
     ) -> Result<()> {
-        use crate::schema::boards::dsl::*;
+        use database::boards::dsl::*;
 
         insert_into(boards)
             .values((discriminator.eq(new_discriminator), name.eq(new_name)))
@@ -93,26 +95,147 @@ impl Database {
     }
     pub async fn get_boards(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    ) -> Result<Vec<crate::schema::Board>> {
-        use crate::schema::boards::dsl::*;
+        token: MemberToken,
+    ) -> Result<Vec<database::Board>> {
+        use database::boards::dsl::*;
 
-        let results = boards
+        let results: Vec<database::Board> = boards
             .order(name.desc())
-            .load::<crate::schema::Board>(&mut *conn)
+            .load::<database::Board>(&mut *conn)
             .await?;
-        Ok(results)
+
+        let mut final_results = vec![];
+        for board in results {
+            if Self::is_allowed_access(
+                conn,
+                token.clone(),
+                BoardOrDiscriminator::Board(board.clone()),
+            )
+            .await
+            .inspect_err(|e| eprintln!("Error checking access: {}", e))
+            .unwrap_or(false)
+            {
+                final_results.push(board);
+            }
+        }
+
+        Ok(final_results)
+    }
+
+    pub async fn is_allowed_access<'a>(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: MemberToken,
+        board: BoardOrDiscriminator<'a>,
+    ) -> Result<bool> {
+        use database::user_tags::dsl::*;
+
+        let board = match board {
+            BoardOrDiscriminator::Discriminator(disc) => Self::get_raw_board(conn, disc).await?,
+            BoardOrDiscriminator::Board(board) => board,
+        };
+
+        if !board.private {
+            return Ok(true);
+        }
+
+        // let permission_level = Self::is_admin(conn, token.clone(), board.id).await?;
+        let permission_level =
+            database::permission_level(conn, board.id, &token.member_hash()).await?;
+        if !permission_level.is_none() {
+            return Ok(true);
+        }
+
+        let hash = common::hash_invitation(&token.member_hash(), board.id);
+
+        use diesel::dsl::{exists, select};
+
+        let exists = select(exists(
+            user_tags.filter(
+                invite_hash
+                    .eq(Some(hash))
+                    .and(board_id.eq(board.id))
+                    .and(tag_kind.eq(UserTag::BoardAccess.to_string())),
+            ),
+        ))
+        .get_result(conn)
+        .await?;
+
+        // match results {
+        //     Ok(_) => Ok(true),
+        //     Err(diesel::NotFound) => Ok(false),
+        //     Err(e) => Err(e.into()),
+        // }
+        Ok(exists)
+    }
+
+    pub async fn generate_board_access_code(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: MemberToken,
+        board_id: i64,
+        invite_name: String,
+    ) -> Result<String> {
+        database::create_access(conn, invite_name.as_str(), &token.member_hash(), board_id).await
+    }
+
+    pub async fn generate_board_moderator_code(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: MemberToken,
+        board_id: i64,
+        invite_name: String,
+    ) -> Result<String> {
+        database::create_moderation(conn, invite_name.as_str(), &token.member_hash(), board_id)
+            .await
+    }
+
+    pub async fn consume_code(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: MemberToken,
+        invite_name: String,
+    ) -> Result<()> {
+        database::grant_access(conn, &invite_name, &token.member_hash()).await
     }
 
     pub async fn get_board(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        discrim: &str,
+        token: MemberToken,
+    ) -> Result<database::Board> {
+        use database::boards::dsl::*;
+
+        let result = boards
+            .filter(discriminator.eq(discrim))
+            .first::<database::Board>(&mut *conn)
+            .await?;
+
+        Self::is_allowed_access(
+            conn,
+            token.clone(),
+            BoardOrDiscriminator::Discriminator(discrim),
+        )
+        .await
+        .inspect_err(|e| eprintln!("Error checking access: {}", e))
+        .and_then(|x| {
+            if x {
+                Ok(())
+            } else {
+                Err(anyhow!("Not authorized to view board"))
+            }
+        })?;
+
+        Ok(result)
+    }
+
+    pub async fn get_raw_board(
+        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discim: &str,
-    ) -> Result<crate::schema::Board> {
-        use crate::schema::boards::dsl::*;
+    ) -> Result<database::Board> {
+        use database::boards::dsl::*;
 
         let results = boards
             .filter(discriminator.eq(discim))
-            .first::<crate::schema::Board>(&mut *conn)
+            .first::<database::Board>(&mut *conn)
             .await?;
+
         Ok(results)
     }
 
@@ -120,7 +243,23 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discriminator: &str,
         number: i64,
+        token: MemberToken,
     ) -> Result<SafePost> {
+        Self::is_allowed_access(
+            conn,
+            token.clone(),
+            BoardOrDiscriminator::Discriminator(discriminator),
+        )
+        .await
+        .inspect_err(|e| eprintln!("Error checking access: {}", e))
+        .and_then(|x| {
+            if x {
+                Ok(())
+            } else {
+                Err(anyhow!("Not authorized to view post"))
+            }
+        })?;
+
         Self::get_raw_post(conn, discriminator, number)
             .await?
             .safe(conn)
@@ -131,14 +270,14 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discriminator: &str,
         number: i64,
-    ) -> Result<crate::schema::Thread> {
-        use crate::schema::threads::dsl::*;
+    ) -> Result<database::Thread> {
+        use database::threads::dsl::*;
         let tpost = Self::get_raw_post(conn, discriminator, number).await?;
-        let this_board = Self::get_board(conn, discriminator).await?;
+        let this_board = Self::get_raw_board(conn, discriminator).await?;
         Ok(threads
             .filter(board.eq(this_board.id))
             .filter(post_id.eq(tpost.id))
-            .first::<crate::schema::Thread>(&mut *conn)
+            .first::<database::Thread>(&mut *conn)
             .await?)
     }
 
@@ -146,11 +285,11 @@ impl Database {
     //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     //     id: i64,
     // ) -> Result<SafePost> {
-    //     use crate::schema::posts::dsl::*;
+    //     use database::posts::dsl::*;
 
     //     let post = posts
     //         .filter(id.eq(id))
-    //         .first::<crate::schema::Post>(&mut *conn)
+    //         .first::<database::Post>(&mut *conn)
     //         .await?;
     //     post.safe(conn).await
     // }
@@ -160,13 +299,13 @@ impl Database {
         discriminator: &str,
         number: i64,
     ) -> Result<Post> {
-        use crate::schema::posts::dsl::*;
+        use database::posts::dsl::*;
 
-        let this_board = Self::get_board(conn, discriminator).await?;
+        let this_board = Self::get_raw_board(conn, discriminator).await?;
         Ok(posts
             .filter(board.eq(this_board.id))
             .filter(post_number.eq(number))
-            .first::<crate::schema::Post>(&mut *conn)
+            .first::<database::Post>(&mut *conn)
             .await?)
     }
 
@@ -176,17 +315,34 @@ impl Database {
         number: i64,
         token: MemberToken,
     ) -> Result<i64> {
+        Self::is_allowed_access(
+            conn,
+            token.clone(),
+            BoardOrDiscriminator::Discriminator(discriminator),
+        )
+        .await
+        .inspect_err(|e| eprintln!("Error checking access: {}", e))
+        .and_then(|x| {
+            if x {
+                Ok(())
+            } else {
+                Err(anyhow!("Not authorized to delete post"))
+            }
+        })?;
         let tpost = Self::get_raw_post(conn, discriminator, number).await?;
         let tauthor = tpost.actual_author == *token.post_hash(&tpost.id.to_string());
-        let tadmin = Self::is_admin(conn, token, tpost.board).await?;
+        // let tadmin = Self::is_admin(conn, token, tpost.board).await?;
+        let at_least_mod = !database::permission_level(conn, tpost.board, &token.member_hash())
+            .await?
+            .is_none();
 
-        if !(tadmin || tauthor) {
+        if !(at_least_mod || tauthor) {
             return Err(anyhow!("Not authorized to delete post"));
         }
 
         let tthread = Self::get_raw_thread(conn, discriminator, number).await;
         let id = tpost.id;
-        match (tadmin, tauthor, tthread, tpost) {
+        match (at_least_mod, tauthor, tthread, tpost) {
             // if the user is an admin they can delete a post
             (true, _, Err(_), post) => {
                 Self::raw_delete_post(conn, post.id).await?;
@@ -211,7 +367,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tid: i64,
     ) -> Result<()> {
-        use crate::schema::posts::dsl::*;
+        use database::posts::dsl::*;
 
         diesel::delete(posts.filter(id.eq(tid)))
             .execute(conn)
@@ -223,7 +379,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tid: i64,
     ) -> Result<()> {
-        use crate::schema::threads::dsl::*;
+        use database::threads::dsl::*;
 
         diesel::delete(threads.filter(id.eq(tid)))
             .execute(conn)
@@ -231,33 +387,34 @@ impl Database {
         Ok(())
     }
 
-    async fn is_admin(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: MemberToken,
-        board_id: i64,
-    ) -> Result<bool> {
-        use crate::schema::members::dsl::*;
-        use diesel::query_dsl::methods::SelectDsl;
+    // async fn is_admin(
+    //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    //     token: MemberToken,
+    //     board_id: i64,
+    // ) -> Result<bool> {
+    //     // use database::members::dsl::*;
+    //     // use diesel::query_dsl::methods::SelectDsl;
 
-        // get this members moderates Vec<i64>
-        let status = members
-            .select(moderates)
-            .filter(token_hash.eq(&*token.member_hash()))
-            .first::<Option<Vec<i64>>>(&mut *conn)
-            .await?;
+    //     // // get this members moderates Vec<i64>
+    //     // let status = members
+    //     //     .select(moderates)
+    //     //     .filter(token_hash.eq(&*token.member_hash()))
+    //     //     .first::<Option<Vec<i64>>>(&mut *conn)
+    //     //     .await?;
 
-        Ok(match status {
-            Some(status) => status.is_empty() || status.contains(&board_id),
-            None => false,
-        })
-    }
+    //     // Ok(match status {
+    //     //     Some(status) => status.is_empty() || status.contains(&board_id),
+    //     //     None => false,
+    //     // })
+    //     database::check_moderation(conn, board, token)
+    // }
 
     pub async fn create_file(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         file: FileInfo,
         post_id: i64,
-    ) -> Result<crate::schema::File> {
-        use crate::schema::files::dsl::*;
+    ) -> Result<database::File> {
+        use database::files::dsl::*;
 
         let tf = insert_into(files)
             .values((
@@ -266,7 +423,7 @@ impl Database {
                 id.eq(post_id),
                 spoiler.eq(file.spoiler),
             ))
-            .get_result::<crate::schema::File>(conn)
+            .get_result::<database::File>(conn)
             .await?;
 
         Ok(tf)
@@ -275,14 +432,15 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         discriminator: &str,
         number: i64,
+        token: MemberToken,
     ) -> Result<ThreadWithPosts> {
-        use crate::schema::threads::dsl::*;
-        let this_board = Self::get_board(conn, discriminator).await?;
+        use database::threads::dsl::*;
+        let this_board = Self::get_board(conn, discriminator, token).await?;
         let this_post = Self::get_raw_post(conn, discriminator, number).await?;
         let results = threads
             .filter(board.eq(this_board.id))
             .filter(post_id.eq(this_post.id))
-            .first::<crate::schema::Thread>(&mut *conn)
+            .first::<database::Thread>(&mut *conn)
             .await?;
         results.with_posts(conn).await
     }
@@ -292,12 +450,12 @@ impl Database {
     //     bboard: i64,
     //     number: i64,
     // ) -> Result<ThreadWithPosts> {
-    //     use crate::schema::threads::dsl::*;
+    //     use database::threads::dsl::*;
     //     let this_post = Self::get_post_from_post_number(conn, bboard, number).await?;
     //     let results = threads
     //         .filter(board.eq(bboard))
     //         .filter(post_id.eq(this_post.id))
-    //         .first::<crate::schema::Thread>(&mut *conn)
+    //         .first::<database::Thread>(&mut *conn)
     //         .await?;
     //     results.with_posts(conn).await
     // }
@@ -306,12 +464,12 @@ impl Database {
     //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     //     bboard: i64,
     //     number: i64,
-    // ) -> Result<crate::schema::Post> {
-    //     use crate::schema::posts::dsl::*;
+    // ) -> Result<database::Post> {
+    //     use database::posts::dsl::*;
     //     let results = posts
     //         .filter(board.eq(bboard))
     //         .filter(post_number.eq(number))
-    //         .first::<crate::schema::Post>(&mut *conn)
+    //         .first::<database::Post>(&mut *conn)
     //         .await?;
     //     Ok(results)
     // }
@@ -322,7 +480,7 @@ impl Database {
         mut thread: CreateThread,
         token: MemberToken,
     ) -> Result<ThreadWithPosts> {
-        use crate::schema::threads::dsl::*;
+        use database::threads::dsl::*;
 
         if thread.topic.is_empty() {
             return Err(anyhow::anyhow!("No topic provided"));
@@ -336,7 +494,7 @@ impl Database {
             return Err(anyhow::anyhow!("No file provided"));
         }
 
-        let this_board = Self::get_board(conn, tboard).await?;
+        let this_board = Self::get_board(conn, tboard, token.clone()).await?;
 
         let mut t = insert_into(threads)
             .values((
@@ -345,7 +503,7 @@ impl Database {
                 latest_post.eq(0),
                 topic.eq(thread.topic),
             ))
-            .get_result::<crate::schema::Thread>(conn)
+            .get_result::<database::Thread>(conn)
             .await?;
 
         let p = match Self::create_post(conn, this_board.id, tboard, t.id, thread.post, token, None)
@@ -371,8 +529,8 @@ impl Database {
         mut post: CreatePost,
         token: MemberToken,
         check_hash_against: Option<Vec<FileInfo>>,
-    ) -> Result<crate::schema::Post> {
-        use crate::schema::posts::dsl::*;
+    ) -> Result<database::Post> {
+        use database::posts::dsl::*;
 
         post.content = post.content.trim().to_string();
         if post.content.is_empty() && post.file.is_none() {
@@ -387,7 +545,10 @@ impl Database {
         post.author = post.author.map(|string| {
             replace_possible_profanity(string, &crate::PROFANITY, || crate::QUOTES.random_quote())
         });
-        let this_post_number = Self::get_board(conn, discriminator).await?.post_count + 1;
+        let this_post_number = Self::get_board(conn, discriminator, token.clone())
+            .await?
+            .post_count
+            + 1;
         // THIS LINE, THE THREAD DOESNT EXIST LOOOL
         let thread_post_number = match thread_post_number(tthread, conn).await {
             Ok(v) => v,
@@ -435,15 +596,19 @@ impl Database {
             None
         };
 
-        if !Self::is_admin(conn, token.clone(), tboard).await? {
-            post.code = None;
-        }
+        let at_least_mod = !database::permission_level(conn, tboard, &token.member_hash())
+            .await?
+            .is_none();
+
+        // if !Self::is_admin(conn, token.clone(), tboard).await? {
+        //     post.moderator = false;
+        // }
 
         let member_hash = token.member_hash();
 
         let t = insert_into(posts).values((
             post_number.eq(this_post_number),
-            code.eq(post.code),
+            moderator.eq(post.moderator && at_least_mod),
             thread.eq(tthread),
             board.eq(tboard),
             author.eq(&post.author),
@@ -452,7 +617,7 @@ impl Database {
             timestamp.eq(now),
             actual_author.eq(&*member_hash),
         ));
-        let p = t.get_result::<crate::schema::Post>(conn).await?;
+        let p = t.get_result::<database::Post>(conn).await?;
 
         if let Some(f) = pending_file {
             Self::create_file(conn, f, p.id).await?;
@@ -507,7 +672,7 @@ impl Database {
             common::structs::PushMessage::NewPost(Arc::new(safe.clone())),
         );
 
-        let thread_topic = Self::get_thread(
+        let thread_topic = Self::get_raw_thread(
             &mut conn,
             &safe.board_discriminator,
             safe.thread_post_number,
@@ -516,7 +681,7 @@ impl Database {
         .map(|x| x.topic)
         .unwrap_or_default();
 
-        use crate::schema::members::dsl::*;
+        use database::members::dsl::*;
 
         let payload = match serde_json::to_string(&serde_json::json!({
             "title": "New post in a thread you're watching!",
@@ -584,9 +749,9 @@ impl Database {
     pub async fn get_all_files(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     ) -> Result<Vec<FileInfo>> {
-        use crate::schema::files::dsl::*;
+        use database::files::dsl::*;
         let filelist = files
-            .load::<crate::schema::File>(conn)
+            .load::<database::File>(conn)
             .await?
             .iter()
             .map(|x| x.raw_info())
@@ -598,22 +763,34 @@ impl Database {
         path: &str,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     ) -> Result<FileInfo> {
-        use crate::schema::files::dsl::*;
+        use database::files::dsl::*;
         let file = files
             .filter(filepath.eq(path))
-            .first::<crate::schema::File>(conn)
+            .first::<database::File>(conn)
             .await
             .map_err(|_| anyhow!("File not found"))?;
-        Ok(file.raw_info())
+        file.info(conn).await
     }
 
     pub async fn get_random_banner(
         board_discriminator: &str,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: MemberToken,
     ) -> Result<common::structs::Banner> {
-        use crate::schema::banners::dsl::*;
+        use database::banners::dsl::*;
         use diesel::query_dsl::methods::OrFilterDsl;
-        let board = Self::get_board(conn, board_discriminator).await?;
+        let board = Self::get_raw_board(conn, board_discriminator).await?;
+
+        Self::is_allowed_access(conn, token, BoardOrDiscriminator::Board(board.clone()))
+            .await
+            .inspect_err(|e| eprintln!("Error checking access: {}", e))
+            .and_then(|x| {
+                if x {
+                    Ok(())
+                } else {
+                    Err(anyhow!("Not authorized to view board"))
+                }
+            })?;
 
         let banner = banners
             .or_filter(boards.contains(vec![board.id]))
@@ -629,31 +806,16 @@ impl Database {
             .safe())
     }
 
-    pub async fn get_random_spoiler(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    ) -> Result<String> {
-        use crate::schema::spoilers::dsl::*;
-        use diesel::query_dsl::methods::SelectDsl;
-
-        let spoiler = spoilers.select(img).load::<String>(conn).await?;
-
-        use rand::seq::SliceRandom;
-        spoiler
-            .choose(&mut rand::thread_rng())
-            .cloned()
-            .ok_or_else(|| anyhow!("No spoilers found!"))
-    }
-
     pub async fn is_valid_token(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         token: MemberToken,
     ) -> Result<bool> {
-        use crate::schema::members::dsl::*;
+        use database::members::dsl::*;
         // println!("Checking token: {}", token.member_hash());
         // check if a user with this token exists
         let user = members
             .filter(token_hash.eq(&*token.member_hash()))
-            .first::<crate::schema::Member>(conn)
+            .first::<database::Member>(conn)
             .await;
 
         Ok(user.is_ok())
@@ -663,7 +825,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         token: MemberToken,
     ) -> Result<()> {
-        use crate::schema::members::dsl::*;
+        use database::members::dsl::*;
 
         // check if a user with this token exists
         if Self::is_valid_token(conn, token.clone()).await? {
@@ -683,7 +845,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         token: MemberToken,
     ) -> Result<()> {
-        use crate::schema::members::dsl::*;
+        use database::members::dsl::*;
 
         // check if a user with this token exists
         if !Self::is_valid_token(conn, token.clone()).await? {
@@ -702,7 +864,7 @@ impl Database {
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         tokens: Vec<MemberToken>,
     ) -> Result<()> {
-        use crate::schema::members::dsl::*;
+        use database::members::dsl::*;
 
         let hashed_tokens = tokens
             .iter()
@@ -727,7 +889,7 @@ impl Database {
     //     token: MemberToken,
     //     push_url: Option<&str>,
     // ) -> Result<()> {
-    //     use crate::schema::members::dsl::*;
+    //     use database::members::dsl::*;
 
     //     let hashed_token = common::hash_with_salt(&token, &crate::statics::TOKEN_SALT);
 
@@ -742,12 +904,65 @@ impl Database {
     pub async fn get_subscribed_users(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         thread_id: i64,
-    ) -> Result<Vec<crate::schema::Member>> {
-        use crate::schema::members::dsl::*;
-        let users = members
-            .filter(watching.contains(vec![thread_id]))
-            .load::<crate::schema::Member>(conn)
-            .await?;
+    ) -> Result<Vec<database::Member>> {
+        let board = {
+            let bid = {
+                use database::threads::dsl::*;
+
+                threads
+                    .filter(id.eq(thread_id))
+                    .first::<database::Thread>(conn)
+                    .await?
+                    .board
+            };
+
+            {
+                use database::boards::dsl::*;
+                boards
+                    .filter(id.eq(bid))
+                    .first::<database::Board>(conn)
+                    .await?
+            }
+        };
+
+        let mut users = {
+            use database::members::dsl::*;
+
+            members
+                .filter(watching.contains(vec![thread_id]))
+                .load::<database::Member>(conn)
+                .await?
+        };
+
+        if board.private {
+            use database::members::dsl::*;
+            let mut new_users = vec![];
+            for user in users {
+                let token = Arc::new(user.token_hash.clone());
+                let has_access = Self::is_allowed_access(
+                    conn,
+                    MemberToken::new(Arc::new("DUMMY TOKEN OBJ".to_string()), Arc::clone(&token)),
+                    BoardOrDiscriminator::Board(board.clone()),
+                )
+                .await
+                .inspect_err(|e| eprintln!("Error checking access: {}", e))
+                .unwrap_or(false);
+
+                if has_access {
+                    new_users.push(user);
+                } else {
+                    // disable watching for this thread on this user
+                    println!("Disabling watching for user: {} because they don't have access to board: {}", user.id, board.discriminator);
+                    let mut twatching = user.watching;
+                    twatching.retain(|x| *x != thread_id);
+                    diesel::update(members.filter(token_hash.eq(&*token)))
+                        .set(watching.eq(twatching))
+                        .execute(conn)
+                        .await?;
+                }
+            }
+            users = new_users;
+        }
         Ok(users)
     }
 
@@ -757,14 +972,14 @@ impl Database {
         post: i64,
         token: MemberToken,
     ) -> Result<bool> {
-        use crate::schema::members::dsl::*;
+        use database::members::dsl::*;
         let watching_id = Self::get_raw_thread(conn, disc, post).await?.id;
 
         // if user where token_hash == token && watching.contains(post.thread_id)
         match members
             .filter(token_hash.eq(&*token.member_hash()))
             .filter(watching.contains(vec![watching_id]))
-            .first::<crate::schema::Member>(conn)
+            .first::<database::Member>(conn)
             .await
         {
             Ok(_) => Ok(true),
@@ -780,13 +995,13 @@ impl Database {
         token: MemberToken,
         set_watching: bool,
     ) -> Result<bool> {
-        use crate::schema::members::dsl::*;
+        use database::members::dsl::*;
         let watching_id = Self::get_raw_thread(conn, disc, post).await?.id;
 
         // get user and, put or remove post.id from watching depending on watching
         let user = members
             .filter(token_hash.eq(&*token.member_hash()))
-            .first::<crate::schema::Member>(conn)
+            .first::<database::Member>(conn)
             .await?;
 
         match (set_watching, user.watching.contains(&watching_id)) {
@@ -815,13 +1030,13 @@ impl Database {
     pub async fn add_user_push_url(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
         token: MemberToken,
-        sub: crate::endpoints::api::SubscriptionData,
+        sub: common::structs::SubscriptionData,
     ) -> Result<()> {
-        use crate::schema::members::dsl::*;
+        use database::members::dsl::*;
 
         let user = members
             .filter(token_hash.eq(&*token.member_hash()))
-            .first::<crate::schema::Member>(conn)
+            .first::<database::Member>(conn)
             .await?;
 
         // let substring = serde_json::to_string(&sub)
@@ -906,4 +1121,9 @@ impl Database {
         client.send(builder.build()?).await?;
         Ok(())
     }
+}
+
+pub enum BoardOrDiscriminator<'a> {
+    Board(database::Board),
+    Discriminator(&'a str),
 }

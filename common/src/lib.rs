@@ -41,3 +41,8 @@ pub fn hash_file(data: &[u8]) -> String {
     let result = hasher.finalize();
     format!("{result:x}")
 }
+
+pub fn hash_invitation(token: &str, board_id: i64) -> String {
+    // println!("HASHING: {} and {}", token, board_id);
+    hash_with_salt(token, &format!("{board_id}"))
+}

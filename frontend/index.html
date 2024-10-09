@@ -1,49 +1,71 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <meta charset="utf-8" />
-        <title>PChan</title>
-        <link data-trunk rel="copy-dir" href="res">
-        <link data-trunk rel="copy-file" href="manifest.json">
-        <link data-trunk rel="copy-file" href="service_worker.js">
-        <link data-trunk rel="copy-file" href="scraping.html">
-        <link data-trunk rel="copy-file" href="unauthorized.html">
-        <link rel="manifest" href="/manifest.json"/>
-        <link rel="stylesheet" href="/res/css/style.css" />
-        <link rel="stylesheet" href="/res/css/home.css" />
-        <link rel="stylesheet" href="/res/css/settings.css" />
-        <link rel="stylesheet" href="/res/css/roller.css" />
-        <link rel="stylesheet" href="/res/css/header.css" />
-        <link rel="stylesheet" href="/res/css/board.css" />
-        <link rel="stylesheet" href="/res/css/thread.css" />
-        <link rel="stylesheet" href="/res/css/post.css" />
-        <link rel="stylesheet" href="/res/css/reply.css" />
-        <link rel="stylesheet" href="/res/css/postbox.css" />
-        <link rel="stylesheet" href="/res/css/feedback.css" />
-        <link rel="stylesheet" href="/res/css/notification.css" />
-        <script>
-            function urlBase64ToUint8Array(base64String) {
-                var padding = '='.repeat((4 - base64String.length % 4) % 4);
-                var base64 = (base64String + padding)
-                        .replace(/\-/g, '+')
-                        .replace(/_/g, '/');
 
-                var rawData = window.atob(base64);
-                var outputArray = new Uint8Array(rawData.length);
+<head>
+    <meta charset="utf-8" />
+    <title>PChan</title>
+    <link data-trunk rel="copy-dir" href="res">
+    <link data-trunk rel="copy-file" href="manifest.json">
+    <link data-trunk rel="copy-file" href="service_worker.js">
+    <link data-trunk rel="copy-file" href="scraping.html">
+    <link data-trunk rel="copy-file" href="unauthorized.html">
+    <link rel="manifest" href="/manifest.json" />
+    <link rel="stylesheet" href="/res/css/style.css" />
+    <link rel="stylesheet" href="/res/css/home.css" />
+    <link rel="stylesheet" href="/res/css/settings.css" />
+    <link rel="stylesheet" href="/res/css/roller.css" />
+    <link rel="stylesheet" href="/res/css/header.css" />
+    <link rel="stylesheet" href="/res/css/board.css" />
+    <link rel="stylesheet" href="/res/css/thread.css" />
+    <link rel="stylesheet" href="/res/css/post.css" />
+    <link rel="stylesheet" href="/res/css/reply.css" />
+    <link rel="stylesheet" href="/res/css/postbox.css" />
+    <link rel="stylesheet" href="/res/css/feedback.css" />
+    <link rel="stylesheet" href="/res/css/notification.css" />
+    <script>
+        function urlBase64ToUint8Array(base64String) {
+            var padding = '='.repeat((4 - base64String.length % 4) % 4);
+            var base64 = (base64String + padding)
+                .replace(/\-/g, '+')
+                .replace(/_/g, '/');
 
-                for (var i = 0; i < rawData.length; ++i)  {
-                        outputArray[i] = rawData.charCodeAt(i);
-                }
+            var rawData = window.atob(base64);
+            var outputArray = new Uint8Array(rawData.length);
 
-                return outputArray;
+            for (var i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
             }
 
-            window.onload = () => {
-                'use strict';
-                if ('serviceWorker' in navigator) {
-                    navigator.serviceWorker
-                        .register('./service_worker.js').then((serviceWorkerRegistration) => {
-                        serviceWorkerRegistration.pushManager.subscribe({userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array("BD5mCRfVrSTvzmpHYulsiKI5ogPBC9y_K-JJBVxavAqulOQP94lgFYoEfg93xy7ZPGKapn8jAyamwHukxYaQFHA")}).then(
+            return outputArray;
+        }
+
+        function scroll_to_post() {
+            var f = window.location.href.split("#");
+            f.shift(1);
+            f = f.join("#");
+            var elms = Array.prototype.slice.call(document.getElementsByClassName("post-number"));
+            for (i in elms) {
+                if (elms[i].innerText.trim() == "#" + f) {
+                    var parent = elms[i].parentElement;
+                    if (parent == null || parent == undefined) {
+                        console.error("parent is null or undefined");
+                    }
+                    parent = parent.parentElement;
+                    if (parent == null || parent == undefined) {
+                        console.error("parent is null or undefined");
+                    }
+                    parent.scrollIntoView({ block: 'center', behavior: 'smooth' });
+                    parent.classList.add("glowing-box");
+                }
+            }
+        }
+
+        window.onload = function () {
+            'use strict';
+            if ('serviceWorker' in navigator) {
+                navigator.serviceWorker
+                    .register('./service_worker.js').then((serviceWorkerRegistration) => {
+                        serviceWorkerRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array("BD5mCRfVrSTvzmpHYulsiKI5ogPBC9y_K-JJBVxavAqulOQP94lgFYoEfg93xy7ZPGKapn8jAyamwHukxYaQFHA") }).then(
                             (pushSubscription) => {
                                 fetch('/api/v1/subscribe', {
                                     method: 'post',
@@ -54,19 +76,21 @@
                                         if (text != "\"ok\"") {
                                             console.error(text);
                                         }
+                                    });
                                 });
+                            },
+                            (error) => {
+                                console.error(error);
                             });
-                        },
-                        (error) => {
-                            console.error(error);
-                        });
                     });
-                }
             }
-    	</script>
-        <base data-trunk-public-url/>
-    </head>
-    <body>
-        <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z"/>
-    </body>
+        };
+    </script>
+    <base data-trunk-public-url />
+</head>
+
+<body>
+    <link data-trunk rel="rust" href="Cargo.toml" data-wasm-opt="z" />
+</body>
+
 </html>

@@ -32,6 +32,7 @@ impl Profanity {
                 }
             })
             .collect::<Vec<ProfanityWord>>();
+        // sort p such that the longest words are first
         p.sort_by(|a, b| b.word.len().cmp(&a.word.len()));
         p
     }
@@ -69,8 +70,8 @@ pub struct ProfanityWord {
 #[derive(Deserialize, Debug, Clone, PartialEq, Eq)]
 pub enum SeverityDescription {
     Mild,
-    Severe,
     Strong,
+    Severe,
 }
 
 impl PartialOrd for SeverityDescription {
@@ -83,14 +84,14 @@ impl Ord for SeverityDescription {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         match (self, other) {
             (Self::Mild, Self::Mild) => std::cmp::Ordering::Equal,
-            (Self::Mild, Self::Severe) => std::cmp::Ordering::Less,
             (Self::Mild, Self::Strong) => std::cmp::Ordering::Less,
-            (Self::Severe, Self::Mild) => std::cmp::Ordering::Greater,
-            (Self::Severe, Self::Severe) => std::cmp::Ordering::Equal,
-            (Self::Severe, Self::Strong) => std::cmp::Ordering::Less,
+            (Self::Mild, Self::Severe) => std::cmp::Ordering::Less,
             (Self::Strong, Self::Mild) => std::cmp::Ordering::Greater,
-            (Self::Strong, Self::Severe) => std::cmp::Ordering::Greater,
             (Self::Strong, Self::Strong) => std::cmp::Ordering::Equal,
+            (Self::Strong, Self::Severe) => std::cmp::Ordering::Less,
+            (Self::Severe, Self::Mild) => std::cmp::Ordering::Greater,
+            (Self::Severe, Self::Strong) => std::cmp::Ordering::Greater,
+            (Self::Severe, Self::Severe) => std::cmp::Ordering::Equal,
         }
     }
 }
@@ -126,11 +127,14 @@ where
     F: Fn() -> String,
 {
     let scrunkly = profanity.check_profanity(&string);
+
+    // println!("{:?}", scrunkly);
     let mut banned_categories = HashMap::new();
     banned_categories.insert(Category::RacialSlurs, SeverityDescription::Mild);
     banned_categories.insert(Category::SexualIdentity, SeverityDescription::Severe);
 
-    let mut orig_chars = string.chars().collect::<Vec<char>>();
+    // let mut orig_chars = string.chars().collect::<Vec<char>>();
+    let mut original_string = string;
 
     for word in scrunkly {
         let categories = [
@@ -146,44 +150,26 @@ where
                 false
             }
         }) {
-            let sequence = &word.word.chars().collect::<Vec<char>>();
-            // find every index of the sequence by iterating over windows of the chars vec
-            let lower_chars = orig_chars
-                .iter()
-                .collect::<String>()
-                .to_lowercase()
-                .chars()
-                .collect::<Vec<char>>();
+            // println!("found: {:?}", word.word);
 
-            let mut indices = Vec::new();
-            for index in lower_chars
-                .windows(sequence.len() + 2)
-                .enumerate()
-                .filter_map(|(i, stringy)| {
-                    if i == 0 && stringy.starts_with(sequence) {
-                        Some(i)
-                    } else if i == (lower_chars.len() - (sequence.len() + 2))
-                        && stringy.ends_with(sequence)
-                    {
-                        Some(i + 2)
-                    } else if stringy.first().map(|x| x.is_whitespace()).unwrap_or(false)
-                        && stringy.last().map(|x| x.is_whitespace()).unwrap_or(false)
-                        && stringy[1..(sequence.len() + 1)].iter().eq(sequence.iter())
-                    {
-                        Some(i + 1)
-                    } else {
-                        None
-                    }
-                })
-            {
-                indices.push(index);
-            }
-            // replace the range of indices with the replacement strings chars. WE NEED TO DO THIS FROM LARGEST TO SMALLEST OTHERWISE THE INDICES WILL BE WRONG
-            indices.sort_by(|a, b| b.cmp(a));
-            for index in indices {
-                orig_chars.splice(index..(index + sequence.len()), f().chars());
-            }
+            // we need to do a case-insensitive search and replace of the word in the string
+            case_insensitive_replace(&mut original_string, &word.word, &f);
         }
     }
-    orig_chars.into_iter().collect::<String>()
+    // orig_chars.into_iter().collect::<String>()
+    original_string
+}
+
+fn case_insensitive_replace<F>(string: &mut String, word: &str, f: F)
+where
+    F: Fn() -> String,
+{
+    let regex = regex::Regex::new(&format!(r"(?i){}", word)).expect("failed to create regex");
+
+    while let Some(m) = regex.find(string) {
+        let replacement = f();
+        let start = m.start();
+        let end = m.end();
+        string.replace_range(start..end, &replacement);
+    }
 }

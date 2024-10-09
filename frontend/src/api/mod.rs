@@ -17,11 +17,10 @@ pub struct Api {
 
 impl std::fmt::Debug for Api {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        return f
-            .debug_struct("Api")
+        f.debug_struct("Api")
             .field("token", &self.token)
             .field("cache", &"Mutex<TypeMap>")
-            .finish();
+            .finish()
     }
 }
 
@@ -470,6 +469,64 @@ impl Api {
         standard_get(&format!("/api/v1/board/{}/banner", board), &token).await
     }
 
+    pub async fn generate_board_invite_link(
+        &self,
+        board: impl Display + ToString,
+        invite_name: impl Display + ToString,
+    ) -> Result<String, ApiError> {
+        let token = self.formatted_token();
+        // board::generate_invite_link(&token, board, invite_name).await
+        let res: String = standard_put(
+            &format!("/api/v1/board/{}/invite?info={}", board, invite_name),
+            &token,
+            &(),
+        )
+        .await?;
+
+        if res.contains(' ') {
+            Err(ApiError::Api(AttrValue::from(res)))
+        } else {
+            Ok(res)
+        }
+    }
+
+    pub async fn generate_moderator_invite_link(
+        &self,
+        board: impl Display + ToString,
+        invite_name: impl Display + ToString,
+    ) -> Result<String, ApiError> {
+        let token = self.formatted_token();
+        // board::generate_moderator_invite_link(&token, board, invite_name).await
+        let res: String = standard_put(
+            &format!("/api/v1/board/{}/moderator?info={}", board, invite_name),
+            &token,
+            &(),
+        )
+        .await?;
+
+        if res.contains(' ') {
+            Err(ApiError::Api(AttrValue::from(res)))
+        } else {
+            Ok(res)
+        }
+    }
+
+    pub async fn consume_code(&self, invite_code: impl Display + ToString) -> Result<(), ApiError> {
+        let token = self.formatted_token();
+        // board::consume_code(&token, board, invite_code).await
+        let res: String = standard_patch(
+            &format!("/api/v1/consume_code?info={}", invite_code),
+            &token,
+            &(),
+        )
+        .await?;
+        if res == "ok" {
+            Ok(())
+        } else {
+            Err(ApiError::Api(AttrValue::from(res)))
+        }
+    }
+
     #[cfg(feature = "cache-base")]
     pub fn insert_thread_to_cache(&self, thread: ThreadWithPosts) {
         let ident = format!(
@@ -731,6 +788,34 @@ where
     E: Serialize,
 {
     let res = Request::put(path)
+        .header("authorization", token)
+        .json(data)
+        .map_err(|e| ApiError::Serde(AttrValue::from(e.to_string())))?
+        .send()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?
+        .text()
+        .await
+        .map_err(|e| match e {
+            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
+            v => ApiError::Other(AttrValue::from(v.to_string())),
+        })?;
+
+    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
+        Ok(v) => ApiError::Api(AttrValue::from(v)),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
+    })
+}
+
+pub async fn standard_patch<T, E>(path: &str, token: &str, data: &E) -> Result<T, ApiError>
+where
+    T: DeserializeOwned,
+    E: Serialize,
+{
+    let res = Request::patch(path)
         .header("authorization", token)
         .json(data)
         .map_err(|e| ApiError::Serde(AttrValue::from(e.to_string())))?

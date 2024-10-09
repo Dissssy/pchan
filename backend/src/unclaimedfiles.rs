@@ -157,6 +157,7 @@ impl UnclaimedFiles {
                     hash: filehash,
                     thumbnail: path,
                     spoiler: createfile.spoiler,
+                    board: None,
                 })
             }
             None => Err(anyhow!("File not found")),

@@ -62,6 +62,8 @@ pub fn NotFound() -> Html {
                                         <h2 class="error" >{"Not Found"}</h2>
                                         <p>{"The page you requested could not be found."}</p>
                                         <p>{"Maybe check out one of these awesome boards instead?"}</p>
+                                        <p class="error" >{"If there is a persistent problem, try doing a full refresh with ctrl+shift+r, or clearing your cache."}</p>
+                                        <p class="error" >{"If all else fails, contact @dissy#2112 on discord."}</p>
                                     </div>
                                     <div class="home-board-list">
                                         {for boards.iter().enumerate().map(|(i, board)| html! {

@@ -3,6 +3,7 @@
 }
 
 .randomized-banner-image {
+  max-height: 20vh;
   display: inline-flex;
   justify-content: center;
   margin: 0.4rem;

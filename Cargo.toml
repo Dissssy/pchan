@@ -1,8 +1,17 @@
 [workspace]
+resolver = "2"
+members = ["frontend", "backend", "common", "profanity", "database"]
 
-members = [
-    "frontend",
-    "backend",
-    "common",
-    "profanity",
-]
+[profile.release.package.frontend]
+# optimize for size
+# panic = 'abort'
+codegen-units = 1
+opt-level = 'z'
+# lto = true
+
+[profile.release.package.backend]
+# optimize for speed
+# panic = 'unwind'
+codegen-units = 1
+opt-level = 3
+# lto = true

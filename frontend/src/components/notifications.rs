@@ -134,7 +134,7 @@ pub struct NotificationInfo {
 
 impl From<SafePost> for NotificationInfo {
     fn from(post: SafePost) -> Self {
-        return Self {
+        Self {
             // path: format!(
             //     "/{}/thread/{}",
             //     post.board_discriminator, post.thread_post_number
@@ -151,7 +151,7 @@ impl From<SafePost> for NotificationInfo {
                 }
             },
             icon: post.file.map(|f| f.thumbnail),
-        };
+        }
     }
 }
 

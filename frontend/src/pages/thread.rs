@@ -48,7 +48,7 @@ pub fn ThreadPage() -> Html {
     };
 
     {
-        #[cfg(feature = "cache")]
+        #[cfg(feature = "cache-post")]
         let api_ctx = api_ctx.clone();
         if let Some(PushMessage::NewPost(post)) = handle.get() {
             if route_ctx
@@ -67,7 +67,7 @@ pub fn ThreadPage() -> Html {
                 let tthread = (*thread).clone();
                 if let ApiState::Loaded(mut tthread) = tthread {
                     tthread.posts.push((*post).clone());
-                    #[cfg(feature = "cache")]
+                    #[cfg(feature = "cache-post")]
                     if let Some(api) = api_ctx.flatten().and_then(|a| a.api.ok()) {
                         api.insert_post_to_cache((*post).clone());
                         api.insert_thread_to_cache(tthread.clone());
@@ -264,7 +264,7 @@ pub fn ThreadPage() -> Html {
                         }
                         html! {
                             <div class={"thread-page-threads"}>
-                                <Thread thread={thread.clone()} refresh={changed.clone()} />
+                                <Thread scroll_on_load={true} thread={thread.clone()} refresh={changed.clone()} />
                                 // <div class="thread-reload-button">
                                 //     <span
                                 //     // onclick={

@@ -112,6 +112,7 @@ pub fn Thread(props: &Props) -> Html {
                                 })
                             }
                         </div>
+                        <script>{ if !state.posts().is_empty() && props.scroll_on_load { "setTimeout(() => scroll_to_post(), 100);" } else { "" } }</script>
                     </ContextProvider<Option<CallbackContext>>>
                 </ContextProvider<CallbackEmitterContext>>
             }
@@ -132,6 +133,7 @@ pub struct Props {
     pub thread: ThreadState,
     #[prop_or_default]
     pub refresh: Option<Refresher>,
+    pub scroll_on_load: bool,
 }
 
 pub type Refresher = UseStateHandle<Option<(web_sys::Window, Option<f64>, Option<f64>)>>;
@@ -152,7 +154,7 @@ impl ThreadState {
 
     pub fn posts(&self) -> &Vec<SafePost> {
         match self {
-            Self::Expandable(thread) => return thread.posts(),
+            Self::Expandable(thread) => thread.posts(),
             Self::Full(thread) => &thread.posts,
         }
     }

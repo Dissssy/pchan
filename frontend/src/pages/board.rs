@@ -91,7 +91,7 @@ pub fn BoardPage() -> Html {
                             board.standard_html("BoardPage", |board| {
                                 if let Some(window) = web_sys::window() {
                                     if let Some(document) = window.document() {
-                                        document.set_title(&format!("{}/{}/ - {}", crate::PREFIX, board.discriminator, board.name));
+                                        document.set_title(&format!("{}/{}/ - {}", crate::PREFIX, board.info.discriminator, board.info.name));
                                     }
                                 }
                                 html! {
@@ -99,7 +99,7 @@ pub fn BoardPage() -> Html {
                                         {
                                             board.threads.iter().map(|thread| {
                                                 html! {
-                                                    <Thread thread={thread.clone()} />
+                                                    <Thread scroll_on_load={false} thread={thread.clone()} />
                                                 }
                                             }).collect::<Html>()
                                         }

@@ -42,8 +42,8 @@ pub fn BoardName(props: &Props) -> Html {
     );
     html! {
         <MaybeLink to={BaseRoute::BoardPage { board_discriminator: props.board.discriminator.clone() }}  link={(board_discriminator != Some(props.board.discriminator.clone())) || is_thread}>
-            <div class={format!("{}-board-name-link{}", props.prefix, if board_discriminator == Some(props.board.discriminator.clone()) { "-selected" } else { "" })} id={id}>
-                <span class={format!("{}-board-name-container", props.prefix)} onmouseover={mousein} onmouseout={mouseout} >
+            <div class={format!("{}-board-name-link{}", props.prefix, if board_discriminator == Some(props.board.discriminator.clone()) { "-selected" } else { "" })} id={id} onmouseover={mousein} onmouseout={mouseout} >
+                <span class={format!("{}-board-name-container", props.prefix)} >
                     {
                         match props.view {
                             BoardNameType::Name => props.board.name.clone(),

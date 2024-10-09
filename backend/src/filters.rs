@@ -21,52 +21,66 @@ lazy_static! {
 }
 
 pub fn valid_token() -> impl Filter<Extract = (Token,), Error = warp::Rejection> + Clone {
+    // warp::any()
+    //     .and(warp::header::optional::<Bearer>("authorization"))
+    //     .and(warp::cookie::optional("token"))
+    //     .and_then(
+    //         |header: Option<Bearer>, cookie: Option<String>| async move {
+    //             let mut conn = crate::POOL
+    //                 .get()
+    //                 .await
+    //                 .map_err(|_| warp::reject::reject())?;
+    //             if let Some(header) = header {
+    //                 let mut t = Token::new(header.token);
+    //                 let mut cache = TOKENCACHE.lock().await;
+    //                 if let Entry::Occupied(e) = cache.entry(t.clone()) {
+    //                     if e.get().elapsed().as_secs() < 60 {
+    //                         return Ok(t);
+    //                     } else {
+    //                         e.remove();
+    //                     }
+    //                 } else if crate::database_bindings::Database::is_valid_token(
+    //                     &mut conn,
+    //                     t.member_hash(),
+    //                 )
+    //                 .await
+    //                 .map_err(|_| warp::reject::reject())?
+    //                 {
+    //                     cache.insert(t.clone(), Instant::now());
+    //                     return Ok(t);
+    //                 }
+    //             };
+    //             if let Some(cookie) = cookie {
+    //                 let mut t = Token::new(cookie);
+    //                 let mut cache = TOKENCACHE.lock().await;
+    //                 if let Entry::Occupied(e) = cache.entry(t.clone()) {
+    //                     if e.get().elapsed().as_secs() < 60 {
+    //                         return Ok(t);
+    //                     } else {
+    //                         e.remove();
+    //                     }
+    //                 } else if crate::database_bindings::Database::is_valid_token(
+    //                     &mut conn,
+    //                     t.member_hash(),
+    //                 )
+    //                 .await
+    //                 .map_err(|_| warp::reject::reject())?
+    //                 {
+    //                     cache.insert(t.clone(), Instant::now());
+    //                     return Ok(t);
+    //                 }
+    //             };
+    //             Err(warp::reject::reject())
+    //         },
+    //     )
     warp::any()
-        .and(warp::header::optional::<Bearer>("authorization"))
-        .and(warp::cookie::optional("token"))
-        .and_then(
-            |header: Option<Bearer>, cookie: Option<String>| async move {
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-                if let Some(header) = header {
-                    let mut t = Token::new(header.token);
-                    let mut cache = TOKENCACHE.lock().await;
-                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
-                        if e.get().elapsed().as_secs() < 60 {
-                            return Ok(t);
-                        } else {
-                            e.remove();
-                        }
-                    } else if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
-                        .await
-                        .map_err(|_| warp::reject::reject())?
-                    {
-                        cache.insert(t.clone(), Instant::now());
-                        return Ok(t);
-                    }
-                };
-                if let Some(cookie) = cookie {
-                    let mut t = Token::new(cookie);
-                    let mut cache = TOKENCACHE.lock().await;
-                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
-                        if e.get().elapsed().as_secs() < 60 {
-                            return Ok(t);
-                        } else {
-                            e.remove();
-                        }
-                    } else if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
-                        .await
-                        .map_err(|_| warp::reject::reject())?
-                    {
-                        cache.insert(t.clone(), Instant::now());
-                        return Ok(t);
-                    }
-                };
-                Err(warp::reject::reject())
-            },
-        )
+        .and(optional_token())
+        .and_then(|token: Option<Token>| async move {
+            match token {
+                Some(token) => Ok(token),
+                None => Err(warp::reject::reject()),
+            }
+        })
 }
 
 pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp::Rejection> + Clone
@@ -89,9 +103,12 @@ pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp:
                         } else {
                             e.remove();
                         }
-                    } else if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
-                        .await
-                        .map_err(|_| warp::reject::reject())?
+                    } else if crate::database_bindings::Database::is_valid_token(
+                        &mut conn,
+                        t.member_hash(),
+                    )
+                    .await
+                    .map_err(|_| warp::reject::reject())?
                     {
                         cache.insert(t.clone(), Instant::now());
                         return Ok::<_, warp::reject::Rejection>(Some(t));
@@ -106,9 +123,12 @@ pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp:
                         } else {
                             e.remove();
                         }
-                    } else if crate::database::Database::is_valid_token(&mut conn, t.member_hash())
-                        .await
-                        .map_err(|_| warp::reject::reject())?
+                    } else if crate::database_bindings::Database::is_valid_token(
+                        &mut conn,
+                        t.member_hash(),
+                    )
+                    .await
+                    .map_err(|_| warp::reject::reject())?
                     {
                         cache.insert(t.clone(), Instant::now());
                         return Ok(Some(t));

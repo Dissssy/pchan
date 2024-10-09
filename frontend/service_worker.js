@@ -8,9 +8,18 @@ var filesToCache = [
 
 
 /* Start the service worker and cache all of the app's content */
-self.addEventListener('install', function(e) {
+self.addEventListener('install', function (e) {
   e.waitUntil(
-    caches.open(cacheName).then(function(cache) {
+    caches.open(cacheName).then(function (cache) {
+      // remove all cache entries that are not in filesToCache
+      cache.keys().then(function (keys) {
+        keys.forEach(function (request, index, array) {
+          if (!filesToCache.includes(request.url)) {
+            alert("deleting cache entry: " + request.url);
+            cache.delete(request);
+          }
+        });
+      });
       return cache.addAll(filesToCache);
     })
   );

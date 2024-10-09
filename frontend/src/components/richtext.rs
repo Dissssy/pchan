@@ -65,7 +65,7 @@ lazy_static::lazy_static! {
             })
         },
         |s| {
-            return s.strip_prefix(r#"./*"#).and_then(|s| return s.strip_suffix(r#"*\."#)).map(|s| RichTextContent {
+            s.strip_prefix(r#"./*"#).and_then(|s| s.strip_suffix(r#"*\."#)).map(|s| RichTextContent {
                 class: AttrValue::from("gibberish"),
                 string: AttrValue::from(s.to_owned()),
             })

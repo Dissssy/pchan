@@ -1,7 +1,8 @@
 use crate::filters::{valid_token, MemberToken, Ratelimited, Token};
 use crate::unclaimedfiles::File;
-use common::structs::CreateBoard;
-use common::structs::{CreatePost, CreateThread, FileInfo, SafeBoard};
+use common::structs::{
+    CreateBoard, CreatePost, CreateThread, FileInfo, SafeBoard, SubscriptionData,
+};
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Rejection, Reply};
 
@@ -14,7 +15,7 @@ pub fn priveleged_api_endpoints(
         .and(warp::put())
         .and(warp::body::json::<CreateBoard>())
         .and_then(|board: CreateBoard| async move {
-            match crate::database::Database::create_board(
+            match crate::database_bindings::Database::create_board(
                 &mut match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
@@ -48,7 +49,7 @@ pub fn priveleged_api_endpoints(
                     .await
                     .map_err(|_| warp::reject::reject())?;
 
-                if let Err(e) = crate::database::Database::add_token(
+                if let Err(e) = crate::database_bindings::Database::add_token(
                     &mut conn,
                     Token::from_id(&user.id).member_hash(),
                 )
@@ -74,7 +75,7 @@ pub fn priveleged_api_endpoints(
                     .await
                     .map_err(|_| warp::reject::reject())?;
 
-                if let Err(e) = crate::database::Database::remove_token(
+                if let Err(e) = crate::database_bindings::Database::remove_token(
                     &mut conn,
                     Token::from_id(&user.id).member_hash(),
                 )
@@ -105,7 +106,9 @@ pub fn priveleged_api_endpoints(
                     .map(|u| Token::from_id(&u.id).member_hash())
                     .collect::<Vec<MemberToken>>();
 
-                if let Err(e) = crate::database::Database::sync_tokens(&mut conn, tokens).await {
+                if let Err(e) =
+                    crate::database_bindings::Database::sync_tokens(&mut conn, tokens).await
+                {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
                     ));
@@ -125,17 +128,21 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getboards = warp::path!("api" / "v1" / "board")
         .and(warp::get())
+        .and(valid_token())
         .and_then({
-            || async move {
-                match crate::database::Database::get_boards(&mut match crate::POOL.get().await {
-                    Ok(pool) => pool,
-                    Err(e) => {
-                        println!("error connecting to backend: {}", e);
-                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                            warp::reply::json(&"error connecting to backend"),
-                        );
-                    }
-                })
+            |mut token: Token| async move {
+                match crate::database_bindings::Database::get_boards(
+                    &mut match crate::POOL.get().await {
+                        Ok(pool) => pool,
+                        Err(e) => {
+                            println!("error connecting to backend: {}", e);
+                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                                warp::reply::json(&"error connecting to backend"),
+                            );
+                        }
+                    },
+                    token.member_hash(),
+                )
                 .await
                 {
                     Ok(boards) => {
@@ -154,8 +161,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getboard = warp::path!("api" / "v1" / "board" / String)
         .and(warp::get())
+        .and(valid_token())
         .and_then({
-            |disc: String| async move {
+            |disc: String, mut token: Token| async move {
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
@@ -165,7 +173,13 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
-                match crate::database::Database::get_board(&mut conn, &disc).await {
+                match crate::database_bindings::Database::get_board(
+                    &mut conn,
+                    &disc,
+                    token.member_hash(),
+                )
+                .await
+                {
                     Ok(board) => match board.with_threads(&mut conn).await {
                         Ok(board) => Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&board),
@@ -195,7 +209,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     ));
                 }
 
-                match crate::database::Database::create_thread(
+                match crate::database_bindings::Database::create_thread(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
@@ -228,9 +242,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getthread = warp::path!("api" / "v1" / "board" / String / "thread" / i64)
         .and(warp::get())
+        .and(valid_token())
         .and_then({
-            |disc: String, thread: i64| async move {
-                match crate::database::Database::get_thread(
+            |disc: String, thread: i64, mut token: Token| async move {
+                match crate::database_bindings::Database::get_thread(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
@@ -242,6 +257,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                     &disc,
                     thread,
+                    token.member_hash(),
                 )
                 .await
                 {
@@ -277,7 +293,13 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
-                let board = match crate::database::Database::get_board(&mut conn, &disc).await {
+                let board = match crate::database_bindings::Database::get_board(
+                    &mut conn,
+                    &disc,
+                    token.member_hash(),
+                )
+                .await
+                {
                     Ok(v) => v,
                     Err(e) => {
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
@@ -285,17 +307,18 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         );
                     }
                 };
-                let thread =
-                    match crate::database::Database::get_raw_thread(&mut conn, &disc, rawthread)
-                        .await
-                    {
-                        Ok(v) => v,
-                        Err(e) => {
-                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                warp::reply::json(&e.to_string()),
-                            );
-                        }
-                    };
+                let thread = match crate::database_bindings::Database::get_raw_thread(
+                    &mut conn, &disc, rawthread,
+                )
+                .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&e.to_string()),
+                        );
+                    }
+                };
                 let tid = thread.id;
                 let thread = match thread.with_posts(&mut conn).await {
                     Ok(v) => v,
@@ -319,7 +342,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                         &"Thread already has 100 files".to_owned(),
                     ));
                 }
-                match crate::database::Database::create_post(
+                match crate::database_bindings::Database::create_post(
                     &mut conn,
                     board.id,
                     &disc,
@@ -349,9 +372,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getpost = warp::path!("api" / "v1" / "board" / String / "post" / i64)
         .and(warp::get())
+        .and(valid_token())
         .and_then({
-            |disc: String, post: i64| async move {
-                match crate::database::Database::get_post(
+            |disc: String, post: i64, mut token: Token| async move {
+                match crate::database_bindings::Database::get_post(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
@@ -363,6 +387,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                     &disc,
                     post,
+                    token.member_hash(),
                 )
                 .await
                 {
@@ -383,7 +408,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(valid_token())
         .and_then({
             |disc: String, post: i64, mut token: Token| async move {
-                match crate::database::Database::delete_post(
+                match crate::database_bindings::Database::delete_post(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
@@ -510,7 +535,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 let file = format!("/files/{}", tail.as_str());
                 // ensure the file exists
                 // println!("file: {}", file);
-                if crate::database::Database::get_file(
+                let fileinfo = match crate::database_bindings::Database::get_file(
                     &file,
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -523,11 +548,27 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                 )
                 .await
-                .is_err()
                 {
-                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                        &"File not found",
-                    ));
+                    Ok(file) => file,
+                    Err(_) => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&"File not found"),
+                        );
+                    }
+                };
+
+                match fileinfo.board.map(|b| b.private) {
+                    Some(true) => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                            &"Cannot share private file",
+                        ));
+                    }
+                    None => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                            &"Unable to determine if file is private, disallowing sharing for safety",
+                        ));
+                    }
+                    _ => {}
                 }
 
                 // generate a share link
@@ -556,9 +597,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getbanner = warp::path!("api" / "v1" / "board" / String / "banner")
         .and(warp::get())
+        .and(valid_token())
         .and_then({
-            |disc: String| async move {
-                match crate::database::Database::get_random_banner(
+            |disc: String, mut token: Token| async move {
+                match crate::database_bindings::Database::get_random_banner(
                     &disc,
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -569,6 +611,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
+                    token.member_hash(),
                 )
                 .await
                 {
@@ -589,7 +632,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(valid_token())
         .and_then({
             |disc: String, post: i64, mut token: Token| async move {
-                match crate::database::Database::get_watching(
+                match crate::database_bindings::Database::get_watching(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
@@ -623,7 +666,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::body::json::<bool>())
         .and_then({
             |disc: String, post: i64, mut token: Token, watching: bool| async move {
-                match crate::database::Database::set_watching(
+                match crate::database_bindings::Database::set_watching(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
@@ -650,6 +693,146 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // PUT /api/v1/board/{board_discriminator}/invite?info=string - creates an invite code for the board
+
+    let create_invite = warp::path!("api" / "v1" / "board" / String / "invite")
+        .and(warp::put())
+        .and(warp::query::<InviteCodeHolder>())
+        .and(valid_token())
+        .and_then({
+            |disc: String, invite_code_holder: InviteCodeHolder, mut token: Token| async move {
+                let mut conn = match crate::POOL.get().await {
+                    Ok(pool) => pool,
+                    Err(e) => {
+                        println!("error connecting to backend: {}", e);
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&"error connecting to backend"),
+                        );
+                    }
+                };
+
+                let board = match crate::database_bindings::Database::get_board(
+                    &mut conn,
+                    &disc,
+                    token.member_hash(),
+                )
+                .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&e.to_string()),
+                        );
+                    }
+                };
+
+                match crate::database_bindings::Database::generate_board_access_code(
+                    &mut conn,
+                    token.member_hash(),
+                    board.id,
+                    invite_code_holder.info,
+                )
+                .await
+                {
+                    Ok(invite) => {
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&invite))
+                    }
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    )),
+                }
+            }
+        });
+
+    // PUT /api/v1/board/{board_discriminator}/moderator?info=string - creates a moderator code for the board
+
+    let create_moderator = warp::path!("api" / "v1" / "board" / String / "moderator")
+        .and(warp::put())
+        .and(warp::query::<InviteCodeHolder>())
+        .and(valid_token())
+        .and_then({
+            |disc: String, invite_code_holder: InviteCodeHolder, mut token: Token| async move {
+                let mut conn = match crate::POOL.get().await {
+                    Ok(pool) => pool,
+                    Err(e) => {
+                        println!("error connecting to backend: {}", e);
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&"error connecting to backend"),
+                        );
+                    }
+                };
+
+                let board = match crate::database_bindings::Database::get_board(
+                    &mut conn,
+                    &disc,
+                    token.member_hash(),
+                )
+                .await
+                {
+                    Ok(v) => v,
+                    Err(e) => {
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&e.to_string()),
+                        );
+                    }
+                };
+
+                match crate::database_bindings::Database::generate_board_moderator_code(
+                    &mut conn,
+                    token.member_hash(),
+                    board.id,
+                    invite_code_holder.info,
+                )
+                .await
+                {
+                    Ok(invite) => {
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&invite))
+                    }
+                    Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &e.to_string(),
+                    )),
+                }
+            }
+        });
+
+    // PATCH /api/v1/consume_code?info=string - accepts an invite code
+
+    let consume_code = warp::path!("api" / "v1" / "consume_code")
+        .and(warp::patch())
+        .and(warp::query::<InviteCodeHolder>())
+        .and(valid_token())
+        .and_then({
+            |invite_code_holder: InviteCodeHolder, mut token: Token| async move {
+                let mut conn = match crate::POOL.get().await {
+                    Ok(pool) => pool,
+                    Err(e) => {
+                        println!("error connecting to backend: {}", e);
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&"error connecting to backend"),
+                        );
+                    }
+                };
+
+                match crate::database_bindings::Database::consume_code(
+                    &mut conn,
+                    token.member_hash(),
+                    invite_code_holder.info,
+                )
+                .await
+                {
+                    Ok(_) => {
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&"ok"))
+                    }
+                    Err(e) => {
+                        log::trace!("error consuming code: {}", e);
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                            &"Invalid code".to_string(),
+                        ))
+                    }
+                }
+            }
+        });
+
     crate::filters::ratelimit()
         .and(
             getpost
@@ -665,6 +848,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(gettoken)
                 .or(get_watching)
                 .or(put_watching)
+                .or(create_invite)
+                .or(create_moderator)
+                .or(consume_code)
                 .or(notifications()),
         )
         .recover(|err: Rejection| async move {
@@ -688,6 +874,11 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 );
             }
         })
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct InviteCodeHolder {
+    pub info: String,
 }
 
 pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
@@ -729,7 +920,7 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(valid_token())
         .and_then({
             |sub: SubscriptionData, mut token: Token| async move {
-                match crate::database::Database::add_user_push_url(
+                match crate::database_bindings::Database::add_user_push_url(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
@@ -783,18 +974,6 @@ pub struct UserSafe {
 //         "p256dh":"p256dh thing"
 //     }
 // }
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SubscriptionData {
-    pub endpoint: String,
-    pub keys: SubscriptionKeys,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
-pub struct SubscriptionKeys {
-    pub auth: String,
-    pub p256dh: String,
-}
 
 // impl SubscriptionData {
 //     pub fn to_database_string(&self) -> String {
