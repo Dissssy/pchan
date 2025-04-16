@@ -90,7 +90,7 @@ pub fn Post(props: &Props) -> Html {
                             }
                         }
                     }
-                    <span class="post-timestamp">{ if let Some(timezone) = timezone { props.post.timestamp.with_timezone(&*timezone).format("%Y-%m-%d %H:%M:%S %Z").to_string() } else { props.post.timestamp.format("%Y-%m-%d %H:%M:%S %Z").to_string() } }</span>
+                    <span class="post-timestamp">{ if let Some(timezone) = timezone { props.post.timestamp.with_timezone(&*timezone).format(env!("TIMESTAMP_FORMAT")).to_string().replace("  ", " ").replace(" at 0", " at ") } else { props.post.timestamp.format(env!("TIMESTAMP_FORMAT")).to_string().replace("  ", " ").replace(" at 0", " at ") } }</span>
                     {
                         if let Some(ref t) = props.topic {
                             html! {
