@@ -28,7 +28,7 @@ pub fn other_endpoints(
                 {
                     Ok(r) => r,
                     Err(e) => {
-                        println!("Error: {e}");
+                        log::error!("Error sending request: {e}");
                         return Ok(warp::reply::json(&e.to_string()).into_response());
                     }
                 }
@@ -38,7 +38,7 @@ pub fn other_endpoints(
                     Ok(r) => match serde_json::from_str::<DiscordTokenResponse>(&r) {
                         Ok(r) => r.access_token,
                         Err(e) => {
-                            println!("Error: {e:?}");
+                            log::error!("Error parsing response: {e}");
                             return Ok(warp::reply::json(&format!(
                                 "Error: {e:?} while parsing {r}"
                             ))
@@ -46,7 +46,7 @@ pub fn other_endpoints(
                         }
                     },
                     Err(e) => {
-                        println!("Error: {e:?}");
+                        log::error!("Error sending request: {e}");
                         return Ok(warp::reply::json(&e.to_string()).into_response());
                     }
                 };
@@ -58,7 +58,7 @@ pub fn other_endpoints(
                 {
                     Ok(r) => r,
                     Err(e) => {
-                        println!("Error: {e}");
+                        log::error!("Error sending request: {e}");
                         return Ok(warp::reply::json(&e.to_string()).into_response());
                     }
                 }
@@ -68,7 +68,7 @@ pub fn other_endpoints(
                     Ok(r) => match serde_json::from_str::<DiscordUser>(&r) {
                         Ok(r) => Token::from_id(&r.id),
                         Err(e) => {
-                            println!("Error: {e:?}");
+                            log::error!("Error parsing response: {e}");
                             return Ok(warp::reply::json(&format!(
                                 "Error: {e:?} while parsing {r}"
                             ))
@@ -76,7 +76,7 @@ pub fn other_endpoints(
                         }
                     },
                     Err(e) => {
-                        println!("Error: {e}");
+                        log::error!("Error sending request: {e}");
                         return Ok(warp::reply::json(&e.to_string()).into_response());
                     }
                 };

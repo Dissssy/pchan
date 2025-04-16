@@ -57,7 +57,12 @@ pub fn Post(props: &Props) -> Html {
                     html! {}
                 }
             }
-            <div class={ if props.topic.is_some() { "parent-post" } else { "post" } } id={ if props.invert { "invert" } else { "normal" }} >
+            <div class={
+                format!("{} {}",
+                    if props.topic.is_some() { "parent-post" } else { "post" },
+                    if props.invert { "invert" } else { "normal" }
+                )
+            } >
                 <div class="post-header">
                     <DeleteButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
                     if props.topic.is_some() {
@@ -94,9 +99,7 @@ pub fn Post(props: &Props) -> Html {
                                 </MaybeLink>
                             }
                         } else {
-                            html! {
-
-                            }
+                            html! {}
                         }
                     }
                     {
@@ -152,6 +155,8 @@ pub fn Post(props: &Props) -> Html {
 
 #[derive(Clone, PartialEq, Properties)]
 pub struct Props {
+    #[prop_or_default]
+    pub id: Option<usize>,
     pub post: SafePost,
     #[prop_or_default]
     pub invert: bool,

@@ -26,8 +26,8 @@
   height: min-content;
 }
 
-.post #invert,
-.parent-post #invert {
+.post.invert,
+.parent-post.invert {
   background-color: var(--secondary-color);
   height: min-content;
 }

@@ -12,7 +12,7 @@ use yew_hooks::use_local_storage;
 pub fn File(props: &Props) -> Html {
     let share_state = use_state(|| ShareState::None);
     let file_state = use_state(|| HoveredOrExpandedState::None);
-    let spoiler = props.file.spoiler;
+    let spoiler = props.file.claimed.spoiler;
 
     let api_ctx = use_context::<Option<ApiContext>>().flatten();
 
@@ -115,7 +115,7 @@ pub fn File(props: &Props) -> Html {
     });
 
     let on_click_share = {
-        let path = props.file.path.clone();
+        let path = props.file.claimed.path.clone();
         let share_state = share_state.clone();
         Callback::from(move |e: MouseEvent| {
             e.prevent_default();
@@ -193,13 +193,13 @@ pub fn File(props: &Props) -> Html {
                         }
                     </a>
                 </span>
-                <span class="post-hash" title={format!("Hash: {}", props.file.hash.clone())}>
+                <span class="post-hash" title={format!("Hash: {}", props.file.claimed.hash.clone())}>
                     { if emojis { "" } else { "Hash" }}
                 </span>
-                if props.file.path.contains("/audio/") || props.file.path.contains("/video/") {
+                if props.file.claimed.path.contains("/audio/") || props.file.claimed.path.contains("/video/") {
                     <span class="might-have-sound-indicator" >
                         {
-                            match (emojis, props.file.path.contains("/audio/")) {
+                            match (emojis, props.file.claimed.path.contains("/audio/")) {
                                 (true, true) => "",
                                 (true, false) => "󰸬",
                                 (false, true) => "Audio",
@@ -227,13 +227,13 @@ pub fn File(props: &Props) -> Html {
                 </span>
             // </div>
             <div class="post-file-contents">
-                <a href={props.file.path.clone()} onclick={on_click_without_expanded} draggable="false">
+                <a href={props.file.claimed.path.clone()} onclick={on_click_without_expanded} draggable="false">
                 {
                     match *file_state {
                         HoveredOrExpandedState::None => {
                             html! {
                                 <div class="post-file-thumbnail">
-                                    <img src={props.file.thumbnail.clone()} />
+                                    <img src={props.file.claimed.thumbnail.clone()} />
                                 </div>
                             }
                         }
@@ -244,7 +244,7 @@ pub fn File(props: &Props) -> Html {
                         } => {
                             html! {
                                 <>
-                                    <img src={props.file.thumbnail.clone()} />
+                                    <img src={props.file.claimed.thumbnail.clone()} />
                                     <div class="floating-image" style={format!("left: calc({}px + 1em) !important; top: calc({}px) !important; position: absolute !important; transform: translateY({}) !important;", x, y, offset.percent())}>
                                         {
                                             file_html(&props.file)
@@ -275,7 +275,7 @@ pub struct Props {
 }
 
 fn file_html(file: &common::structs::FileInfo) -> Html {
-    let mimetype = file.path.replace("/files/", "");
+    let mimetype = file.claimed.path.replace("/files/", "");
     let mut th = mimetype.split('/');
     let mut mime = th.next();
     let after = th.next();
@@ -291,34 +291,34 @@ fn file_html(file: &common::structs::FileInfo) -> Html {
             html! {
                 <div class="post-media-error">
                     <img src="/res/404.png"/>
-                    <a href={file.path.clone()}>{"Unsupported embed type: None"}</a>
+                    <a href={file.claimed.path.clone()}>{"Unsupported embed type: None"}</a>
                 </div>
             }
         }
         Some(m) => match m {
             "image" => {
                 html! {
-                    <img src={file.path.clone()} draggable="false"/>
+                    <img src={file.claimed.path.clone()} draggable="false"/>
                 }
             }
             "video" => {
                 html! {
                     <video autoplay=true loop=true controls=true class="post-media-video" muted=true draggable="false">
-                        <source src={file.path.clone()} />
+                        <source src={file.claimed.path.clone()} />
                     </video>
                 }
             }
             "audio" => {
                 html! {
                     <audio autoplay=true loop=true controls=true class="post-media-audio" muted=true draggable="false">
-                        <source src={file.path.clone()} />
+                        <source src={file.claimed.path.clone()} />
                     </audio>
                 }
             }
             _ => {
                 html! {
                     <div class="post-media-error">
-                        <a href={file.path.clone()}>{"---Unsupported embed type, middle click to download---"}</a>
+                        <a href={file.claimed.path.clone()}>{"---Unsupported embed type, middle click to download---"}</a>
                     </div>
                 }
             }

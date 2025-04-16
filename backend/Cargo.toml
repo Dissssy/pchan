@@ -1,6 +1,6 @@
 [package]
 name = "backend"
-version = "0.1.0"
+version = "0.3.0"
 edition = "2021"
 
 
@@ -20,8 +20,9 @@ profanity = { path = "../profanity" }
 database = { path = "../database" }
 postcard = { version = "1.0.10", features = ["alloc"] }
 flate2 = "1.0.34"
-env_logger = "0.11.5"
-log = "0.4.22"
+env_logger = "0.11.8"
+datalust_logger = { path = "../../datalust_logger" }
+log = "0.4.27"
 diesel = { version = "2.2.4", features = ["chrono", "serde_json"] }
 diesel-async = { version = "0.5.0", features = ["postgres", "deadpool"] }
 deadpool = { version = "0.12.1" }
@@ -35,7 +36,7 @@ async-recursion = "1.1.1"
 thumbnailer = { git = "https://github.com/Dissssy/thumbnailer" }
 mime = "0.3.17"
 rand = "0.8.5"
-web-push = "0.10.2"
+web-push = "0.11.0"
 imageproc = "0.25.0"
 image = "0.25.2"
 # rusttype = "0.9.3"
@@ -43,8 +44,8 @@ ab_glyph = "0.2.29"
 async-stream = "0.3.6"
 crc32fast = "1.4.2"
 base64 = "0.22.1"
-rsa = "0.9.6"
-notify = "6.1.1"
+rsa = "0.9.8"
+notify = "8.0.0"
 hmac-sha512 = "1.1.5"
 
 [features]

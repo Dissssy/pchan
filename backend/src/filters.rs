@@ -83,6 +83,24 @@ pub fn valid_token() -> impl Filter<Extract = (Token,), Error = warp::Rejection>
         })
 }
 
+pub fn valid_token_always_allow_res(
+) -> impl Filter<Extract = ((),), Error = warp::Rejection> + Clone {
+    warp::any()
+        .and(optional_token())
+        .and(warp::path::full())
+        .and_then(|token: Option<Token>, path: FullPath| async move {
+            let path = path.as_str();
+            if token.is_none() {
+                if path.starts_with("/res/") {
+                    return Ok(());
+                }
+            } else {
+                return Ok(());
+            }
+            Err(warp::reject::reject())
+        })
+}
+
 pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp::Rejection> + Clone
 {
     warp::any()
@@ -249,7 +267,7 @@ pub fn priveleged_endpoint() -> impl Filter<Extract = (), Error = warp::Rejectio
 pub fn user_agent_is_scraper() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
     warp::header::header::<String>("user-agent")
         .and_then(|user_agent: String| async move {
-            // println!("User agent: {}", user_agent);
+            log::trace!("User agent: {}", user_agent);
             if crate::statics::KNOWN_SCRAPERS.contains(&user_agent.as_str()) {
                 Ok(())
             } else {
@@ -265,7 +283,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
     warp::path::full()
         .and(valid_token())
         .and(warp::method())
-        .and_then(|path: FullPath, token: Token, method| async move {
+        .and_then(|path: FullPath, mut token: Token, method| async move {
             #[cfg(feature = "no_ratelimit")]
             {
                 Ok::<(), warp::Rejection>(())
@@ -273,6 +291,18 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
             #[cfg(not(feature = "no_ratelimit"))]
             {
                 if method == Method::GET {
+                    return Ok(());
+                }
+
+                let mut conn = crate::POOL
+                    .get()
+                    .await
+                    .map_err(|_| warp::reject::reject())?;
+
+                if database::check_admin(&mut conn, &token.member_hash().database_hash())
+                    .await
+                    .map_err(|_| warp::reject::reject())?
+                {
                     return Ok(());
                 }
 
@@ -294,7 +324,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                         .map(|v| v.parse::<bool>().unwrap_or_default())
                         .unwrap_or_default();
 
-                let (seconds, ident): (u64, String) =
+                let (seconds, ident): (u64, Arc<str>) =
                     match (method, path[0], path[1], path[2], path[3]) {
                         (
                             Method::POST,
@@ -316,15 +346,32 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                                 } else {
                                     String::new()
                                 }
-                            ),
+                            )
+                            .into(),
                         ),
                         (
                             Method::DELETE,
                             Some("board"),
-                            Some(_discrim),
+                            Some(discrim),
                             Some("post"),
-                            Some(_post),
-                        ) => return Ok(()),
+                            Some(post),
+                        ) => (
+                            5,
+                            format!(
+                                "delete post{}{}",
+                                if include_board {
+                                    format!(" on /{}/", discrim)
+                                } else {
+                                    String::new()
+                                },
+                                if include_thread {
+                                    format!(" in {}", post)
+                                } else {
+                                    String::new()
+                                }
+                            )
+                            .into(),
+                        ),
                         (Method::POST, Some("board"), Some(discrim), Some("thread"), None) => (
                             10,
                             format!(
@@ -334,14 +381,18 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                                 } else {
                                     String::new()
                                 }
-                            ),
+                            )
+                            .into(),
                         ),
-                        (Method::POST, Some("subscribe"), _, _, _) => (3, "subscribe".to_string()),
-                        (Method::POST, Some("file"), _, _, _) => (15, "file upload".to_string()),
-                        (Method::PUT, _, _, _, _) => (0, "PUT".to_string()),
+                        (Method::POST, Some("subscribe"), _, _, _) => (3, "subscribe".into()),
+                        (Method::POST, Some("file"), _, _, _) => (15, "file upload".into()),
+                        (Method::PUT, _, _, _, _) => (0, "PUT".into()),
+                        (Method::PATCH, Some("consume_code"), None, None, None) => {
+                            (60, "consume code".into())
+                        }
                         path => {
-                            println!("path: {:?}", path);
-                            (5, rawpath.to_string())
+                            log::info!("path: {:?}", path);
+                            (5, rawpath.into())
                         }
                     };
 
@@ -490,7 +541,7 @@ impl MemberToken {
     pub fn post_hash(&self, id: &str) -> String {
         hash_with_salt(&self.token, id)
     }
-    pub fn member_hash(&self) -> Arc<String> {
+    pub fn database_hash(&self) -> Arc<String> {
         Arc::clone(&self.token)
     }
 }

@@ -5,10 +5,10 @@ Frontend:
 Backend:
     - Moderation tools
     - Seperate login code out into its own function to simplify the OAuth flow readability
-    - Finish checking for permission to access a private board on different endpoints, boards and threads are done, posts are in threads so thats fine, maybe files can work?
 
 Shared:
-    - Way to watch threads and know you are watching them (maybe some eye icon and two api endpoints, one that tells you if you're watching a thread, and one that sets watching the thread
+    - Mod/Admin view
+    - Endpoint to get current permission level that way we can show/hide the applicable ui elements. fine to do this it's not the only barrier to using the endpoints.
     - Migrate to JWT instead of the current token system
 
 Long term goals:
@@ -17,6 +17,8 @@ Long term goals:
     - Learn how to use the github issue tracker LOOOL
 
 Complete:
+    - Way to watch threads and know you are watching them (maybe some eye icon and two api endpoints, one that tells you if you're watching a thread, and one that sets watching the thread @done
+    - Finish checking for permission to access a private board on different endpoints, boards and threads are done, posts are in threads so thats fine, maybe files can work? @done
     - Way to invite users (/api/v1/board/{board}/invite?info={Invite name identifier thing}) @done
     - Way to accept invitations (/api/v1/consume_code?info={Invite code from the invite link}) @done
     - FINISH REWRITE @done

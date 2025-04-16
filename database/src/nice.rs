@@ -30,6 +30,7 @@ impl Board {
     pub async fn with_threads(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: &str,
     ) -> Result<BoardWithThreads> {
         use crate::threads::dsl::*;
         let mut bthreads = Vec::new();
@@ -40,7 +41,7 @@ impl Board {
             .await?
             .iter()
         {
-            bthreads.push(thread.with_lazy_posts(conn).await?);
+            bthreads.push(thread.with_lazy_posts(conn, token).await?);
         }
         Ok(BoardWithThreads {
             info: SafeBoard {
@@ -74,6 +75,7 @@ impl Thread {
     pub async fn with_posts(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: &str,
     ) -> Result<ThreadWithPosts> {
         use crate::posts::dsl::*;
         let tposts = posts
@@ -84,7 +86,7 @@ impl Thread {
             .await?;
         let mut safeposts = Vec::new();
         for post in tposts.iter() {
-            safeposts.push(post.safe(conn).await?);
+            safeposts.push(post.safe(conn, token).await?);
         }
         let post_count = posts
             .select(count(id))
@@ -100,13 +102,14 @@ impl Thread {
             board: self.board,
             post_count,
             topic: self.topic.clone(),
-            thread_post: tpost.safe(conn).await?,
+            thread_post: tpost.safe(conn, token).await?,
             posts: safeposts,
         })
     }
     pub async fn with_lazy_posts(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: &str,
     ) -> Result<ThreadWithLazyPosts> {
         use crate::posts::dsl::*;
         let tposts: Vec<Post> = posts
@@ -124,7 +127,7 @@ impl Thread {
             .await?;
         let mut safeposts = Vec::new();
         for post in tposts.iter() {
-            safeposts.push(post.safe(conn).await?);
+            safeposts.push(post.safe(conn, token).await?);
         }
         safeposts.reverse();
         let tpost = posts
@@ -135,7 +138,7 @@ impl Thread {
             board: self.board,
             post_count,
             topic: self.topic.clone(),
-            thread_post: tpost.safe(conn).await?,
+            thread_post: tpost.safe(conn, token).await?,
             posts: safeposts,
         })
     }
@@ -161,6 +164,7 @@ impl Post {
     pub async fn safe(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: &str,
     ) -> Result<SafePost> {
         use crate::posts::dsl::*;
         let replies = posts
@@ -176,7 +180,7 @@ impl Post {
             newreplies.push(get_reply_info(reply, self.board, conn).await?);
         }
 
-        let t = get_file(conn, self.id).await;
+        let t = get_file(conn, Some(token.to_owned()), self.id).await;
 
         let board_discrim = get_board_discrim(self.board, conn).await?;
 
@@ -244,6 +248,7 @@ pub async fn post_number(
 
 pub async fn get_file(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    token: Option<String>,
     tid: i64,
 ) -> Result<Option<FileInfo>> {
     use crate::files::dsl::*;
@@ -255,7 +260,27 @@ pub async fn get_file(
         .await
         .optional()?
     {
-        Some(f) => Some(f.info(conn).await?),
+        Some(f) => Some(f.info(conn, token).await?),
+        None => None,
+    };
+    Ok(file)
+}
+
+pub async fn get_file_from_path(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    token: Option<String>,
+    path: &str,
+) -> Result<Option<FileInfo>> {
+    use crate::files::dsl::*;
+    use diesel::result::OptionalExtension;
+
+    let file = match files
+        .filter(filepath.eq(path))
+        .first::<File>(conn)
+        .await
+        .optional()?
+    {
+        Some(f) => Some(f.info(conn, token).await?),
         None => None,
     };
     Ok(file)
@@ -273,13 +298,8 @@ impl File {
     pub async fn info(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+        token: Option<String>,
     ) -> Result<FileInfo> {
-        let thumbnail = if self.spoiler {
-            get_random_spoiler(conn).await?
-        } else {
-            format!("{}-thumb.jpg", self.filepath)
-        };
-
         // file id is shared with the post id, so we can work our way up the chain to find whether the board is private
         let post = crate::posts::dsl::posts
             .filter(crate::posts::dsl::id.eq(self.id))
@@ -291,27 +311,49 @@ impl File {
             .first::<Board>(conn)
             .await?;
 
+        if board.private {
+            // ensure the user has access to this board
+            if !match token {
+                Some(t) => check_access(conn, &t, board.id).await?,
+                None => {
+                    log::trace!("No token provided");
+                    false
+                }
+            } {
+                return Err(anyhow::anyhow!("Not authorized to view this file"));
+            }
+        }
+
+        let thumbnail = if self.spoiler {
+            get_random_spoiler(conn, board.id).await?
+        } else {
+            format!("{}-thumb.jpg", self.filepath)
+        };
+
         Ok(FileInfo {
-            path: self.filepath.clone(),
-            thumbnail,
-            hash: self.hash.clone(),
-            spoiler: self.spoiler,
-            board: Some(MicroBoardInfo {
+            claimed: ClaimedFileInfo {
+                path: self.filepath.clone(),
+                thumbnail,
+                hash: self.hash.clone(),
+                spoiler: self.spoiler,
+            },
+            board: MicroBoardInfo {
                 discriminator: board.discriminator,
                 private: board.private,
-            }),
+                id: board.id,
+            },
         })
     }
-    pub fn raw_info(&self) -> FileInfo {
-        let thumbnail = format!("{}-thumb.jpg", self.filepath);
-        FileInfo {
-            path: self.filepath.clone(),
-            thumbnail,
-            hash: self.hash.clone(),
-            spoiler: self.spoiler,
-            board: None,
-        }
-    }
+    // pub fn raw_info(&self) -> FileInfo {
+    //     let thumbnail = format!("{}-thumb.jpg", self.filepath);
+    //     FileInfo {
+    //         path: self.filepath.clone(),
+    //         thumbnail,
+    //         hash: self.hash.clone(),
+    //         spoiler: self.spoiler,
+    //         board: None,
+    //     }
+    // }
 }
 
 #[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
@@ -334,7 +376,8 @@ impl Banner {
 #[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Spoiler {
     pub id: i64,
-    pub img: String,
+    pub img_path: String,
+    pub boards: Vec<i64>,
 }
 
 #[derive(Queryable, Debug, Clone, PartialEq, Eq)]
@@ -353,20 +396,31 @@ impl Member {
     }
 }
 
-// postgresql function that runs on delete of a post to remove its ID from the watching list of all members
-
 pub async fn get_random_spoiler(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    board: i64,
 ) -> Result<String> {
     use crate::spoilers::dsl::*;
 
-    let spoiler = spoilers.select(img).load::<String>(conn).await?;
+    // let spoiler = spoilers.select(img).load::<String>(conn).await?;
+
+    let spoiler = spoilers
+        .or_filter(boards.contains(vec![board]))
+        .or_filter(boards.is_null())
+        .select(img_path)
+        .load::<String>(conn)
+        .await?;
 
     use rand::seq::SliceRandom;
     spoiler
         .choose(&mut rand::thread_rng())
         .cloned()
-        .ok_or_else(|| anyhow::anyhow!("No spoilers found!"))
+        .ok_or_else(|| anyhow::anyhow!("No spoilers found for board {}!", board))
+
+    // spoiler
+    //     .choose(&mut rand::thread_rng())
+    //     .cloned()
+    //     .ok_or_else(|| anyhow::anyhow!("No spoilers found!"))
 }
 
 #[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
@@ -380,35 +434,40 @@ pub struct BoardAccess {
 }
 
 pub async fn check_access(
-    board: i64,
-    token: &str,
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    token: &str,
+    board: i64,
 ) -> Result<bool> {
-    {
-        // first check if the user has admin set to true on their members record
-        use crate::members::dsl::*;
-        use diesel::dsl::{exists, select};
-
-        if select(exists(
-            members.filter(token_hash.eq(token)).filter(admin.eq(true)),
-        ))
-        .get_result(conn)
-        .await?
-        {
-            return Ok(true);
-        }
+    if token == env!("SUPER_SECRET_CODE") {
+        return Ok(true);
     }
+    log::trace!("{}, {}", board, token);
+
+    let board = {
+        use crate::boards::dsl::*;
+        boards.filter(id.eq(board)).first::<Board>(conn).await?
+    };
 
     use crate::user_tags::dsl::*;
-    use diesel::dsl::{exists, select};
+    if !board.private {
+        return Ok(true);
+    }
 
-    let hash = common::hash_invitation(token, board);
+    // let permission_level = Self::is_admin(conn, token.clone(), board.id).await?;
+    let permission_level = permission_level(conn, board.id, token).await?;
+    if !permission_level.is_none() {
+        return Ok(true);
+    }
+
+    let hash = common::hash_invitation(token, board.id);
+
+    use diesel::dsl::{exists, select};
 
     let exists = select(exists(
         user_tags.filter(
             invite_hash
                 .eq(Some(hash))
-                .and(board_id.eq(board))
+                .and(board_id.eq(board.id))
                 .and(tag_kind.eq(UserTag::BoardAccess.to_string())),
         ),
     ))

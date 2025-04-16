@@ -63,7 +63,8 @@ diesel::table! {
 diesel::table! {
     spoilers (id) {
         id -> BigInt,
-        img -> Text,
+        img_path -> Text,
+        boards -> Array<BigInt>,
     }
 }
 

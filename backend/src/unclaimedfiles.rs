@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use common::structs::FileInfo;
+use common::structs::ClaimedFileInfo;
 use imageproc::drawing::draw_text_mut;
 use std::collections::HashMap;
 
@@ -18,7 +18,7 @@ impl UnclaimedFiles {
         for _ in 0..3 {
             let id = nanoid::nanoid!(16);
             if let std::collections::hash_map::Entry::Vacant(e) =
-                self.files.entry(token.member_hash().to_string())
+                self.files.entry(token.database_hash().to_string())
             {
                 e.insert((id.clone(), file, tokio::time::Instant::now()));
                 return Ok(id);
@@ -33,8 +33,8 @@ impl UnclaimedFiles {
         createfile: &common::structs::CreateFile,
         token: MemberToken,
         is_thread_post: bool,
-    ) -> Result<FileInfo> {
-        match self.files.remove(&*token.member_hash()) {
+    ) -> Result<ClaimedFileInfo> {
+        match self.files.remove(&*token.database_hash()) {
             Some((tid, file, _)) => {
                 if tid != createfile.id {
                     return Err(anyhow!("Invalid id"));
@@ -101,7 +101,7 @@ impl UnclaimedFiles {
                             }) {
                                 Ok(img) => img,
                                 Err(e) => {
-                                    println!("Failed to load base thumbnail: {e:?}");
+                                    log::error!("Failed to load base thumbnail: {e:?}");
                                     return Err(diskfilepath);
                                 }
                             };
@@ -111,7 +111,7 @@ impl UnclaimedFiles {
                             ) {
                                 Ok(f) => f,
                                 Err(e) => {
-                                    println!("Failed to load font: {e:?}");
+                                    log::error!("Failed to load font: {e:?}");
                                     return Err(diskfilepath);
                                 }
                             };
@@ -136,7 +136,7 @@ impl UnclaimedFiles {
                             match img.save(&thumbpath) {
                                 Ok(_) => Ok(thumbpath),
                                 Err(e) => {
-                                    println!("Failed to save thumbnail: {e:?}");
+                                    log::error!("Failed to save thumbnail: {e:?}");
                                     Err(diskfilepath)
                                 }
                             }
@@ -152,12 +152,11 @@ impl UnclaimedFiles {
                         return Err(anyhow!("Invalid file"));
                     }
                 };
-                Ok(FileInfo {
+                Ok(ClaimedFileInfo {
                     path: universalfilepath,
                     hash: filehash,
                     thumbnail: path,
                     spoiler: createfile.spoiler,
-                    board: None,
                 })
             }
             None => Err(anyhow!("File not found")),
@@ -178,7 +177,7 @@ impl UnclaimedFiles {
     }
 
     pub fn has_pending(&self, token: MemberToken) -> bool {
-        self.files.contains_key(&*token.member_hash())
+        self.files.contains_key(&*token.database_hash())
     }
 }
 

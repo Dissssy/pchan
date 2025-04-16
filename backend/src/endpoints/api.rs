@@ -19,7 +19,7 @@ pub fn priveleged_api_endpoints(
                 &mut match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
-                        println!("error connecting to backend: {}", e);
+                        log::error!("error connecting to backend: {}", e);
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&"error connecting to backend"),
                         );
@@ -135,7 +135,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -167,7 +167,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
-                        println!("error connecting to backend: {}", e);
+                        log::error!("error connecting to backend: {}", e);
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&"error connecting to backend"),
                         );
@@ -180,7 +180,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 )
                 .await
                 {
-                    Ok(board) => match board.with_threads(&mut conn).await {
+                    Ok(board) => match board
+                        .with_threads(&mut conn, &token.member_hash().database_hash())
+                        .await
+                    {
                         Ok(board) => Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&board),
                         ),
@@ -213,7 +216,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -249,7 +252,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -320,7 +323,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     }
                 };
                 let tid = thread.id;
-                let thread = match thread.with_posts(&mut conn).await {
+                let thread = match thread
+                    .with_posts(&mut conn, &token.member_hash().database_hash())
+                    .await
+                {
                     Ok(v) => v,
                     Err(e) => {
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
@@ -353,7 +359,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 )
                 .await
                 {
-                    Ok(post) => match post.safe(&mut conn).await {
+                    Ok(post) => match post
+                        .safe(&mut conn, &token.member_hash().database_hash())
+                        .await
+                    {
                         Ok(post) => Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&post),
                         ),
@@ -379,7 +388,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -412,7 +421,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -534,13 +543,13 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             |tail: warp::path::Tail, _: Token| async move {
                 let file = format!("/files/{}", tail.as_str());
                 // ensure the file exists
-                // println!("file: {}", file);
+                log::trace!("file: {}", file);
                 let fileinfo = match crate::database_bindings::Database::get_file(
                     &file,
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -557,18 +566,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     }
                 };
 
-                match fileinfo.board.map(|b| b.private) {
-                    Some(true) => {
-                        return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                            &"Cannot share private file",
-                        ));
-                    }
-                    None => {
-                        return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                            &"Unable to determine if file is private, disallowing sharing for safety",
-                        ));
-                    }
-                    _ => {}
+                if fileinfo.board.private {
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"Cannot share private file",
+                    ));
                 }
 
                 // generate a share link
@@ -605,7 +606,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -636,7 +637,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -670,7 +671,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );
@@ -704,7 +705,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
-                        println!("error connecting to backend: {}", e);
+                        log::error!("error connecting to backend: {}", e);
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&"error connecting to backend"),
                         );
@@ -755,7 +756,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
-                        println!("error connecting to backend: {}", e);
+                        log::error!("error connecting to backend: {}", e);
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&"error connecting to backend"),
                         );
@@ -806,7 +807,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
-                        println!("error connecting to backend: {}", e);
+                        log::error!("error connecting to backend: {}", e);
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&"error connecting to backend"),
                         );
@@ -892,7 +893,7 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 crate::PUSH_NOTIFS
                     .lock()
                     .await
-                    .subscribe(&token.member_hash().member_hash())
+                    .subscribe(&token.member_hash().database_hash())
                     .await
             })))
         });
@@ -924,7 +925,7 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
                         Err(e) => {
-                            println!("error connecting to backend: {}", e);
+                            log::error!("error connecting to backend: {}", e);
                             return Ok::<warp::reply::Json, warp::reject::Rejection>(
                                 warp::reply::json(&"error connecting to backend"),
                             );

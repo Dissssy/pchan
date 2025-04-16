@@ -150,7 +150,7 @@ impl From<SafePost> for NotificationInfo {
                     content.to_owned()
                 }
             },
-            icon: post.file.map(|f| f.thumbnail),
+            icon: post.file.map(|f| f.claimed.thumbnail),
         }
     }
 }

@@ -10,3 +10,4 @@ anyhow = "1.0.70"
 chrono = { version = "0.4.24", features = ["serde"] }
 serde = { version = "1.0.159", features = ["derive"] }
 sha2 = "0.10.6"
+log = "0.4.27"

@@ -56,18 +56,18 @@ impl HmacKeyGenerator {
                     attrs: _,
                 }) = res
                 {
-                    println!("HMAC key file removed, generating new key");
+                    log::warn!("HMAC key file removed, generating new key");
                     // ensure the key file no longer exists
                     if std::fs::metadata(file_path).is_ok() {
-                        println!("HMAC key file still exists, removing");
+                        log::trace!("HMAC key file still exists, removing");
                         let _ = std::fs::remove_file(file_path);
                     }
                     let mut key = key.blocking_lock();
                     *key = generate_and_write_key(file_path, &mut rand::thread_rng())
                         .expect("Failed to write HMAC key to disc");
-                    println!("New HMAC key generated");
+                    log::info!("New HMAC key generated");
                 } else {
-                    println!("Failed to handle event: {:?}", res);
+                    log::error!("Failed to handle event: {:?}", res);
                 }
             })
             .expect("Failed to create watcher");

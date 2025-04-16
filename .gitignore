@@ -36,3 +36,4 @@ backend/hmac_key
 backend/Cargo.toml.bak
 stage
 run_server.sh
+logs

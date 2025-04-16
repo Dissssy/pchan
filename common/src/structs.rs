@@ -94,17 +94,24 @@ impl Display for User {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FileInfo {
+    pub claimed: ClaimedFileInfo,
+    pub board: MicroBoardInfo,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ClaimedFileInfo {
     pub path: String,
     pub thumbnail: String,
     pub hash: String,
     pub spoiler: bool,
-    pub board: Option<MicroBoardInfo>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MicroBoardInfo {
     pub discriminator: String,
     pub private: bool,
+    #[serde(skip)]
+    pub id: i64,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]

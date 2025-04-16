@@ -1,12 +1,13 @@
 use anyhow::Result;
-use rand::seq::SliceRandom;
+use rand::seq::SliceRandom as _;
+// use rand::seq::SliceRandom;
 
 pub struct Quotes {
     quotes: Vec<String>,
 }
 
 impl Quotes {
-    pub fn load(path: String) -> Result<Self> {
+    pub fn load(path: &str) -> Result<Self> {
         let quotes = std::fs::read_to_string(path)?;
         let quotes = quotes.lines().map(|x| x.to_string()).collect();
         Ok(Self { quotes })

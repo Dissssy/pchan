@@ -128,7 +128,7 @@ where
 {
     let scrunkly = profanity.check_profanity(&string);
 
-    // println!("{:?}", scrunkly);
+    log::trace!("{:?}", scrunkly);
     let mut banned_categories = HashMap::new();
     banned_categories.insert(Category::RacialSlurs, SeverityDescription::Mild);
     banned_categories.insert(Category::SexualIdentity, SeverityDescription::Severe);
@@ -150,7 +150,7 @@ where
                 false
             }
         }) {
-            // println!("found: {:?}", word.word);
+            log::trace!("found: {:?}", word.word);
 
             // we need to do a case-insensitive search and replace of the word in the string
             case_insensitive_replace(&mut original_string, &word.word, &f);

@@ -9,13 +9,13 @@ use diesel::dsl::now;
 use diesel::insert_into;
 use diesel::query_dsl::methods::FilterDsl;
 use diesel::query_dsl::methods::OrderDsl;
-use diesel::BoolExpressionMethods as _;
 use diesel::ExpressionMethods;
 use diesel::PgArrayExpressionMethods;
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
 use profanity::replace_possible_profanity;
 use web_push::WebPushClient as _;
+use rand::seq::SliceRandom as _;
 // use serde_json::json;
 // use web_push::SubscriptionInfo;
 // use web_push::VapidSignatureBuilder;
@@ -28,7 +28,6 @@ use common::structs::SubscriptionData;
 use database::thread_post_number;
 use database::Banner;
 use database::Post;
-use database::UserTag;
 
 // pub struct Users {
 //     valid_users: Vec<&str>,
@@ -106,14 +105,10 @@ impl Database {
 
         let mut final_results = vec![];
         for board in results {
-            if Self::is_allowed_access(
-                conn,
-                token.clone(),
-                BoardOrDiscriminator::Board(board.clone()),
-            )
-            .await
-            .inspect_err(|e| eprintln!("Error checking access: {}", e))
-            .unwrap_or(false)
+            if database::check_access(conn, &token.database_hash(), board.id)
+                .await
+                .inspect_err(|e| log::error!("Error checking access: {}", e))
+                .unwrap_or(false)
             {
                 final_results.push(board);
             }
@@ -122,51 +117,51 @@ impl Database {
         Ok(final_results)
     }
 
-    pub async fn is_allowed_access<'a>(
-        conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: MemberToken,
-        board: BoardOrDiscriminator<'a>,
-    ) -> Result<bool> {
-        use database::user_tags::dsl::*;
+    // pub async fn is_allowed_access<'a>(
+    //     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    //     token: MemberToken,
+    //     board: BoardOrDiscriminator<'a>,
+    // ) -> Result<bool> {
+    //     use database::user_tags::dsl::*;
 
-        let board = match board {
-            BoardOrDiscriminator::Discriminator(disc) => Self::get_raw_board(conn, disc).await?,
-            BoardOrDiscriminator::Board(board) => board,
-        };
+    //     let board = match board {
+    //         BoardOrDiscriminator::Discriminator(disc) => Self::get_raw_board(conn, disc).await?,
+    //         BoardOrDiscriminator::Board(board) => board,
+    //     };
 
-        if !board.private {
-            return Ok(true);
-        }
+    //     if !board.private {
+    //         return Ok(true);
+    //     }
 
-        // let permission_level = Self::is_admin(conn, token.clone(), board.id).await?;
-        let permission_level =
-            database::permission_level(conn, board.id, &token.member_hash()).await?;
-        if !permission_level.is_none() {
-            return Ok(true);
-        }
+    //     // let permission_level = Self::is_admin(conn, token.clone(), board.id).await?;
+    //     let permission_level =
+    //         database::permission_level(conn, board.id, &token.database_hash()).await?;
+    //     if !permission_level.is_none() {
+    //         return Ok(true);
+    //     }
 
-        let hash = common::hash_invitation(&token.member_hash(), board.id);
+    //     let hash = common::hash_invitation(&token.database_hash(), board.id);
 
-        use diesel::dsl::{exists, select};
+    //     use diesel::dsl::{exists, select};
 
-        let exists = select(exists(
-            user_tags.filter(
-                invite_hash
-                    .eq(Some(hash))
-                    .and(board_id.eq(board.id))
-                    .and(tag_kind.eq(UserTag::BoardAccess.to_string())),
-            ),
-        ))
-        .get_result(conn)
-        .await?;
+    //     let exists = select(exists(
+    //         user_tags.filter(
+    //             invite_hash
+    //                 .eq(Some(hash))
+    //                 .and(board_id.eq(board.id))
+    //                 .and(tag_kind.eq(UserTag::BoardAccess.to_string())),
+    //         ),
+    //     ))
+    //     .get_result(conn)
+    //     .await?;
 
-        // match results {
-        //     Ok(_) => Ok(true),
-        //     Err(diesel::NotFound) => Ok(false),
-        //     Err(e) => Err(e.into()),
-        // }
-        Ok(exists)
-    }
+    //     // match results {
+    //     //     Ok(_) => Ok(true),
+    //     //     Err(diesel::NotFound) => Ok(false),
+    //     //     Err(e) => Err(e.into()),
+    //     // }
+    //     Ok(exists)
+    // }
 
     pub async fn generate_board_access_code(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
@@ -174,7 +169,7 @@ impl Database {
         board_id: i64,
         invite_name: String,
     ) -> Result<String> {
-        database::create_access(conn, invite_name.as_str(), &token.member_hash(), board_id).await
+        database::create_access(conn, invite_name.as_str(), &token.database_hash(), board_id).await
     }
 
     pub async fn generate_board_moderator_code(
@@ -183,7 +178,7 @@ impl Database {
         board_id: i64,
         invite_name: String,
     ) -> Result<String> {
-        database::create_moderation(conn, invite_name.as_str(), &token.member_hash(), board_id)
+        database::create_moderation(conn, invite_name.as_str(), &token.database_hash(), board_id)
             .await
     }
 
@@ -192,7 +187,7 @@ impl Database {
         token: MemberToken,
         invite_name: String,
     ) -> Result<()> {
-        database::grant_access(conn, &invite_name, &token.member_hash()).await
+        database::grant_access(conn, &invite_name, &token.database_hash()).await
     }
 
     pub async fn get_board(
@@ -207,20 +202,16 @@ impl Database {
             .first::<database::Board>(&mut *conn)
             .await?;
 
-        Self::is_allowed_access(
-            conn,
-            token.clone(),
-            BoardOrDiscriminator::Discriminator(discrim),
-        )
-        .await
-        .inspect_err(|e| eprintln!("Error checking access: {}", e))
-        .and_then(|x| {
-            if x {
-                Ok(())
-            } else {
-                Err(anyhow!("Not authorized to view board"))
-            }
-        })?;
+        database::check_access(conn, &token.database_hash(), result.id)
+            .await
+            .inspect_err(|e| log::error!("Error checking access: {}", e))
+            .and_then(|x| {
+                if x {
+                    Ok(())
+                } else {
+                    Err(anyhow!("Not authorized to view board"))
+                }
+            })?;
 
         Ok(result)
     }
@@ -245,24 +236,22 @@ impl Database {
         number: i64,
         token: MemberToken,
     ) -> Result<SafePost> {
-        Self::is_allowed_access(
-            conn,
-            token.clone(),
-            BoardOrDiscriminator::Discriminator(discriminator),
-        )
-        .await
-        .inspect_err(|e| eprintln!("Error checking access: {}", e))
-        .and_then(|x| {
-            if x {
-                Ok(())
-            } else {
-                Err(anyhow!("Not authorized to view post"))
-            }
-        })?;
+        let board = Self::get_board(conn, discriminator, token.clone()).await?;
+
+        database::check_access(conn, &token.database_hash(), board.id)
+            .await
+            .inspect_err(|e| log::error!("Error checking access: {}", e))
+            .and_then(|x| {
+                if x {
+                    Ok(())
+                } else {
+                    Err(anyhow!("Not authorized to view post"))
+                }
+            })?;
 
         Self::get_raw_post(conn, discriminator, number)
             .await?
-            .safe(conn)
+            .safe(conn, &token.database_hash())
             .await
     }
 
@@ -315,24 +304,22 @@ impl Database {
         number: i64,
         token: MemberToken,
     ) -> Result<i64> {
-        Self::is_allowed_access(
-            conn,
-            token.clone(),
-            BoardOrDiscriminator::Discriminator(discriminator),
-        )
-        .await
-        .inspect_err(|e| eprintln!("Error checking access: {}", e))
-        .and_then(|x| {
-            if x {
-                Ok(())
-            } else {
-                Err(anyhow!("Not authorized to delete post"))
-            }
-        })?;
+        let board = Self::get_board(conn, discriminator, token.clone()).await?;
+
+        database::check_access(conn, &token.database_hash(), board.id)
+            .await
+            .inspect_err(|e| log::error!("Error checking access: {}", e))
+            .and_then(|x| {
+                if x {
+                    Ok(())
+                } else {
+                    Err(anyhow!("Not authorized to delete post"))
+                }
+            })?;
         let tpost = Self::get_raw_post(conn, discriminator, number).await?;
         let tauthor = tpost.actual_author == *token.post_hash(&tpost.id.to_string());
         // let tadmin = Self::is_admin(conn, token, tpost.board).await?;
-        let at_least_mod = !database::permission_level(conn, tpost.board, &token.member_hash())
+        let at_least_mod = !database::permission_level(conn, tpost.board, &token.database_hash())
             .await?
             .is_none();
 
@@ -411,7 +398,7 @@ impl Database {
 
     pub async fn create_file(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        file: FileInfo,
+        file: ClaimedFileInfo,
         post_id: i64,
     ) -> Result<database::File> {
         use database::files::dsl::*;
@@ -435,14 +422,14 @@ impl Database {
         token: MemberToken,
     ) -> Result<ThreadWithPosts> {
         use database::threads::dsl::*;
-        let this_board = Self::get_board(conn, discriminator, token).await?;
+        let this_board = Self::get_board(conn, discriminator, token.clone()).await?;
         let this_post = Self::get_raw_post(conn, discriminator, number).await?;
         let results = threads
             .filter(board.eq(this_board.id))
             .filter(post_id.eq(this_post.id))
             .first::<database::Thread>(&mut *conn)
             .await?;
-        results.with_posts(conn).await
+        results.with_posts(conn, &token.database_hash()).await
     }
 
     // pub async fn get_thread_from_post_number(
@@ -506,8 +493,16 @@ impl Database {
             .get_result::<database::Thread>(conn)
             .await?;
 
-        let p = match Self::create_post(conn, this_board.id, tboard, t.id, thread.post, token, None)
-            .await
+        let p = match Self::create_post(
+            conn,
+            this_board.id,
+            tboard,
+            t.id,
+            thread.post,
+            token.clone(),
+            None,
+        )
+        .await
         {
             Ok(p) => p,
             Err(e) => {
@@ -518,7 +513,7 @@ impl Database {
             }
         };
         t.post_id = p.id;
-        t.with_posts(conn).await
+        t.with_posts(conn, &token.database_hash()).await
     }
 
     pub async fn create_post(
@@ -586,7 +581,7 @@ impl Database {
                 .await?;
 
             if let Some(files_check) = check_hash_against {
-                if files_check.iter().any(|x| x.hash == f.hash) {
+                if files_check.iter().any(|x| x.claimed.hash == f.hash) {
                     return Err(anyhow::anyhow!("File already exists"));
                 }
             }
@@ -596,15 +591,15 @@ impl Database {
             None
         };
 
-        let at_least_mod = !database::permission_level(conn, tboard, &token.member_hash())
+        let at_least_mod = !database::permission_level(conn, tboard, &token.database_hash())
             .await?
             .is_none();
 
-        // if !Self::is_admin(conn, token.clone(), tboard).await? {
+        // if !Self::is_admin(conn, token.clone(), board).await? {
         //     post.moderator = false;
         // }
 
-        let member_hash = token.member_hash();
+        let member_hash = token.database_hash();
 
         let t = insert_into(posts).values((
             post_number.eq(this_post_number),
@@ -630,7 +625,7 @@ impl Database {
             .execute(conn)
             .await?;
 
-        let safe = p.safe(conn).await?;
+        let safe = p.safe(conn, &token.database_hash()).await?;
         tokio::spawn(async move {
             Self::dispatch_push_notifications(safe, tthread, &member_hash).await;
         });
@@ -646,7 +641,7 @@ impl Database {
         let mut conn = match crate::POOL.get().await {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("Error getting connection: {}", e);
+                log::error!("Error getting connection: {}", e);
                 return;
             }
         };
@@ -693,13 +688,13 @@ impl Database {
                     "thread_post_number": safe.thread_post_number,
                     "thread_topic": thread_topic,
                     "post_number": safe.post_number,
-                    "thumbnail": safe.file.map(|x| x.thumbnail),
+                    "thumbnail": safe.file.map(|x| x.claimed.thumbnail),
                 }
             )).unwrap_or_default(),
         })) {
             Ok(v) => v,
             Err(e) => {
-                eprintln!("Error serializing push payload: {}", e);
+                log::error!("Error serializing push payload: {}", e);
                 return;
             }
         };
@@ -714,8 +709,8 @@ impl Database {
                             Ok(_) => {
                                 pushy.push(push);
                             }
-                            Err(_e) => {
-                                // eprintln!("Error sending push notification: {}", e);
+                            Err(e) => {
+                                log::error!("Error sending push notification: {}", e);
                                 changed = true;
                             }
                         }
@@ -723,7 +718,7 @@ impl Database {
                     changed
                 }
                 Err(e) => {
-                    eprintln!("Error parsing push data: {}", e);
+                    log::error!("Error parsing push data: {}", e);
                     continue;
                 }
             };
@@ -734,29 +729,31 @@ impl Database {
                         .execute(&mut conn)
                         .await
                     {
-                        eprintln!("Error updating push data: {}", e);
+                        log::error!("Error updating push data: {}", e);
                     }
                 }
             }
         }
-        // println!(
-        //     "Push notifications dispatched for {} users on thread {}",
-        //     all_members.len(),
-        //     thread
-        // );
+        log::trace!(
+            "Push notifications dispatched for {} users on thread {}",
+            all_members.len(),
+            thread
+        );
     }
 
     pub async fn get_all_files(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     ) -> Result<Vec<FileInfo>> {
         use database::files::dsl::*;
-        let filelist = files
-            .load::<database::File>(conn)
-            .await?
-            .iter()
-            .map(|x| x.raw_info())
-            .collect::<Vec<FileInfo>>();
-        Ok(filelist)
+        let filelist = files.load::<database::File>(conn).await?;
+        let mut newlist = vec![];
+        for file in filelist {
+            newlist.push(
+                file.info(conn, Some(env!("SUPER_SECRET_CODE").to_owned()))
+                    .await?,
+            );
+        }
+        Ok(newlist)
     }
 
     pub async fn get_file(
@@ -769,7 +766,8 @@ impl Database {
             .first::<database::File>(conn)
             .await
             .map_err(|_| anyhow!("File not found"))?;
-        file.info(conn).await
+        file.info(conn, Some(env!("SUPER_SECRET_CODE").to_owned()))
+            .await
     }
 
     pub async fn get_random_banner(
@@ -781,9 +779,9 @@ impl Database {
         use diesel::query_dsl::methods::OrFilterDsl;
         let board = Self::get_raw_board(conn, board_discriminator).await?;
 
-        Self::is_allowed_access(conn, token, BoardOrDiscriminator::Board(board.clone()))
+        database::check_access(conn, &token.database_hash(), board.id)
             .await
-            .inspect_err(|e| eprintln!("Error checking access: {}", e))
+            .inspect_err(|e| log::error!("Error checking access: {}", e))
             .and_then(|x| {
                 if x {
                     Ok(())
@@ -798,7 +796,6 @@ impl Database {
             .load::<Banner>(conn)
             .await?;
 
-        use rand::seq::SliceRandom;
         Ok(banner
             .choose(&mut rand::thread_rng())
             .cloned()
@@ -811,10 +808,10 @@ impl Database {
         token: MemberToken,
     ) -> Result<bool> {
         use database::members::dsl::*;
-        // println!("Checking token: {}", token.member_hash());
+        log::trace!("Checking token: {}", token);
         // check if a user with this token exists
         let user = members
-            .filter(token_hash.eq(&*token.member_hash()))
+            .filter(token_hash.eq(&*token.database_hash()))
             .first::<database::Member>(conn)
             .await;
 
@@ -834,7 +831,7 @@ impl Database {
 
         // if not, create one
         diesel::insert_into(members)
-            .values((token_hash.eq(&*token.member_hash()),))
+            .values((token_hash.eq(&*token.database_hash()),))
             .execute(conn)
             .await?;
 
@@ -853,7 +850,7 @@ impl Database {
         };
 
         // if so, delete it
-        diesel::delete(members.filter(token_hash.eq(&*token.member_hash())))
+        diesel::delete(members.filter(token_hash.eq(&*token.database_hash())))
             .execute(conn)
             .await?;
 
@@ -868,7 +865,7 @@ impl Database {
 
         let hashed_tokens = tokens
             .iter()
-            .map(|x| (*x.member_hash()).clone())
+            .map(|x| (*x.database_hash()).clone())
             .collect::<Vec<String>>();
 
         // delete all tokens that are not in the list
@@ -939,20 +936,16 @@ impl Database {
             let mut new_users = vec![];
             for user in users {
                 let token = Arc::new(user.token_hash.clone());
-                let has_access = Self::is_allowed_access(
-                    conn,
-                    MemberToken::new(Arc::new("DUMMY TOKEN OBJ".to_string()), Arc::clone(&token)),
-                    BoardOrDiscriminator::Board(board.clone()),
-                )
-                .await
-                .inspect_err(|e| eprintln!("Error checking access: {}", e))
-                .unwrap_or(false);
+                let has_access = database::check_access(conn, &token, board.id)
+                    .await
+                    .inspect_err(|e| log::error!("Error checking access: {}", e))
+                    .unwrap_or(false);
 
                 if has_access {
                     new_users.push(user);
                 } else {
                     // disable watching for this thread on this user
-                    println!("Disabling watching for user: {} because they don't have access to board: {}", user.id, board.discriminator);
+                    log::info!("Disabling watching for user: {} because they don't have access to board: {}", user.id, board.discriminator);
                     let mut twatching = user.watching;
                     twatching.retain(|x| *x != thread_id);
                     diesel::update(members.filter(token_hash.eq(&*token)))
@@ -977,7 +970,7 @@ impl Database {
 
         // if user where token_hash == token && watching.contains(post.thread_id)
         match members
-            .filter(token_hash.eq(&*token.member_hash()))
+            .filter(token_hash.eq(&*token.database_hash()))
             .filter(watching.contains(vec![watching_id]))
             .first::<database::Member>(conn)
             .await
@@ -1000,7 +993,7 @@ impl Database {
 
         // get user and, put or remove post.id from watching depending on watching
         let user = members
-            .filter(token_hash.eq(&*token.member_hash()))
+            .filter(token_hash.eq(&*token.database_hash()))
             .first::<database::Member>(conn)
             .await?;
 
@@ -1008,7 +1001,7 @@ impl Database {
             (true, false) => {
                 let mut twatching = user.watching;
                 twatching.push(watching_id);
-                diesel::update(members.filter(token_hash.eq(&*token.member_hash())))
+                diesel::update(members.filter(token_hash.eq(&*token.database_hash())))
                     .set(watching.eq(twatching))
                     .execute(conn)
                     .await?;
@@ -1017,7 +1010,7 @@ impl Database {
             (false, true) => {
                 let mut twatching = user.watching;
                 twatching.retain(|x| *x != watching_id);
-                diesel::update(members.filter(token_hash.eq(&*token.member_hash())))
+                diesel::update(members.filter(token_hash.eq(&*token.database_hash())))
                     .set(watching.eq(twatching))
                     .execute(conn)
                     .await?;
@@ -1035,7 +1028,7 @@ impl Database {
         use database::members::dsl::*;
 
         let user = members
-            .filter(token_hash.eq(&*token.member_hash()))
+            .filter(token_hash.eq(&*token.database_hash()))
             .first::<database::Member>(conn)
             .await?;
 
@@ -1056,7 +1049,7 @@ impl Database {
         // only push if not already subscribed
         if !subs.contains(&sub) {
             subs.push(sub);
-            diesel::update(members.filter(token_hash.eq(&*token.member_hash())))
+            diesel::update(members.filter(token_hash.eq(&*token.database_hash())))
                 .set(push_data.eq(serde_json::to_value(&subs)?))
                 .execute(conn)
                 .await?;
@@ -1068,13 +1061,13 @@ impl Database {
     // pub async fn dispatch_push_notifications(thread_id: i64, post: SafePost) -> Result<()> {
     //     tokio::task::spawn(async move {
     //         let mut conn = crate::POOL.get().await.unwrap_or_else(|_| {
-    //             eprintln!("Failed to get connection from pool!");
+    //             log::error!("Failed to get connection from pool!");
     //             panic!()
     //         });
     //         let users = match Self::get_subscribed_users(&mut conn, thread_id).await {
     //             Ok(x) => x,
     //             Err(e) => {
-    //                 eprintln!("Failed to get subscribed users: {}", e);
+    //                 log::error!("Failed to get subscribed users: {}", e);
     //                 return;
     //             }
     //         };
@@ -1089,7 +1082,7 @@ impl Database {
     //             // TODO: send push notifications to users :D
     //             // if failed to send call set_user_push_url with None
     //             if let Err(e) = Database::push(&user, payload.as_bytes()).await {
-    //                 eprintln!("Failed to send push notification: {}", e);
+    //                 log::error!("Failed to send push notification: {}", e);
     //                 Self::set_user_push_url(&mut conn, token, None)
     //                     .await
     //                     .unwrap_or(());
@@ -1108,7 +1101,6 @@ impl Database {
 
         let sig_builder = web_push::VapidSignatureBuilder::from_base64(
             env!("VAPID_PRIVATE_KEY"),
-            web_push::URL_SAFE_NO_PAD,
             &subscription_info,
         )?;
 
@@ -1121,9 +1113,4 @@ impl Database {
         client.send(builder.build()?).await?;
         Ok(())
     }
-}
-
-pub enum BoardOrDiscriminator<'a> {
-    Board(database::Board),
-    Discriminator(&'a str),
 }
