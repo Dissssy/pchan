@@ -7,30 +7,30 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-anyhow = "1.0.89"
-async-trait = "0.1.83"
+anyhow = "1.0.98"
+async-trait = "0.1.88"
 lazy_static = "1.5.0"
-reqwest = { version = "0.12.8", features = ["json"] }
-serde = { version = "1.0.210", features = ["derive"] }
-serde_json = "1.0.128"
-tokio = { version = "1.40.0", features = ["full"] }
+reqwest = { version = "0.12.15", features = ["json"] }
+serde = { version = "1.0.219", features = ["derive"] }
+serde_json = "1.0.140"
+tokio = { version = "1.44.2", features = ["full"] }
 warp = "0.3.7"
 common = { path = "../common" }
 profanity = { path = "../profanity" }
 database = { path = "../database" }
-postcard = { version = "1.0.10", features = ["alloc"] }
-flate2 = "1.0.34"
+postcard = { version = "1.1.1", features = ["alloc"] }
+flate2 = "1.1.1"
 env_logger = "0.11.8"
 datalust_logger = { path = "../../datalust_logger" }
 log = "0.4.27"
-diesel = { version = "2.2.4", features = ["chrono", "serde_json"] }
-diesel-async = { version = "0.5.0", features = ["postgres", "deadpool"] }
-deadpool = { version = "0.12.1" }
+diesel = { version = "2.2.9", features = ["chrono", "serde_json"] }
+diesel-async = { version = "0.5.2", features = ["postgres", "deadpool"] }
+deadpool = { version = "0.12.2" }
 dsync = "0.1.0"
-chrono = { version = "0.4.38", features = ["serde"] }
-csv = "1.3.0"
+chrono = { version = "0.4.40", features = ["serde"] }
+csv = "1.3.1"
 nanoid = "0.4.0"
-bytes = "1.7.2"
+bytes = "1.10.1"
 futures = "0.3.31"
 async-recursion = "1.1.1"
 thumbnailer = { git = "https://github.com/Dissssy/thumbnailer" }
@@ -38,15 +38,17 @@ mime = "0.3.17"
 rand = "0.8.5"
 web-push = "0.11.0"
 imageproc = "0.25.0"
-image = "0.25.2"
+image = "0.25.6"
 # rusttype = "0.9.3"
 ab_glyph = "0.2.29"
 async-stream = "0.3.6"
 crc32fast = "1.4.2"
 base64 = "0.22.1"
-rsa = "0.9.8"
 notify = "8.0.0"
-hmac-sha512 = "1.1.5"
+hmac-sha512 = "1.1.6"
+
+# until rsa releases a version that supports latest rand
+rsa = "0.9.8"
 
 [features]
 default = []

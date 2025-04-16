@@ -99,13 +99,12 @@ pub fn InviteTools(props: &Props) -> Html {
                             {
                                 Ok(v) => {
                                     if let Some(window) = web_sys::window() {
-                                        if let Some(clip) = window.navigator().clipboard() {
-                                            let _ = clip.write_text(&format!(
-                                                "{}/redeem?invite_code={}",
-                                                env!("URL"),
-                                                v
-                                            ));
-                                        }
+                                        let clip = window.navigator().clipboard();
+                                        let _ = clip.write_text(&format!(
+                                            "{}/redeem?invite_code={}",
+                                            env!("URL"),
+                                            v
+                                        ));
                                     }
                                     state.set(ApiState::Loaded(v));
                                 }
@@ -152,13 +151,12 @@ pub fn InviteTools(props: &Props) -> Html {
                             {
                                 Ok(v) => {
                                     if let Some(window) = web_sys::window() {
-                                        if let Some(clip) = window.navigator().clipboard() {
-                                            let _ = clip.write_text(&format!(
-                                                "{}/redeem?invite_code={}",
-                                                env!("URL"),
-                                                v
-                                            ));
-                                        }
+                                        let clip = window.navigator().clipboard();
+                                        let _ = clip.write_text(&format!(
+                                            "{}/redeem?invite_code={}",
+                                            env!("URL"),
+                                            v
+                                        ));
                                     }
                                     state.set(ApiState::Loaded(v));
                                 }

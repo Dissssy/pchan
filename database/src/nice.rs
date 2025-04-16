@@ -5,6 +5,7 @@ use deadpool::managed::Object;
 use diesel::dsl::count;
 use diesel::prelude::*;
 use uuid::Uuid;
+use rand::prelude::*;
 // use diesel::prelude::QueryableByName;
 // use diesel::query_dsl::methods::SelectDsl;
 // use diesel::Selectable;
@@ -411,9 +412,8 @@ pub async fn get_random_spoiler(
         .load::<String>(conn)
         .await?;
 
-    use rand::seq::SliceRandom;
     spoiler
-        .choose(&mut rand::thread_rng())
+        .choose(&mut rand::rng())
         .cloned()
         .ok_or_else(|| anyhow::anyhow!("No spoilers found for board {}!", board))
 

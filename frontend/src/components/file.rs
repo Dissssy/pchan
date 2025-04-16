@@ -149,13 +149,9 @@ pub fn File(props: &Props) -> Html {
                     }
 
                     if let Some(window) = web_sys::window() {
-                        if let Some(clip) = window.navigator().clipboard() {
-                            let _ = clip.write_text(&format!("{}{}", env!("URL"), path));
-                            share_state.set(ShareState::Copied);
-                        } else {
-                            share_state
-                                .set(ShareState::Error("Clipboard not available".to_string()));
-                        }
+                        let clip = window.navigator().clipboard();
+                        let _ = clip.write_text(&format!("{}{}", env!("URL"), path));
+                        share_state.set(ShareState::Copied);
                     } else {
                         share_state.set(ShareState::Error("Window not available".to_string()));
                     }

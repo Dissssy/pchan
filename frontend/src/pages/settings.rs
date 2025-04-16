@@ -1,7 +1,7 @@
 use yew::prelude::*;
 use yew_hooks::use_local_storage;
 
-use crate::components::{InviteTools, ThemeEditor, TimezoneEditor};
+use crate::components::{InviteTools, ThemeEditor, TimezoneEditor, PoweredBy};
 
 #[function_component]
 pub fn Settings() -> Html {
@@ -18,9 +18,8 @@ pub fn Settings() -> Html {
             e.prevent_default();
             if let Some(the) = token.as_ref() {
                 if let Some(window) = web_sys::window() {
-                    if let Some(clip) = window.navigator().clipboard() {
-                        let _ = clip.write_text(the);
-                    }
+                    let clip = window.navigator().clipboard();
+                    let _ = clip.write_text(the);
                 }
             };
         })
@@ -42,6 +41,7 @@ pub fn Settings() -> Html {
                             html! {}
                         }
                     }
+                    <PoweredBy />
                 </div>
             </div>
         </div>

@@ -20,6 +20,7 @@ mod settings;
 mod spinner;
 mod thread;
 mod watch_button;
+mod powered_by;
 
 pub use banner_ad::BannerAd;
 pub use board_name::{BoardName, BoardNameType};
@@ -45,6 +46,7 @@ pub use settings::SettingsButton;
 pub use spinner::Spinner;
 pub use thread::Thread;
 pub use watch_button::WatchButton;
+pub use powered_by::PoweredBy;
 use yew::AttrValue;
 
 #[derive(Clone, PartialEq, Debug)]

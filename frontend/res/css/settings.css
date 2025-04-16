@@ -161,6 +161,17 @@
   text-align: center;
 }
 
+.powered-by {
+  width: 100%;
+  white-space: nowrap;
+  color: var(--error-color);
+  padding-bottom: 0.2rem;
+  padding-inline: 0.4rem;
+  box-sizing: border-box;
+  text-align: center;
+  color: var(--peetext-color);
+}
+
 .invite-tools {
   display: flex;
   flex-direction: column;
