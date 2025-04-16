@@ -148,73 +148,75 @@ async fn main() {
     //         .or(warp::fs::file("/git/pchan-dev/frontend/olddist/index.html")),
     // );
 
-    let root = warp::get() /*.and(filters::is_beta())*/
-        .and(
-            warp::fs::dir(env!("FILE_STORAGE_PATH"))
-                .and(warp::path::full())
-                .and(optional_token())
-                .and(optional_file_sig())
-                .and_then(
-                    |reply: warp::filters::fs::File,
-                     path: warp::path::FullPath,
-                     mut token: Option<Token>,
-                     file_sig: Option<FileSig>| async move {
-                        let path = path.as_str().to_string();
+    let root =
+        warp::get() /*.and(filters::is_beta())*/
+            .and(
+                warp::fs::dir(env!("FILE_STORAGE_PATH"))
+                    .and(warp::path::full())
+                    .and(optional_token())
+                    .and(optional_file_sig())
+                    .and_then(
+                        |reply: warp::filters::fs::File,
+                         path: warp::path::FullPath,
+                         mut token: Option<Token>,
+                         file_sig: Option<FileSig>| async move {
+                            let path = path.as_str().to_string();
 
-                        let mut resp = reply.into_response();
-                        if let Some(content_type) =
-                            resp.headers().get(warp::http::header::CONTENT_TYPE)
-                        {
-                            let content_type = content_type.to_str().unwrap_or("NO MIMETYPE");
-                            if !is_safe_mimetype(content_type) {
-                                log::trace!("Forcing download of file with mimetype {}", content_type);
-                                resp.headers_mut().insert(
-                                    warp::http::header::CONTENT_DISPOSITION,
-                                    HeaderValue::from_static("attachment"),
-                                );
-                            }
-                        }
-
-                        if path.ends_with("-thumb.jpg") || token.is_some() {
-                            return Ok(resp);
-                        }
-
-                        if path.contains("/files/") {
-                            let mut conn = POOL.get().await.map_err(|_| warp::reject::reject())?;
-
-                            let _file = database::get_file_from_path(
-                                &mut conn,
-                                token
-                                    .as_mut()
-                                    .map(|x| x.member_hash().database_hash().to_string()),
-                                path.trim_end_matches("-thumb.jpg"),
-                            )
-                            .await
-                            .map_err(|e| {
-                                log::error!("Error getting file: {e}");
-                                warp::reject::reject()
-                            })?;
-
-                            if let Some(file_sig) = file_sig {
-                                if file_sig.validates(&path).await {
-                                    return Ok(resp);
+                            let mut resp = reply.into_response();
+                            if let Some(content_type) =
+                                resp.headers().get(warp::http::header::CONTENT_TYPE)
+                            {
+                                let content_type = content_type.to_str().unwrap_or("NO MIMETYPE");
+                                if !is_safe_mimetype(content_type) {
+                                    log::trace!(
+                                        "Forcing download of file with mimetype {}",
+                                        content_type
+                                    );
+                                    resp.headers_mut().insert(
+                                        warp::http::header::CONTENT_DISPOSITION,
+                                        HeaderValue::from_static("attachment"),
+                                    );
                                 }
                             }
-                        }
 
-                        Err(warp::reject::reject())
-                    },
-                )
-                .or(valid_token_always_allow_res()
-                    .map(|_| {})
-                    .untuple_one()
-                    .and(
-                        warp::fs::dir(env!("DISTRIBUTION_PATH")).or(warp::fs::file(format!(
-                            "{}/index.html",
-                            env!("DISTRIBUTION_PATH")
-                        ))),
-                    )),
-        );
+                            if path.ends_with("-thumb.jpg") || token.is_some() {
+                                return Ok(resp);
+                            }
+
+                            if path.contains("/files/") {
+                                let mut conn =
+                                    POOL.get().await.map_err(|_| warp::reject::reject())?;
+
+                                let _file = database::get_file_from_path(
+                                    &mut conn,
+                                    token
+                                        .as_mut()
+                                        .map(|x| x.member_hash().database_hash().to_string()),
+                                    path.trim_end_matches("-thumb.jpg"),
+                                )
+                                .await
+                                .map_err(|e| {
+                                    log::error!("Error getting file: {e}");
+                                    warp::reject::reject()
+                                })?;
+
+                                if let Some(file_sig) = file_sig {
+                                    if file_sig.validates(&path).await {
+                                        return Ok(resp);
+                                    }
+                                }
+                            }
+
+                            Err(warp::reject::reject())
+                        },
+                    )
+                    .or(valid_token_always_allow_res()
+                        .map(|_| {})
+                        .untuple_one()
+                        .and(warp::fs::dir(env!("DISTRIBUTION_PATH")).or(warp::fs::file(
+                            format!("{}/index.html", env!("DISTRIBUTION_PATH")),
+                        )))),
+            );
 
     let manifest = warp::path!("manifest.json")
         .and(warp::get())
@@ -341,7 +343,9 @@ async fn main() {
     let routes = endpoints::other_endpoints()
         .or(endpoints::api::priveleged_api_endpoints())
         .or(valid_token()
-            .map(|_| { log::trace!("valid token"); })
+            .map(|_| {
+                log::trace!("valid token");
+            })
             .untuple_one()
             .and(endpoints::api::api_endpoints())
             .or(root)

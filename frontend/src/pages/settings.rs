@@ -1,7 +1,7 @@
 use yew::prelude::*;
 use yew_hooks::use_local_storage;
 
-use crate::components::{InviteTools, ThemeEditor, TimezoneEditor, PoweredBy};
+use crate::components::{InviteTools, PoweredBy, ThemeEditor, TimezoneEditor};
 
 #[function_component]
 pub fn Settings() -> Html {

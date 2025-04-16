@@ -14,13 +14,13 @@ mod maybe_link;
 mod notifications;
 mod post;
 mod post_box;
+mod powered_by;
 mod reply;
 mod richtext;
 mod settings;
 mod spinner;
 mod thread;
 mod watch_button;
-mod powered_by;
 
 pub use banner_ad::BannerAd;
 pub use board_name::{BoardName, BoardNameType};
@@ -40,13 +40,13 @@ pub use maybe_link::{MaybeLink, MaybeLinkProps};
 pub use notifications::NotificationBox;
 pub use post::Post;
 pub use post_box::PostBox;
+pub use powered_by::PoweredBy;
 pub use reply::Reply;
 pub use richtext::RichText;
 pub use settings::SettingsButton;
 pub use spinner::Spinner;
 pub use thread::Thread;
 pub use watch_button::WatchButton;
-pub use powered_by::PoweredBy;
 use yew::AttrValue;
 
 #[derive(Clone, PartialEq, Debug)]

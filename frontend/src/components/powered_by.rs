@@ -24,44 +24,41 @@ macro_rules! backend_version {
     };
 }
 
-
 macro_rules! string_hash_to_colorcode {
-    ($s:expr) => {
-        {
-            let mut hash = 0u32;
-            for c in $s.chars() {
-                hash = hash.wrapping_mul(31).wrapping_add(c as u32);
-            }
-            let color = hash & 0xFFFFFF;
-            let r = (color >> 16) & 0xFF;
-            let g = (color >> 8) & 0xFF;
-            let b = color & 0xFF;
-            // maximize saturation
-            let max = r.max(g).max(b);
-            let min = r.min(g).min(b);
-            let diff = max - min;
-            let mid = (max + min) / 2;
-            let mut hue = 0;
-            if diff != 0 {
-                if max == r {
-                    hue = ((g - b) * 60 / diff + 360) % 360;
-                } else if max == g {
-                    hue = ((b - r) * 60 / diff + 120) % 360;
-                } else {
-                    hue = ((r - g) * 60 / diff + 240) % 360;
-                }
-            }
-            let saturation = if max == 0 { 0 } else { diff * 255 / max };
-            let lightness = mid * 255 / max;
-            let color = (hue << 16) | (saturation << 8) | lightness;
-            format!("#{:06X}", color & 0xFFFFFF)
+    ($s:expr) => {{
+        let mut hash = 0u32;
+        for c in $s.chars() {
+            hash = hash.wrapping_mul(31).wrapping_add(c as u32);
         }
-    };
+        let color = hash & 0xFFFFFF;
+        let r = (color >> 16) & 0xFF;
+        let g = (color >> 8) & 0xFF;
+        let b = color & 0xFF;
+        // maximize saturation
+        let max = r.max(g).max(b);
+        let min = r.min(g).min(b);
+        let diff = max - min;
+        let mid = (max + min) / 2;
+        let mut hue = 0;
+        if diff != 0 {
+            if max == r {
+                hue = ((g - b) * 60 / diff + 360) % 360;
+            } else if max == g {
+                hue = ((b - r) * 60 / diff + 120) % 360;
+            } else {
+                hue = ((r - g) * 60 / diff + 240) % 360;
+            }
+        }
+        let saturation = if max == 0 { 0 } else { diff * 255 / max };
+        let lightness = mid * 255 / max;
+        let color = (hue << 16) | (saturation << 8) | lightness;
+        format!("#{:06X}", color & 0xFFFFFF)
+    }};
 }
 
 #[function_component]
 pub fn PoweredBy() -> Html {
-    html!{
+    html! {
         <div class="powered-by">
             <a href="https://github.com/Dissssy/pchan">
                 <span>{"Powered by Pchan, Frontend "}</span>
