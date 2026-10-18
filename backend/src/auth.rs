@@ -293,18 +293,37 @@ pub async fn list_pending_requests(
 /// for each member — one HMAC per member, which is nothing at this scale and is the price of
 /// the table not storing who wrote what.
 ///
+/// `sitewide` is checked against the actor's own authority rather than trusted: previously the
+/// ban flag was global, so a single board's moderator could lock someone out of the entire
+/// site. A board moderator can now only ban from the board they moderate.
+///
 /// Returns whether an author was found. The caller is told only that, never the identity.
 pub async fn ban_post_author(
     conn: &mut Conn,
     discriminator: &str,
     post_number: i64,
-    viewer: &database::Viewer,
+    actor: &database::Viewer,
+    sitewide: bool,
+    reason_text: Option<&str>,
 ) -> Result<bool> {
     // Addressed the way every other post endpoint is, because board + post number is what a
-    // client actually has; the internal row id is never exposed. get_raw_post is reached via
-    // get_board so a mod cannot act on a board they cannot see.
+    // client actually has; the internal row id is never exposed. Reached via get_board so a
+    // mod cannot act on a board they cannot see.
     let target_board =
-        crate::database_bindings::Database::get_board(conn, discriminator, viewer).await?;
+        crate::database_bindings::Database::get_board(conn, discriminator, actor).await?;
+
+    // Authority to ban at the requested scope.
+    if sitewide {
+        if !actor.role.can_moderate_site() {
+            bail!("only site moderators can issue a sitewide ban");
+        }
+    } else if !actor.role.can_moderate_site()
+        && database::permission_level(conn, target_board.id, actor)
+            .await?
+            .is_none()
+    {
+        bail!("not a moderator of that board");
+    }
 
     let (post_id, target) = {
         use database::posts::dsl as p;
@@ -321,7 +340,6 @@ pub async fn ban_post_author(
     let candidates = {
         use database::members::dsl::*;
         members
-            .filter(banned.eq(false))
             .select((id, author_seed))
             .load::<(Uuid, String)>(conn)
             .await?
@@ -336,19 +354,112 @@ pub async fn ban_post_author(
         return Ok(false);
     };
 
+    let scope = if sitewide { None } else { Some(target_board.id) };
+
     {
-        use database::members::dsl::*;
-        diesel::update(members.filter(id.eq(member)))
-            .set(banned.eq(true))
+        use database::bans::dsl::*;
+        diesel::insert_into(bans)
+            .values((
+                member_id.eq(member),
+                board_id.eq(scope),
+                issued_by.eq(actor.id),
+                reason.eq(reason_text),
+            ))
+            // Re-banning the same scope refreshes the reason rather than failing.
+            .on_conflict((member_id, board_id))
+            .do_update()
+            .set((issued_by.eq(actor.id), reason.eq(reason_text)))
             .execute(conn)
             .await?;
     }
 
-    // Revoke their sessions so the ban is immediate rather than lasting until expiry.
-    crate::session::destroy_all_for_member(conn, &member).await?;
+    // A sitewide ban ends their sessions outright. A board ban leaves them signed in, since
+    // check_access refuses only the boards it covers.
+    if sitewide {
+        crate::session::destroy_all_for_member(conn, &member).await?;
+    }
     crate::filters::forget_cached_member(&member).await;
 
+    log_action(
+        conn,
+        actor,
+        "ban",
+        Some(target_board.id),
+        Some(&post_number.to_string()),
+        reason_text,
+    )
+    .await;
+
     Ok(true)
+}
+
+/// Lift a ban.
+pub async fn unban(conn: &mut Conn, ban_id: &Uuid, actor: &database::Viewer) -> Result<bool> {
+    let row = {
+        use database::bans::dsl::*;
+        bans.filter(id.eq(ban_id))
+            .select((member_id, board_id))
+            .first::<(Uuid, Option<i64>)>(conn)
+            .await
+            .optional()?
+    };
+
+    let Some((member, scope)) = row else {
+        return Ok(false);
+    };
+
+    // Same authority rule as issuing: a board moderator may only lift bans on their board.
+    match scope {
+        None => {
+            if !actor.role.can_moderate_site() {
+                bail!("only site moderators can lift a sitewide ban");
+            }
+        }
+        Some(b) => {
+            if !actor.role.can_moderate_site()
+                && database::permission_level(conn, b, actor).await?.is_none()
+            {
+                bail!("not a moderator of that board");
+            }
+        }
+    }
+
+    {
+        use database::bans::dsl::*;
+        diesel::delete(bans.filter(id.eq(ban_id))).execute(conn).await?;
+    }
+    crate::filters::forget_cached_member(&member).await;
+
+    log_action(conn, actor, "unban", scope, None, None).await;
+    Ok(true)
+}
+
+/// Record a moderation action.
+///
+/// Best-effort: a failure to log must not fail the action itself, since the alternative is a
+/// moderator unable to act because the audit table is unhappy. It is logged loudly instead.
+pub async fn log_action(
+    conn: &mut Conn,
+    actor_viewer: &database::Viewer,
+    action_name: &str,
+    board: Option<i64>,
+    target_ref: Option<&str>,
+    detail_text: Option<&str>,
+) {
+    use database::moderation_log::dsl::*;
+    if let Err(e) = diesel::insert_into(moderation_log)
+        .values((
+            actor.eq(actor_viewer.id),
+            action.eq(action_name),
+            board_id.eq(board),
+            target.eq(target_ref),
+            detail.eq(detail_text),
+        ))
+        .execute(conn)
+        .await
+    {
+        log::error!("could not write a moderation log entry for {action_name}: {e}");
+    }
 }
 
 /// Replace a member's author seed, severing them from everything they have posted.

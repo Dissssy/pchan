@@ -10,6 +10,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    bans (id) {
+        id -> Uuid,
+        member_id -> Uuid,
+        board_id -> Nullable<Int8>,
+        issued_by -> Uuid,
+        reason -> Nullable<Text>,
+        created_at -> Timestamptz,
+        expires_at -> Nullable<Timestamptz>,
+    }
+}
+
+diesel::table! {
     boards (id) {
         id -> Int8,
         name -> Text,
@@ -72,7 +84,18 @@ diesel::table! {
         id -> Uuid,
         author_seed -> Text,
         role -> Text,
-        banned -> Bool,
+    }
+}
+
+diesel::table! {
+    moderation_log (id) {
+        id -> Uuid,
+        actor -> Uuid,
+        action -> Text,
+        board_id -> Nullable<Int8>,
+        target -> Nullable<Text>,
+        detail -> Nullable<Text>,
+        created_at -> Timestamptz,
     }
 }
 
@@ -138,11 +161,14 @@ diesel::table! {
     }
 }
 
+diesel::joinable!(bans -> boards (board_id));
 diesel::joinable!(files -> posts (id));
 diesel::joinable!(identities -> members (member_id));
 diesel::joinable!(member_push -> members (member_id));
 diesel::joinable!(member_watching -> members (member_id));
 diesel::joinable!(member_watching -> threads (thread_id));
+diesel::joinable!(moderation_log -> boards (board_id));
+diesel::joinable!(moderation_log -> members (actor));
 diesel::joinable!(posts -> boards (board));
 diesel::joinable!(posts -> threads (thread));
 diesel::joinable!(sessions -> members (member_id));
@@ -151,6 +177,7 @@ diesel::joinable!(user_tags -> boards (board_id));
 
 diesel::allow_tables_to_appear_in_same_query!(
     banners,
+    bans,
     boards,
     config,
     files,
@@ -159,6 +186,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     member_push,
     member_watching,
     members,
+    moderation_log,
     posts,
     request_blocks,
     sessions,

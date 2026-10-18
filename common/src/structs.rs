@@ -276,3 +276,13 @@ pub struct JoinRequestSummary {
 pub struct AccessRequest {
     pub disclosure: String,
 }
+
+/// Body of a ban request.
+///
+/// `sitewide` is validated against the actor's own authority server-side, never trusted: a
+/// board moderator may only ban from the board they moderate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BanRequest {
+    pub sitewide: bool,
+    pub reason: Option<String>,
+}

@@ -34,7 +34,10 @@ pub fn BanButton(props: &Props) -> Html {
             let post_number = props.post_number;
             wasm_bindgen_futures::spawn_local(async move {
                 let res = match api_ctx.as_ref().and_then(|c| c.api.as_ref().ok()) {
-                    Some(api) => api.ban_post_author(&board, post_number).await,
+                    // Board-scoped: the conservative default, and the only scope a board
+                    // moderator is permitted anyway. Sitewide bans belong in the admin panel
+                    // where the scope can be chosen deliberately.
+                    Some(api) => api.ban_post_author(&board, post_number, false, None).await,
                     None => Err(ApiError::Other(AttrValue::Static("No API context"))),
                 };
                 match res {
@@ -59,10 +62,10 @@ pub fn BanButton(props: &Props) -> Html {
             {
                 match &*state {
                     BanState::Idle => html! {
-                        <a onclick={on_click} title="Ban the author of this post">{"⦸"}</a>
+                        <a onclick={on_click} title="Ban this post's author from this board">{"⦸"}</a>
                     },
                     BanState::Confirm => html! {
-                        <a onclick={on_click} title="Click again to ban this post's author">
+                        <a onclick={on_click} title="Click again to ban them from this board">
                             {"⦸?"}
                         </a>
                     },

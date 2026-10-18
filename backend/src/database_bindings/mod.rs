@@ -303,7 +303,7 @@ impl Database {
         discriminator: &str,
         number: i64,
         viewer: &database::Viewer,
-    ) -> Result<i64> {
+    ) -> Result<(i64, bool)> {
         let board = Self::get_board(conn, discriminator, viewer).await?;
 
         database::check_access(conn, viewer, board.id)
@@ -347,7 +347,11 @@ impl Database {
                 return Err(anyhow::anyhow!("Not authorized to delete post"));
             }
         }
-        Ok(id)
+        // Whether this was an act of moderation rather than someone removing their own post.
+        // Deleting your own post is deliberately NOT moderation even if you happen to be a
+        // moderator: an audit entry naming the actor and the post would link that member to
+        // that post, which is exactly the correlation the schema avoids.
+        Ok((id, at_least_mod && !tauthor))
     }
 
     async fn raw_delete_post(
@@ -841,7 +845,14 @@ impl Database {
         if board.private {
             let mut permitted = vec![];
             for user in users {
-                let viewer = user.viewer();
+                let ban = match database::resolve_ban(conn, &user.id).await {
+                    Ok(b) => b,
+                    Err(e) => {
+                        log::error!("Error resolving ban: {}", e);
+                        database::Ban::None
+                    }
+                };
+                let viewer = user.viewer_with(ban);
                 let has_access = database::check_access(conn, &viewer, board.id)
                     .await
                     .inspect_err(|e| log::error!("Error checking access: {}", e))

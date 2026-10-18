@@ -60,17 +60,23 @@ pub async fn resolve(conn: &mut Conn, token: &str) -> Result<Option<Viewer>> {
         .inner_join(m::members.on(m::id.eq(s::member_id)))
         .filter(s::token_hash.eq(&hashed))
         .filter(s::expires_at.gt(Utc::now()))
-        .select((m::id, m::author_seed, m::role, m::banned))
-        .first::<(Uuid, String, String, bool)>(conn)
+        .select((m::id, m::author_seed, m::role))
+        .first::<(Uuid, String, String)>(conn)
         .await
         .optional()?;
 
-    let Some((id, author_seed, role, banned)) = found else {
+    let Some((id, author_seed, role)) = found else {
         return Ok(None);
     };
 
-    // A ban takes effect without having to hunt down the member's sessions.
-    if banned {
+    // Bans live in their own table now, so this is a second small query. It sits behind the
+    // viewer cache, so it runs about once per cache TTL per session rather than per request.
+    let ban = database::resolve_ban(conn, &id).await?;
+
+    // A sitewide ban means no session at all, so it takes effect without hunting down the
+    // member's rows. A board-scoped ban still lets them sign in; check_access refuses the
+    // boards it covers.
+    if ban.is_sitewide() {
         return Ok(None);
     }
 
@@ -78,7 +84,7 @@ pub async fn resolve(conn: &mut Conn, token: &str) -> Result<Option<Viewer>> {
         id,
         author_seed,
         role: database::Role::from_str(&role),
-        banned,
+        ban,
     }))
 }
 

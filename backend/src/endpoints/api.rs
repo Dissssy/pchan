@@ -371,24 +371,43 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(viewer())
         .and_then({
             |disc: String, post: i64, viewer: database::Viewer| async move {
+                let mut conn = match crate::POOL.get().await {
+                    Ok(pool) => pool,
+                    Err(e) => {
+                        log::error!("error connecting to backend: {}", e);
+                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
+                            warp::reply::json(&"error connecting to backend"),
+                        );
+                    }
+                };
                 match crate::database_bindings::Database::delete_post(
-                    &mut match crate::POOL.get().await {
-                        Ok(pool) => pool,
-                        Err(e) => {
-                            log::error!("error connecting to backend: {}", e);
-                            return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                                warp::reply::json(&"error connecting to backend"),
-                            );
-                        }
-                    },
-                    &disc,
-                    post,
-                    &viewer,
+                    &mut conn, &disc, post, &viewer,
                 )
                 .await
                 {
-                    Ok(post) => {
-                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&post))
+                    Ok((deleted, was_moderation)) => {
+                        // Self-deletions are not logged: an entry naming the actor and the
+                        // post would link a member to their own post.
+                        if was_moderation {
+                            let board = crate::database_bindings::Database::get_raw_board(
+                                &mut conn, &disc,
+                            )
+                            .await
+                            .ok()
+                            .map(|b| b.id);
+                            crate::auth::log_action(
+                                &mut conn,
+                                &viewer,
+                                "delete_post",
+                                board,
+                                Some(&post.to_string()),
+                                None,
+                            )
+                            .await;
+                        }
+                        Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                            &deleted,
+                        ))
                     }
                     Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
@@ -690,6 +709,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .await
                 {
                     Ok(invite) => {
+                        crate::auth::log_action(
+                            &mut conn,
+                            &viewer,
+                            "issue_invite",
+                            Some(board.id),
+                            None,
+                            None,
+                        )
+                        .await;
                         Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&invite))
                     }
                     Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
@@ -741,6 +769,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .await
                 {
                     Ok(invite) => {
+                        crate::auth::log_action(
+                            &mut conn,
+                            &viewer,
+                            "issue_moderator",
+                            Some(board.id),
+                            None,
+                            None,
+                        )
+                        .await;
                         Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&invite))
                     }
                     Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
@@ -797,7 +834,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .map(|viewer: database::Viewer| {
             warp::reply::json(&common::structs::MeInfo {
                 role: viewer.role.as_str().to_owned(),
-                banned: viewer.banned,
+                banned: viewer.ban != database::Ban::None,
             })
         });
 
@@ -851,7 +888,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let decide_request = warp::path!("api" / "v1" / "access_requests" / String / String)
         .and(warp::post())
         .and(crate::filters::site_mod())
-        .and_then(|id: String, action: String, _: database::Viewer| async move {
+        .and_then(|id: String, action: String, actor: database::Viewer| async move {
             let Ok(id) = id.parse::<uuid::Uuid>() else {
                 return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                     &"Invalid request id",
@@ -870,7 +907,18 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 _ => return Ok(warp::reply::json(&"Unknown action")),
             };
             match outcome {
-                Ok(true) => Ok(warp::reply::json(&"ok")),
+                Ok(true) => {
+                    crate::auth::log_action(
+                        &mut conn,
+                        &actor,
+                        if action == "approve" { "approve_request" } else { "decline_request" },
+                        None,
+                        Some(&id.to_string()),
+                        None,
+                    )
+                    .await;
+                    Ok(warp::reply::json(&"ok"))
+                }
                 Ok(false) => Ok(warp::reply::json(&"No such pending request")),
                 Err(e) => {
                     log::error!("could not {action} join request: {e}");
@@ -881,10 +929,13 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     // POST /post/{id}/ban_author - the server resolves the author; the caller is never told
     // who it was.
+    // Gated by viewer(), not site_mod(): a board moderator may ban from their own board, and
+    // the scope check lives in ban_post_author where the actor's authority is known.
     let ban_author = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "ban_author")
         .and(warp::post())
-        .and(crate::filters::site_mod())
-        .and_then(|disc: String, post_number: i64, viewer: database::Viewer| async move {
+        .and(warp::body::json::<common::structs::BanRequest>())
+        .and(viewer())
+        .and_then(|disc: String, post_number: i64, req: common::structs::BanRequest, viewer: database::Viewer| async move {
             let mut conn = match crate::POOL.get().await {
                 Ok(c) => c,
                 Err(e) => {
@@ -894,12 +945,50 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     ));
                 }
             };
-            match crate::auth::ban_post_author(&mut conn, &disc, post_number, &viewer).await {
+            match crate::auth::ban_post_author(
+                &mut conn,
+                &disc,
+                post_number,
+                &viewer,
+                req.sitewide,
+                req.reason.as_deref(),
+            )
+            .await
+            {
                 Ok(true) => Ok(warp::reply::json(&"Author banned")),
                 Ok(false) => Ok(warp::reply::json(&"No current author for that post")),
                 Err(e) => {
-                    log::error!("could not ban post author: {e}");
-                    Ok(warp::reply::json(&"Could not ban the author"))
+                    // The message distinguishes "not allowed" from "went wrong" without
+                    // naming anyone.
+                    log::warn!("ban refused or failed: {e}");
+                    Ok(warp::reply::json(&format!("{e}")))
+                }
+            }
+        });
+
+    // DELETE /admin/bans/{id} - lift a ban. Scope authority is checked server-side.
+    let unban = warp::path!("api" / "v1" / "admin" / "bans" / String)
+        .and(warp::delete())
+        .and(viewer())
+        .and_then(|id: String, viewer: database::Viewer| async move {
+            let Ok(id) = id.parse::<uuid::Uuid>() else {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"Invalid ban id",
+                ));
+            };
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+            match crate::auth::unban(&mut conn, &id, &viewer).await {
+                Ok(true) => Ok(warp::reply::json(&"Ban lifted")),
+                Ok(false) => Ok(warp::reply::json(&"No such ban")),
+                Err(e) => {
+                    log::warn!("unban refused or failed: {e}");
+                    Ok(warp::reply::json(&format!("{e}")))
                 }
             }
         });
@@ -927,6 +1016,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(list_requests)
                 .or(decide_request)
                 .or(ban_author)
+                .or(unban)
                 .or(notifications()),
         )
         .recover(|err: Rejection| async move {

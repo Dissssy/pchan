@@ -387,7 +387,6 @@ pub struct Member {
     /// they have already posted.
     pub author_seed: String,
     pub role: String,
-    pub banned: bool,
 }
 
 impl Member {
@@ -395,13 +394,73 @@ impl Member {
         Role::from_str(&self.role)
     }
 
-    pub fn viewer(&self) -> Viewer {
+    /// Bans live in their own table, so they have to be resolved separately.
+    pub fn viewer_with(&self, ban: Ban) -> Viewer {
         Viewer {
             id: self.id,
             author_seed: self.author_seed.clone(),
             role: self.role(),
-            banned: self.banned,
+            ban,
         }
+    }
+}
+
+/// How far a ban reaches.
+///
+/// Deliberately not constructible from a bare `Vec`: an accidentally empty list must not become
+/// a sitewide ban, so [`Ban::boards`] rejects that case and `Sitewide` has to be named out loud.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ban {
+    None,
+    Sitewide,
+    Boards(Vec<i64>),
+}
+
+impl Ban {
+    /// Board-scoped ban. An empty list is refused rather than silently escalating.
+    pub fn boards(ids: Vec<i64>) -> Result<Self> {
+        if ids.is_empty() {
+            anyhow::bail!("a board-scoped ban needs at least one board");
+        }
+        Ok(Self::Boards(ids))
+    }
+
+    pub fn is_sitewide(&self) -> bool {
+        matches!(self, Self::Sitewide)
+    }
+
+    pub fn covers(&self, board: i64) -> bool {
+        match self {
+            Self::None => false,
+            Self::Sitewide => true,
+            Self::Boards(ids) => ids.contains(&board),
+        }
+    }
+}
+
+/// Active bans for a member, collapsed into a scope. Expired rows are ignored.
+pub async fn resolve_ban(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    member: &Uuid,
+) -> Result<Ban> {
+    use crate::bans::dsl::*;
+
+    let rows = bans
+        .filter(member_id.eq(member))
+        .filter(expires_at.is_null().or(expires_at.gt(chrono::Utc::now())))
+        .select(board_id)
+        .load::<Option<i64>>(conn)
+        .await?;
+
+    // A single sitewide row outranks everything else.
+    if rows.iter().any(|b| b.is_none()) {
+        return Ok(Ban::Sitewide);
+    }
+    let boards: Vec<i64> = rows.into_iter().flatten().collect();
+    if boards.is_empty() {
+        Ok(Ban::None)
+    } else {
+        Ok(Ban::Boards(boards))
     }
 }
 
@@ -447,7 +506,7 @@ pub struct Viewer {
     pub id: Uuid,
     pub author_seed: String,
     pub role: Role,
-    pub banned: bool,
+    pub ban: Ban,
 }
 
 impl Viewer {
@@ -462,7 +521,7 @@ impl Viewer {
             id: Uuid::nil(),
             author_seed: String::new(),
             role: Role::Admin,
-            banned: false,
+            ban: Ban::None,
         }
     }
 
@@ -521,14 +580,15 @@ pub async fn check_access(
     viewer: &Viewer,
     board: i64,
 ) -> Result<bool> {
-    if viewer.banned {
-        return Ok(false);
-    }
-
     let board = {
         use crate::boards::dsl::*;
         boards.filter(id.eq(board)).first::<Board>(conn).await?
     };
+
+    // A sitewide ban blocks everything; a board ban blocks only that board.
+    if viewer.ban.covers(board.id) {
+        return Ok(false);
+    }
 
     if !board.private {
         return Ok(true);
@@ -654,7 +714,7 @@ pub async fn permission_level(
     board: i64,
     viewer: &Viewer,
 ) -> Result<PermissionLevel> {
-    if viewer.banned {
+    if viewer.ban.covers(board) {
         return Ok(PermissionLevel::None);
     }
     // The role is already on the viewer, so this no longer costs a query per call.

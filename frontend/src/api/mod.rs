@@ -86,16 +86,26 @@ impl Api {
     }
 
     /// Ban whoever wrote this post. The server resolves them; the response names nobody.
+    ///
+    /// `sitewide` is validated against the caller's authority server-side — a board moderator
+    /// asking for a sitewide ban is refused rather than quietly downgraded.
     pub async fn ban_post_author(
         &self,
         board: &str,
         post_number: i64,
+        sitewide: bool,
+        reason: Option<String>,
     ) -> Result<String, ApiError> {
         standard_post::<String, _>(
             &format!("/api/v1/board/{board}/post/{post_number}/ban_author"),
-            &serde_json::Value::Null,
+            &common::structs::BanRequest { sitewide, reason },
         )
         .await
+    }
+
+    /// Lift a ban.
+    pub async fn unban(&self, ban_id: &str) -> Result<String, ApiError> {
+        standard_delete::<String>(&format!("/api/v1/admin/bans/{ban_id}")).await
     }
 
     /// Replace your own author seed, orphaning everything you have posted.
