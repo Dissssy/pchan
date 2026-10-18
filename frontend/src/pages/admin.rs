@@ -25,15 +25,15 @@ pub fn Admin() -> Html {
         };
     }
 
-    let is_admin = me.me.as_ref().map(|m| m.is_admin()).unwrap_or(false);
     let is_site = me.can_moderate_site();
 
     let mut tabs = vec![(Tab::Reports, "Reports")];
     if is_site {
         tabs.push((Tab::Requests, "Join requests"));
     }
-    if is_admin {
-        tabs.push((Tab::Boards, "Boards"));
+    // Board moderators get a Boards tab too, showing only the boards they moderate.
+    tabs.push((Tab::Boards, "Boards"));
+    if is_site {
         tabs.push((Tab::Moderators, "Moderators"));
     }
     tabs.push((Tab::Log, "Audit log"));
@@ -233,6 +233,7 @@ fn RequestsTab() -> Html {
 #[function_component]
 fn BoardsTab() -> Html {
     let reload = use_state(|| 0u32);
+    let me = use_context::<MeContext>().unwrap_or_default();
     let api_ctx = use_context::<Option<ApiContext>>().flatten();
     let boards = use_listing::<SafeBoard, _, _>(*reload, |api| async move {
         api.get_boards(true).await
@@ -260,6 +261,33 @@ fn BoardsTab() -> Html {
         })
     };
 
+    let delete = {
+        let (api_ctx, reload) = (api_ctx.clone(), reload.clone());
+        Callback::from(move |d: String| {
+            // Irreversible and takes every thread, post and file with it.
+            let confirmed = web_sys::window()
+                .and_then(|w| {
+                    w.confirm_with_message(&format!(
+                        "Delete /{d}/ permanently?\n\nEvery thread, post and file on it goes \
+                         too. This cannot be undone."
+                    ))
+                    .ok()
+                })
+                .unwrap_or(false);
+            if !confirmed {
+                return;
+            }
+            let Some(api) = api_of(&api_ctx) else { return };
+            let reload = reload.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(e) = api.delete_board(&d).await {
+                    gloo::console::error!(format!("delete failed: {}", *e));
+                }
+                reload.set(*reload + 1);
+            });
+        })
+    };
+
     let toggle_private = {
         let (api_ctx, reload) = (api_ctx.clone(), reload.clone());
         Callback::from(move |(d, private): (String, bool)| {
@@ -282,21 +310,39 @@ fn BoardsTab() -> Html {
         if let Some(el) = e.target_dyn_into::<web_sys::HtmlInputElement>() { disc.set(el.value()); }
     })};
 
+    let is_site = me.can_moderate_site();
+    let is_admin = me.is_admin();
+    let mine = me.moderated_boards();
+
+    // Site roles see every board; a board moderator sees only their own.
+    let visible = boards.as_ref().map(|res| {
+        res.as_ref().map(|list| {
+            list.iter()
+                .filter(|b| is_site || mine.contains(&b.discriminator))
+                .cloned()
+                .collect::<Vec<_>>()
+        }).map_err(|e| e.clone())
+    });
+
     html! {
         <>
-            <div class="admin-create-board">
-                <input class="admin-input" placeholder="Name" value={(*name).clone()} oninput={on_name} />
-                <input class="admin-input admin-input-short" placeholder="/d/" value={(*disc).clone()} oninput={on_disc} />
-                <button class="join-button" onclick={create}>{"Create board"}</button>
-            </div>
+            if is_site {
+                <div class="admin-create-board">
+                    <input class="admin-input" placeholder="Name" value={(*name).clone()} oninput={on_name} />
+                    <input class="admin-input admin-input-short" placeholder="/d/" value={(*disc).clone()} oninput={on_disc} />
+                    <button class="join-button" onclick={create}>{"Create board"}</button>
+                </div>
+            }
             <p class="moderation-note">
                 {"A board's short name cannot be changed: it appears in every URL and in access \
                   grants, so renaming it would orphan them."}
             </p>
-            { listing(&boards, "No boards yet.", |b: &SafeBoard| {
+            { listing(&visible, "No boards you can manage.", |b: &SafeBoard| {
                 let d = b.discriminator.clone();
+                let del_d = b.discriminator.clone();
                 let next = !b.private;
                 let toggle = toggle_private.clone();
+                let delete = delete.clone();
                 html! {
                     <div class="moderation-item" key={b.discriminator.clone()}>
                         <p class="moderation-disclosure">
@@ -310,6 +356,12 @@ fn BoardsTab() -> Html {
                                 onclick={Callback::from(move |_| toggle.emit((d.clone(), next)))}>
                                 { if next { "Make private" } else { "Make public" } }
                             </button>
+                            if is_admin {
+                                <button class="join-button join-button-danger"
+                                    onclick={Callback::from(move |_| delete.emit(del_d.clone()))}>
+                                    {"Delete"}
+                                </button>
+                            }
                         </div>
                     </div>
                 }

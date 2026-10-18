@@ -670,8 +670,9 @@ pub async fn create_moderation(
     viewer: &Viewer,
     board: i64,
 ) -> Result<String> {
-    let permission_level = permission_level(conn, board, viewer).await?;
-    if !permission_level.is_admin() {
+    // Site-level only. A board moderator cannot mint more moderators for their own board,
+    // which would let a single grant quietly multiply itself.
+    if !viewer.role.can_moderate_site() {
         return Err(anyhow::anyhow!("Not authorized to generate moderator code"));
     }
 

@@ -256,6 +256,9 @@ pub struct MeInfo {
     /// the UI cannot tell a board moderator from an ordinary member, and they would never be
     /// shown their own report inbox.
     pub moderates_any_board: bool,
+    /// Boards this viewer moderates directly, by discriminator. Empty for site roles, which
+    /// are not scoped to particular boards — check `can_moderate_site` first.
+    pub moderated_boards: Vec<String>,
 }
 
 impl MeInfo {

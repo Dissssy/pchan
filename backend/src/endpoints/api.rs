@@ -794,25 +794,26 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and(warp::get())
         .and(viewer())
         .and_then(|viewer: database::Viewer| async move {
-            let moderates_any_board = if viewer.role.can_moderate_site() {
-                true
-            } else {
-                match crate::POOL.get().await {
-                    Ok(mut conn) => database::moderated_boards(&mut conn, &viewer)
-                        .await
-                        .map(|b| b.map(|v| !v.is_empty()).unwrap_or(true))
-                        .unwrap_or(false),
-                    Err(e) => {
-                        log::error!("error connecting to backend: {}", e);
-                        false
+            let mut moderated = Vec::new();
+            if !viewer.role.can_moderate_site() {
+                if let Ok(mut conn) = crate::POOL.get().await {
+                    if let Ok(Some(ids)) = database::moderated_boards(&mut conn, &viewer).await {
+                        for id in ids {
+                            if let Ok(d) = database::get_board_discrim(id, &mut conn).await {
+                                moderated.push(d);
+                            }
+                        }
                     }
                 }
-            };
+            }
+            let moderates_any_board = viewer.role.can_moderate_site() || !moderated.is_empty();
+
             Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                 &common::structs::MeInfo {
                     role: viewer.role.as_str().to_owned(),
                     banned: viewer.ban != database::Ban::None,
                     moderates_any_board,
+                    moderated_boards: moderated,
                 },
             ))
         });
@@ -1170,7 +1171,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let create_board = warp::path!("api" / "v1" / "admin" / "boards")
         .and(warp::post())
         .and(warp::body::json::<CreateBoard>())
-        .and(crate::filters::site_admin())
+        .and(crate::filters::site_mod())
         .and_then(|board: CreateBoard, viewer: database::Viewer| async move {
             let mut conn = match crate::POOL.get().await {
                 Ok(c) => c,
@@ -1207,7 +1208,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let edit_board = warp::path!("api" / "v1" / "admin" / "boards" / String)
         .and(warp::patch())
         .and(warp::body::json::<common::structs::BoardUpdate>())
-        .and(crate::filters::site_admin())
+        .and(viewer())
         .and_then(|disc: String, update: common::structs::BoardUpdate, viewer: database::Viewer| async move {
             let mut conn = match crate::POOL.get().await {
                 Ok(c) => c,
@@ -1222,6 +1223,17 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 Ok(b) => b,
                 Err(_) => return Ok(warp::reply::json(&"No such board")),
             };
+
+            // A board's own moderator may change its settings; otherwise site-level only.
+            let permitted = viewer.role.can_moderate_site()
+                || database::permission_level(&mut conn, board.id, &viewer)
+                    .await
+                    .map(|p| p.is_moderator())
+                    .unwrap_or(false);
+            if !permitted {
+                return Ok(warp::reply::json(&"Not a moderator of that board"));
+            }
+
             match database::update_board(
                 &mut conn,
                 board.id,
@@ -1273,7 +1285,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     // Moderator grants. Grants, not people: nothing here resolves to a member.
     let list_moderators = warp::path!("api" / "v1" / "admin" / "moderators")
         .and(warp::get())
-        .and(crate::filters::site_admin())
+        .and(crate::filters::site_mod())
         .and_then(|_: database::Viewer| async move {
             let mut conn = match crate::POOL.get().await {
                 Ok(c) => c,
@@ -1305,7 +1317,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let revoke_moderator = warp::path!("api" / "v1" / "admin" / "moderators" / String)
         .and(warp::delete())
-        .and(crate::filters::site_admin())
+        .and(crate::filters::site_mod())
         .and_then(|id: String, viewer: database::Viewer| async move {
             let Ok(id) = id.parse::<uuid::Uuid>() else {
                 return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
@@ -1416,7 +1428,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     ))
                     .into_response(),
                 )
-            } else if err.is_not_found() {
+            } else if err.is_not_found()
+                || err.find::<warp::reject::MethodNotAllowed>().is_some()
+            {
+                // Pass through so the /api/ fallback can answer 401. A route that matched a
+                // path but failed its authorisation filter rejects this way, and swallowing it
+                // here made "not allowed" come back as 418 on some routes and 401 on others.
                 return Err(err);
             } else {
                 return Ok::<warp::reply::Response, warp::reject::Rejection>(

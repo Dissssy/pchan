@@ -236,6 +236,13 @@ impl MeContext {
     pub fn can_moderate_anything(&self) -> bool {
         self.me.as_ref().map(|m| m.can_moderate_anything()).unwrap_or(false)
     }
+    pub fn is_admin(&self) -> bool {
+        self.me.as_ref().map(|m| m.is_admin()).unwrap_or(false)
+    }
+    /// Boards moderated directly. Empty for site roles, which are not board-scoped.
+    pub fn moderated_boards(&self) -> Vec<String> {
+        self.me.as_ref().map(|m| m.moderated_boards.clone()).unwrap_or_default()
+    }
 }
 
 #[derive(Clone, PartialEq)]
