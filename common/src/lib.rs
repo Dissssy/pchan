@@ -43,6 +43,5 @@ pub fn hash_file(data: &[u8]) -> String {
 }
 
 pub fn hash_invitation(token: &str, board_id: i64) -> String {
-    log::trace!("HASHING: {} and {}", token, board_id);
     hash_with_salt(token, &format!("{board_id}"))
 }

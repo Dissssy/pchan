@@ -15,7 +15,6 @@ lazy_static::lazy_static!(
     pub static ref BASE_THUMBNAIL: &'static [u8] = include_bytes!(env!("BASE_THUMBNAIL_PATH"));
     pub static ref BASE_THUMBNAIL_LARGE: &'static [u8] = include_bytes!(env!("BASE_THUMBNAIL_LARGE_PATH"));
     pub static ref FONT: &'static [u8] = include_bytes!(env!("FONT_PATH"));
-    pub static ref RANDOM_KEY: &'static [u8] = Box::leak(Box::new(nanoid::nanoid!(32))).as_bytes();
     pub static ref HMAC_KEY_GENERATOR: HmacKeyGenerator = HmacKeyGenerator::new(env!("HMAC_KEY_PATH"));
 );
 

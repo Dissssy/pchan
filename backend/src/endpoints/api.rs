@@ -1,4 +1,4 @@
-use crate::filters::{valid_token, MemberToken, Ratelimited, Token};
+use crate::filters::{viewer, Ratelimited};
 use crate::unclaimedfiles::File;
 use common::structs::{
     CreateBoard, CreatePost, CreateThread, FileInfo, SafeBoard, SubscriptionData,
@@ -39,85 +39,39 @@ pub fn priveleged_api_endpoints(
             }
         });
 
+    // The Discord bot integration is retired: membership no longer derives from a guild
+    // roster. These three routes stay registered so the bot gets a definite answer rather
+    // than a 404, but they no longer touch the database and no longer parse their body, so
+    // Discord user IDs are not ingested at all.
+    //
+    // /api/set/user was the dangerous one. It ran
+    // `DELETE FROM members WHERE token_hash <> ALL($list)`, so leaving it live would delete
+    // every account the bot does not know about — which, after the identity migration, is
+    // all of them.
+    //
+    // The warning is deliberate: it is the only way to observe whether the bot is still
+    // calling. It records no identifying detail.
+    fn retired_bot_endpoint(route: &str) -> warp::reply::WithStatus<warp::reply::Json> {
+        log::warn!("retired Discord bot endpoint called: {route}");
+        warp::reply::with_status(
+            warp::reply::json(
+                &"This endpoint has been retired; membership is no longer managed via Discord.",
+            ),
+            warp::http::StatusCode::GONE,
+        )
+    }
+
     let adduser = warp::path!("api" / "add" / "user")
         .and(warp::post())
-        .and(warp::body::json::<UserSafe>())
-        .and_then({
-            move |user: UserSafe| async move {
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-
-                if let Err(e) = crate::database_bindings::Database::add_token(
-                    &mut conn,
-                    Token::from_id(&user.id).member_hash(),
-                )
-                .await
-                {
-                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                        &e.to_string(),
-                    ));
-                };
-                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                    &"OK".to_owned(),
-                ))
-            }
-        });
+        .map(|| retired_bot_endpoint("POST /api/add/user"));
 
     let removeuser = warp::path!("api" / "remove" / "user")
         .and(warp::post())
-        .and(warp::body::json::<UserSafe>())
-        .and_then({
-            move |user: UserSafe| async move {
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-
-                if let Err(e) = crate::database_bindings::Database::remove_token(
-                    &mut conn,
-                    Token::from_id(&user.id).member_hash(),
-                )
-                .await
-                {
-                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                        &e.to_string(),
-                    ));
-                };
-                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                    &"OK".to_owned(),
-                ))
-            }
-        });
+        .map(|| retired_bot_endpoint("POST /api/remove/user"));
 
     let setusers = warp::path!("api" / "set" / "user")
         .and(warp::post())
-        .and(warp::body::json::<Vec<UserSafe>>())
-        .and_then({
-            move |users: Vec<UserSafe>| async move {
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-
-                let tokens = users
-                    .iter()
-                    .map(|u| Token::from_id(&u.id).member_hash())
-                    .collect::<Vec<MemberToken>>();
-
-                if let Err(e) =
-                    crate::database_bindings::Database::sync_tokens(&mut conn, tokens).await
-                {
-                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                        &e.to_string(),
-                    ));
-                };
-                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                    &"OK".to_owned(),
-                ))
-            }
-        });
+        .map(|| retired_bot_endpoint("POST /api/set/user"));
 
     priveleged_endpoint().and(adduser.or(removeuser).or(setusers).or(putboard))
 }
@@ -128,9 +82,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getboards = warp::path!("api" / "v1" / "board")
         .and(warp::get())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |mut token: Token| async move {
+            |viewer: database::Viewer| async move {
                 match crate::database_bindings::Database::get_boards(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -141,7 +95,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -161,9 +115,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getboard = warp::path!("api" / "v1" / "board" / String)
         .and(warp::get())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, mut token: Token| async move {
+            |disc: String, viewer: database::Viewer| async move {
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
@@ -176,12 +130,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 match crate::database_bindings::Database::get_board(
                     &mut conn,
                     &disc,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
                     Ok(board) => match board
-                        .with_threads(&mut conn, &token.member_hash().database_hash())
+                        .with_threads(&mut conn, &viewer)
                         .await
                     {
                         Ok(board) => Ok::<warp::reply::Json, warp::reject::Rejection>(
@@ -203,9 +157,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let postthread = warp::path!("api" / "v1" / "board" / String / "thread")
         .and(warp::post())
         .and(warp::body::json::<CreateThread>())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, thread: CreateThread, mut token: Token| async move {
+            |disc: String, thread: CreateThread, viewer: database::Viewer| async move {
                 if let Err(e) = verify_post(&thread.post, Some(&thread.topic)) {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
@@ -224,7 +178,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                     &disc,
                     thread,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -245,9 +199,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getthread = warp::path!("api" / "v1" / "board" / String / "thread" / i64)
         .and(warp::get())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, thread: i64, mut token: Token| async move {
+            |disc: String, thread: i64, viewer: database::Viewer| async move {
                 match crate::database_bindings::Database::get_thread(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -260,7 +214,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                     &disc,
                     thread,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -279,9 +233,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let postinthread = warp::path!("api" / "v1" / "board" / String / "thread" / i64)
         .and(warp::post())
         .and(warp::body::json::<CreatePost>())
-        .and(valid_token())
+        .and(viewer())
         .and_then(
-            |disc: String, rawthread: i64, post: CreatePost, mut token: Token| async move {
+            |disc: String, rawthread: i64, post: CreatePost, viewer: database::Viewer| async move {
                 if let Err(e) = verify_post(&post, None) {
                     return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                         &e.to_string(),
@@ -299,7 +253,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 let board = match crate::database_bindings::Database::get_board(
                     &mut conn,
                     &disc,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -324,7 +278,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 };
                 let tid = thread.id;
                 let thread = match thread
-                    .with_posts(&mut conn, &token.member_hash().database_hash())
+                    .with_posts(&mut conn, &viewer)
                     .await
                 {
                     Ok(v) => v,
@@ -354,13 +308,13 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     &disc,
                     tid,
                     post,
-                    token.member_hash(),
+                    &viewer,
                     Some(files),
                 )
                 .await
                 {
                     Ok(post) => match post
-                        .safe(&mut conn, &token.member_hash().database_hash())
+                        .safe(&mut conn, &viewer)
                         .await
                     {
                         Ok(post) => Ok::<warp::reply::Json, warp::reject::Rejection>(
@@ -381,9 +335,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getpost = warp::path!("api" / "v1" / "board" / String / "post" / i64)
         .and(warp::get())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, post: i64, mut token: Token| async move {
+            |disc: String, post: i64, viewer: database::Viewer| async move {
                 match crate::database_bindings::Database::get_post(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -396,7 +350,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                     &disc,
                     post,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -414,9 +368,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let deletepost = warp::path!("api" / "v1" / "board" / String / "post" / i64)
         .and(warp::delete())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, post: i64, mut token: Token| async move {
+            |disc: String, post: i64, viewer: database::Viewer| async move {
                 match crate::database_bindings::Database::delete_post(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -429,7 +383,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                     &disc,
                     post,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -448,15 +402,15 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let uploadfile = warp::path!("api" / "v1" / "file")
         .and(warp::post())
         .and(warp::multipart::form().max_length(1024 * 1024 * 100))
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |mut form: warp::multipart::FormData, mut token: Token| async move {
+            |mut form: warp::multipart::FormData, viewer: database::Viewer| async move {
                 use futures::TryStreamExt;
                 {
                     if crate::UNCLAIMED_FILES
                         .lock()
                         .await
-                        .has_pending(token.member_hash())
+                        .has_pending(&viewer)
                     {
                         return Ok::<warp::reply::Json, warp::reject::Rejection>(
                             warp::reply::json(&"You already have a file pending"),
@@ -515,7 +469,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                                     .data(value)
                                     .build()
                                     .expect("failed to build file response"),
-                                token.member_hash(),
+                                &viewer,
                             )
                             .await
                         {
@@ -538,9 +492,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let sharefile = warp::path!("api" / "v1" / "share" / "files" / ..)
         .and(warp::path::tail())
         .and(warp::put())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |tail: warp::path::Tail, _: Token| async move {
+            |tail: warp::path::Tail, _: database::Viewer| async move {
                 let file = format!("/files/{}", tail.as_str());
                 // ensure the file exists
                 log::trace!("file: {}", file);
@@ -598,9 +552,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let getbanner = warp::path!("api" / "v1" / "board" / String / "banner")
         .and(warp::get())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, mut token: Token| async move {
+            |disc: String, viewer: database::Viewer| async move {
                 match crate::database_bindings::Database::get_random_banner(
                     &disc,
                     &mut match crate::POOL.get().await {
@@ -612,7 +566,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -630,9 +584,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let get_watching = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "watching")
         .and(warp::get())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, post: i64, mut token: Token| async move {
+            |disc: String, post: i64, viewer: database::Viewer| async move {
                 match crate::database_bindings::Database::get_watching(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -645,7 +599,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                     &disc,
                     post,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -663,10 +617,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     let put_watching = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "watching")
         .and(warp::put())
-        .and(valid_token())
+        .and(viewer())
         .and(warp::body::json::<bool>())
         .and_then({
-            |disc: String, post: i64, mut token: Token, watching: bool| async move {
+            |disc: String, post: i64, viewer: database::Viewer, watching: bool| async move {
                 match crate::database_bindings::Database::set_watching(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -679,7 +633,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     },
                     &disc,
                     post,
-                    token.member_hash(),
+                    &viewer,
                     watching,
                 )
                 .await
@@ -699,9 +653,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let create_invite = warp::path!("api" / "v1" / "board" / String / "invite")
         .and(warp::put())
         .and(warp::query::<InviteCodeHolder>())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, invite_code_holder: InviteCodeHolder, mut token: Token| async move {
+            |disc: String, invite_code_holder: InviteCodeHolder, viewer: database::Viewer| async move {
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
@@ -715,7 +669,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 let board = match crate::database_bindings::Database::get_board(
                     &mut conn,
                     &disc,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -729,7 +683,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
                 match crate::database_bindings::Database::generate_board_access_code(
                     &mut conn,
-                    token.member_hash(),
+                    &viewer,
                     board.id,
                     invite_code_holder.info,
                 )
@@ -750,9 +704,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let create_moderator = warp::path!("api" / "v1" / "board" / String / "moderator")
         .and(warp::put())
         .and(warp::query::<InviteCodeHolder>())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |disc: String, invite_code_holder: InviteCodeHolder, mut token: Token| async move {
+            |disc: String, invite_code_holder: InviteCodeHolder, viewer: database::Viewer| async move {
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
@@ -766,7 +720,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 let board = match crate::database_bindings::Database::get_board(
                     &mut conn,
                     &disc,
-                    token.member_hash(),
+                    &viewer,
                 )
                 .await
                 {
@@ -780,7 +734,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
                 match crate::database_bindings::Database::generate_board_moderator_code(
                     &mut conn,
-                    token.member_hash(),
+                    &viewer,
                     board.id,
                     invite_code_holder.info,
                 )
@@ -801,9 +755,9 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let consume_code = warp::path!("api" / "v1" / "consume_code")
         .and(warp::patch())
         .and(warp::query::<InviteCodeHolder>())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |invite_code_holder: InviteCodeHolder, mut token: Token| async move {
+            |invite_code_holder: InviteCodeHolder, viewer: database::Viewer| async move {
                 let mut conn = match crate::POOL.get().await {
                     Ok(pool) => pool,
                     Err(e) => {
@@ -816,7 +770,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
                 match crate::database_bindings::Database::consume_code(
                     &mut conn,
-                    token.member_hash(),
+                    &viewer,
                     invite_code_holder.info,
                 )
                 .await
@@ -887,13 +841,14 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     // GET /notifications - SSE endpoint to listen for generic push notifications
 
     let pushnotifs = warp::path!("api" / "v1" / "notifications")
-        .and(valid_token())
-        .and_then(|mut token: Token| async move {
+        .and(viewer())
+        .and_then(|viewer: database::Viewer| async move {
             Ok::<_, warp::reject::Rejection>(warp::sse::reply(warp::sse::keep_alive().stream({
+                // Per-member channel, keyed on the member id to match the dispatcher.
                 crate::PUSH_NOTIFS
                     .lock()
                     .await
-                    .subscribe(&token.member_hash().database_hash())
+                    .subscribe(&viewer.id.to_string())
                     .await
             })))
         });
@@ -903,7 +858,20 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let threadnotifs = warp::path!(
         "api" / "v1" / "board" / String / "thread" / i64 / "notifications"
     )
-    .and_then(|board: String, thread: i64| async move {
+    .and(viewer())
+    .and_then(|board: String, thread: i64, viewer: database::Viewer| async move {
+        let mut conn = crate::POOL
+            .get()
+            .await
+            .map_err(|_| warp::reject::reject())?;
+
+        // get_board performs the private-board access check. Without it this stream is
+        // readable by any member, on any board they were never invited to. Rejecting rather
+        // than returning a status also avoids confirming that a private board exists.
+        crate::database_bindings::Database::get_board(&mut conn, &board, &viewer)
+            .await
+            .map_err(|_| warp::reject::reject())?;
+
         Ok::<_, warp::reject::Rejection>(warp::sse::reply(warp::sse::keep_alive().stream({
             crate::PUSH_NOTIFS
                 .lock()
@@ -918,9 +886,9 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let subscribble = warp::path!("api" / "v1" / "subscribe")
         .and(warp::post())
         .and(warp::body::json::<SubscriptionData>())
-        .and(valid_token())
+        .and(viewer())
         .and_then({
-            |sub: SubscriptionData, mut token: Token| async move {
+            |sub: SubscriptionData, viewer: database::Viewer| async move {
                 match crate::database_bindings::Database::add_user_push_url(
                     &mut match crate::POOL.get().await {
                         Ok(pool) => pool,
@@ -931,7 +899,7 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                             );
                         }
                     },
-                    token.member_hash(),
+                    &viewer,
                     sub,
                 )
                 .await
@@ -960,11 +928,6 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             )
         })
         .or(subscribble)
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct UserSafe {
-    pub id: String,
 }
 
 // {

@@ -1,0 +1,29 @@
+--- a/schema.rs
++++ b/schema.rs
+@@ -5,7 +5,7 @@
+         id -> Int8,
+         img_path -> Text,
+         href -> Nullable<Text>,
+-        boards -> Nullable<Array<Nullable<Int8>>>,
++        boards -> Nullable<Array<Int8>>,
+     }
+ }
+ 
+@@ -84,7 +84,7 @@
+         author -> Nullable<Text>,
+         content -> Text,
+         timestamp -> Timestamp,
+-        replies_to -> Array<Nullable<Int8>>,
++        replies_to -> Array<Int8>,
+         actual_author -> Text,
+         moderator -> Bool,
+     }
+@@ -112,7 +112,7 @@
+     spoilers (id) {
+         id -> Int8,
+         img_path -> Text,
+-        boards -> Array<Nullable<Int8>>,
++        boards -> Array<Int8>,
+     }
+ }
+ 

@@ -16,145 +16,99 @@ use warp::{path::FullPath, Filter};
 use warp::http::Method;
 
 lazy_static! {
-    pub static ref TOKENCACHE: Arc<Mutex<HashMap<Token, Instant>>> =
+    /// Short-lived cache of resolved sessions, keyed on the hashed cookie so the raw
+    /// credential is not a key in process memory.
+    static ref SESSION_CACHE: Arc<Mutex<HashMap<String, (Instant, database::Viewer)>>> =
         Arc::new(Mutex::new(HashMap::new()));
 }
 
-pub fn valid_token() -> impl Filter<Extract = (Token,), Error = warp::Rejection> + Clone {
-    // warp::any()
-    //     .and(warp::header::optional::<Bearer>("authorization"))
-    //     .and(warp::cookie::optional("token"))
-    //     .and_then(
-    //         |header: Option<Bearer>, cookie: Option<String>| async move {
-    //             let mut conn = crate::POOL
-    //                 .get()
-    //                 .await
-    //                 .map_err(|_| warp::reject::reject())?;
-    //             if let Some(header) = header {
-    //                 let mut t = Token::new(header.token);
-    //                 let mut cache = TOKENCACHE.lock().await;
-    //                 if let Entry::Occupied(e) = cache.entry(t.clone()) {
-    //                     if e.get().elapsed().as_secs() < 60 {
-    //                         return Ok(t);
-    //                     } else {
-    //                         e.remove();
-    //                     }
-    //                 } else if crate::database_bindings::Database::is_valid_token(
-    //                     &mut conn,
-    //                     t.member_hash(),
-    //                 )
-    //                 .await
-    //                 .map_err(|_| warp::reject::reject())?
-    //                 {
-    //                     cache.insert(t.clone(), Instant::now());
-    //                     return Ok(t);
-    //                 }
-    //             };
-    //             if let Some(cookie) = cookie {
-    //                 let mut t = Token::new(cookie);
-    //                 let mut cache = TOKENCACHE.lock().await;
-    //                 if let Entry::Occupied(e) = cache.entry(t.clone()) {
-    //                     if e.get().elapsed().as_secs() < 60 {
-    //                         return Ok(t);
-    //                     } else {
-    //                         e.remove();
-    //                     }
-    //                 } else if crate::database_bindings::Database::is_valid_token(
-    //                     &mut conn,
-    //                     t.member_hash(),
-    //                 )
-    //                 .await
-    //                 .map_err(|_| warp::reject::reject())?
-    //                 {
-    //                     cache.insert(t.clone(), Instant::now());
-    //                     return Ok(t);
-    //                 }
-    //             };
-    //             Err(warp::reject::reject())
-    //         },
-    //     )
+/// How long a resolved session is reused before being re-read from the database. This is the
+/// window in which a logout or ban has not taken effect yet, so it is deliberately short.
+const SESSION_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The authenticated member, or a rejection.
+pub fn viewer() -> impl Filter<Extract = (database::Viewer,), Error = warp::Rejection> + Clone {
     warp::any()
-        .and(optional_token())
-        .and_then(|token: Option<Token>| async move {
-            match token {
-                Some(token) => Ok(token),
+        .and(optional_viewer())
+        .and_then(|v: Option<database::Viewer>| async move {
+            match v {
+                Some(v) => Ok(v),
                 None => Err(warp::reject::reject()),
             }
         })
 }
 
-pub fn valid_token_always_allow_res(
-) -> impl Filter<Extract = ((),), Error = warp::Rejection> + Clone {
+/// Serves the frontend shell to everyone, so a logged-out visitor can reach the login and
+/// request-access pages. Static assets under /res/ stay open for the same reason.
+pub fn allow_public_shell() -> impl Filter<Extract = ((),), Error = warp::Rejection> + Clone {
+    warp::any().and_then(|| async { Ok::<_, warp::Rejection>(()) })
+}
+
+/// Resolve the session cookie to a member, if there is one.
+///
+/// Unlike the old filter there is no `Authorization` fallback: the browser is the only client,
+/// and `GET /api/v1/token` no longer exists to hand a credential to JavaScript.
+pub fn optional_viewer(
+) -> impl Filter<Extract = (Option<database::Viewer>,), Error = warp::Rejection> + Clone {
     warp::any()
-        .and(optional_token())
-        .and(warp::path::full())
-        .and_then(|token: Option<Token>, path: FullPath| async move {
-            let path = path.as_str();
-            if token.is_none() {
-                if path.starts_with("/res/") {
-                    return Ok(());
+        .and(warp::cookie::optional(crate::session::COOKIE_NAME))
+        .and_then(|cookie: Option<String>| async move {
+            let Some(token) = cookie else {
+                return Ok(None);
+            };
+
+            let cache_key = database::keys::session_token_hash(&token);
+
+            {
+                let mut cache = SESSION_CACHE.lock().await;
+                if let Entry::Occupied(e) = cache.entry(cache_key.clone()) {
+                    if e.get().0.elapsed() < SESSION_CACHE_TTL {
+                        return Ok(Some(e.get().1.clone()));
+                    }
+                    e.remove();
                 }
-            } else {
-                return Ok(());
             }
-            Err(warp::reject::reject())
+
+            // Lock released before the query: holding it across the round trip serialised
+            // every authenticated request behind one database call.
+            let mut conn = crate::POOL.get().await.map_err(|e| {
+                log::error!("could not get a connection to resolve a session: {e}");
+                warp::reject::reject()
+            })?;
+
+            let resolved = crate::session::resolve(&mut conn, &token)
+                .await
+                .map_err(|e| {
+                    // Logged rather than swallowed: a schema or query fault here is
+                    // indistinguishable from "not logged in" to the caller, which is
+                    // miserable to debug.
+                    log::error!("error resolving session: {e}");
+                    warp::reject::reject()
+                })?;
+
+            if let Some(v) = &resolved {
+                SESSION_CACHE
+                    .lock()
+                    .await
+                    .insert(cache_key, (Instant::now(), v.clone()));
+            }
+
+            Ok::<_, warp::reject::Rejection>(resolved)
         })
 }
 
-pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp::Rejection> + Clone
-{
-    warp::any()
-        .and(warp::header::optional::<Bearer>("authorization"))
-        .and(warp::cookie::optional("token"))
-        .and_then(
-            |header: Option<Bearer>, cookie: Option<String>| async move {
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-                if let Some(header) = header {
-                    let mut t = Token::new(header.token);
-                    let mut cache = TOKENCACHE.lock().await;
-                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
-                        if e.get().elapsed().as_secs() < 60 {
-                            return Ok(Some(t));
-                        } else {
-                            e.remove();
-                        }
-                    } else if crate::database_bindings::Database::is_valid_token(
-                        &mut conn,
-                        t.member_hash(),
-                    )
-                    .await
-                    .map_err(|_| warp::reject::reject())?
-                    {
-                        cache.insert(t.clone(), Instant::now());
-                        return Ok::<_, warp::reject::Rejection>(Some(t));
-                    }
-                };
-                if let Some(cookie) = cookie {
-                    let mut t = Token::new(cookie);
-                    let mut cache = TOKENCACHE.lock().await;
-                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
-                        if e.get().elapsed().as_secs() < 60 {
-                            return Ok(Some(t));
-                        } else {
-                            e.remove();
-                        }
-                    } else if crate::database_bindings::Database::is_valid_token(
-                        &mut conn,
-                        t.member_hash(),
-                    )
-                    .await
-                    .map_err(|_| warp::reject::reject())?
-                    {
-                        cache.insert(t.clone(), Instant::now());
-                        return Ok(Some(t));
-                    }
-                };
-                Ok(None)
-            },
-        )
+/// Drop a session from the resolve cache so a logout or ban takes effect immediately rather
+/// than at the end of the TTL.
+pub async fn forget_cached_session(token: &str) {
+    SESSION_CACHE
+        .lock()
+        .await
+        .remove(&database::keys::session_token_hash(token));
+}
+
+/// Drop every cached session for one member. Used when banning.
+pub async fn forget_cached_member(member: &uuid::Uuid) {
+    SESSION_CACHE.lock().await.retain(|_, (_, v)| &v.id != member);
 }
 
 pub fn optional_file_sig(
@@ -281,9 +235,9 @@ pub fn user_agent_is_scraper() -> impl Filter<Extract = (), Error = warp::Reject
 #[cfg_attr(feature = "no_ratelimit", allow(unused_variables))]
 pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
     warp::path::full()
-        .and(valid_token())
+        .and(viewer())
         .and(warp::method())
-        .and_then(|path: FullPath, mut token: Token, method| async move {
+        .and_then(|path: FullPath, viewer: database::Viewer, method| async move {
             #[cfg(feature = "no_ratelimit")]
             {
                 Ok::<(), warp::Rejection>(())
@@ -294,15 +248,9 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                     return Ok(());
                 }
 
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-
-                if database::check_admin(&mut conn, &token.member_hash().database_hash())
-                    .await
-                    .map_err(|_| warp::reject::reject())?
-                {
+                // The role rides on the viewer now, so this no longer costs a query on
+                // every mutating request.
+                if viewer.role.is_admin() {
                     return Ok(());
                 }
 
@@ -396,7 +344,9 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                         }
                     };
 
-                let total_string = format!("{}|{}", ident, token);
+                // Keyed on the member hash, not the raw credential, so the bearer token is
+                // not sitting in process memory as a map key.
+                let total_string = format!("{}|{}", ident, viewer.id);
                 let mut ratelimit = crate::RATELIMIT.lock().await;
                 match ratelimit.entry(total_string) {
                     Entry::Occupied(mut entry) => {
@@ -473,10 +423,19 @@ impl Display for Bearer {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct Token {
     token: Arc<String>,
     cached_member_hash: Option<MemberToken>,
+}
+
+// Display and Debug are deliberately redacted. This value is a bearer credential, and log
+// access has to be treated as equivalent to deanonymizing every member. Use cookie_value()
+// at the one place that legitimately needs the raw string.
+impl std::fmt::Debug for Token {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("Token(redacted)")
+    }
 }
 
 impl PartialEq for Token {
@@ -495,7 +454,7 @@ impl Hash for Token {
 
 impl Display for Token {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.token)
+        f.write_str("Token(redacted)")
     }
 }
 
@@ -510,33 +469,44 @@ impl Token {
         if let Some(member_hash) = &self.cached_member_hash {
             return member_hash.clone();
         }
-        let m = MemberToken::new(
-            Arc::clone(&self.token),
-            Arc::new(hash_with_salt(&self.token, &crate::statics::TOKEN_SALT)),
-        );
+        let m = MemberToken::new(Arc::new(hash_with_salt(
+            &self.token,
+            &crate::statics::TOKEN_SALT,
+        )));
         self.cached_member_hash = Some(m.clone());
         m
     }
     pub fn from_id(id: &str) -> Self {
         Self::new(hash_with_salt(id, &crate::statics::HASH_SALT))
     }
+    /// The raw cookie value. Only for emitting the Set-Cookie header; never log this.
+    pub fn cookie_value(&self) -> &str {
+        &self.token
+    }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Clone)]
 pub struct MemberToken {
-    original: Arc<String>,
     token: Arc<String>,
+}
+
+// Redacted for the same reason as Token: the member hash alone is enough to enumerate a
+// member's posts via actual_author.
+impl std::fmt::Debug for MemberToken {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("MemberToken(redacted)")
+    }
 }
 
 impl Display for MemberToken {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ({})", self.token, self.original)
+        f.write_str("MemberToken(redacted)")
     }
 }
 
 impl MemberToken {
-    pub fn new(original: Arc<String>, token: Arc<String>) -> Self {
-        Self { original, token }
+    pub fn new(token: Arc<String>) -> Self {
+        Self { token }
     }
     pub fn post_hash(&self, id: &str) -> String {
         hash_with_salt(&self.token, id)

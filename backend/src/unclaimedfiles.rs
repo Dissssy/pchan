@@ -3,7 +3,6 @@ use common::structs::ClaimedFileInfo;
 use imageproc::drawing::draw_text_mut;
 use std::collections::HashMap;
 
-use crate::filters::MemberToken;
 
 pub struct UnclaimedFiles {
     pub files: HashMap<String, (String, File, tokio::time::Instant)>,
@@ -14,11 +13,11 @@ impl UnclaimedFiles {
         Self { files }
     }
 
-    pub async fn add_file(&mut self, file: File, token: MemberToken) -> Result<String> {
+    pub async fn add_file(&mut self, file: File, viewer: &database::Viewer) -> Result<String> {
         for _ in 0..3 {
             let id = nanoid::nanoid!(16);
             if let std::collections::hash_map::Entry::Vacant(e) =
-                self.files.entry(token.database_hash().to_string())
+                self.files.entry(viewer.id.to_string())
             {
                 e.insert((id.clone(), file, tokio::time::Instant::now()));
                 return Ok(id);
@@ -31,10 +30,10 @@ impl UnclaimedFiles {
     pub async fn claim_file(
         &mut self,
         createfile: &common::structs::CreateFile,
-        token: MemberToken,
+        viewer: &database::Viewer,
         is_thread_post: bool,
     ) -> Result<ClaimedFileInfo> {
-        match self.files.remove(&*token.database_hash()) {
+        match self.files.remove(&viewer.id.to_string()) {
             Some((tid, file, _)) => {
                 if tid != createfile.id {
                     return Err(anyhow!("Invalid id"));
@@ -176,8 +175,8 @@ impl UnclaimedFiles {
         Ok(())
     }
 
-    pub fn has_pending(&self, token: MemberToken) -> bool {
-        self.files.contains_key(&*token.database_hash())
+    pub fn has_pending(&self, viewer: &database::Viewer) -> bool {
+        self.files.contains_key(&viewer.id.to_string())
     }
 }
 

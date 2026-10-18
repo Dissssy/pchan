@@ -16,25 +16,24 @@
     clippy::manual_string_new
 )]
 #![allow(clippy::needless_return)]
-use std::{
-    io::{Read as _, Write as _},
-    sync::Arc,
-};
+use std::sync::Arc;
 
-use base64::Engine;
 use diesel_async::pooled_connection::deadpool::Pool;
 use diesel_async::pooled_connection::AsyncDieselConnectionManager;
 use diesel_async::AsyncPgConnection;
-use filters::valid_token_always_allow_res;
+use filters::allow_public_shell;
 use std::os::linux::fs::MetadataExt;
 
 use tokio::sync::Mutex;
 use warp::{http::HeaderValue, Filter, Reply};
 
+mod auth;
+mod config;
 mod database_bindings;
 mod endpoints;
 mod filters;
 mod push;
+mod session;
 // pub mod schema;
 mod statics;
 mod unclaimedfiles;
@@ -47,9 +46,7 @@ use std::collections::HashMap;
 // use crate::database_bindings::Users;
 use profanity::Profanity;
 
-use crate::filters::{
-    optional_file_sig, optional_token, user_agent_is_scraper, valid_token, FileSig, Token,
-};
+use crate::filters::{optional_file_sig, optional_viewer, user_agent_is_scraper, FileSig};
 
 lazy_static::lazy_static! {
     pub static ref POOL: deadpool::managed::Pool<diesel_async::pooled_connection::AsyncDieselConnectionManager<diesel_async::AsyncPgConnection>> = Pool::builder(AsyncDieselConnectionManager::<AsyncPgConnection>::new(std::env::var("DATABASE_URL").expect("DATABASE_URL not set"))).build().expect("Database build failed");
@@ -84,6 +81,17 @@ fn is_safe_mimetype(mimetype: &str) -> bool {
 
 #[tokio::main]
 async fn main() {
+    // Before anything reads the environment. POOL is lazily initialised from DATABASE_URL, so
+    // this has to happen before the first database access.
+    config::load_dotenv();
+
+    // Fail fast and loudly: a missing or reused key is a silent anonymity failure if it is
+    // only noticed once requests are being served.
+    if let Err(e) = config::init() {
+        eprintln!("configuration error: {e:#}");
+        std::process::exit(1);
+    }
+
     // env_logger::init();
     // match api_key {
     //     Ok(api_key) => {
@@ -153,12 +161,12 @@ async fn main() {
             .and(
                 warp::fs::dir(env!("FILE_STORAGE_PATH"))
                     .and(warp::path::full())
-                    .and(optional_token())
+                    .and(optional_viewer())
                     .and(optional_file_sig())
                     .and_then(
                         |reply: warp::filters::fs::File,
                          path: warp::path::FullPath,
-                         mut token: Option<Token>,
+                         viewer: Option<database::Viewer>,
                          file_sig: Option<FileSig>| async move {
                             let path = path.as_str().to_string();
 
@@ -179,19 +187,18 @@ async fn main() {
                                 }
                             }
 
-                            if path.ends_with("-thumb.jpg") || token.is_some() {
-                                return Ok(resp);
-                            }
-
                             if path.contains("/files/") {
                                 let mut conn =
                                     POOL.get().await.map_err(|_| warp::reject::reject())?;
 
-                                let _file = database::get_file_from_path(
+                                // This performs the private-board access check. It used to be
+                                // skipped entirely for any path ending in -thumb.jpg, which
+                                // made every private board's thumbnails world-readable, and
+                                // skipped for any authenticated member, which let any member
+                                // read files from boards they were never invited to.
+                                let file = database::get_file_from_path(
                                     &mut conn,
-                                    token
-                                        .as_mut()
-                                        .map(|x| x.member_hash().database_hash().to_string()),
+                                    viewer.as_ref(),
                                     path.trim_end_matches("-thumb.jpg"),
                                 )
                                 .await
@@ -200,17 +207,38 @@ async fn main() {
                                     warp::reject::reject()
                                 })?;
 
+                                // A member the check above accepted for this board.
+                                if viewer.is_some() {
+                                    return Ok(resp);
+                                }
+
+                                // Unauthenticated. The lookup already rejected private boards,
+                                // so a known file reaching this point is on a public one.
+                                // Thumbnails have to stay anonymously readable or link embeds
+                                // break: Discord fetches og:image with no cookie, and via its
+                                // media proxy rather than the Discordbot user agent, so it
+                                // does not take the is_scraper branch.
+                                if file.is_some() && path.ends_with("-thumb.jpg") {
+                                    return Ok(resp);
+                                }
+
                                 if let Some(file_sig) = file_sig {
                                     if file_sig.validates(&path).await {
                                         return Ok(resp);
                                     }
                                 }
+
+                                return Err(warp::reject::reject());
+                            }
+
+                            if viewer.is_some() {
+                                return Ok(resp);
                             }
 
                             Err(warp::reject::reject())
                         },
                     )
-                    .or(valid_token_always_allow_res()
+                    .or(allow_public_shell()
                         .map(|_| {})
                         .untuple_one()
                         .and(warp::fs::dir(env!("DISTRIBUTION_PATH")).or(warp::fs::file(
@@ -229,13 +257,6 @@ async fn main() {
         .and(warp::get())
         .and(warp::fs::file(format!(
             "{}/res/icon-256.png",
-            env!("DISTRIBUTION_PATH")
-        )));
-
-    let unauthorized = warp::path!("unauthorized")
-        .and(warp::get())
-        .and(warp::fs::file(format!(
-            "{}/unauthorized.html",
             env!("DISTRIBUTION_PATH")
         )));
 
@@ -340,50 +361,27 @@ async fn main() {
         },
     );
 
+    // The frontend shell is now served to everyone. A logged-out visitor needs to be able to
+    // reach the login and request-access pages, so there is no longer a catch-all that
+    // redirects anonymous requests to /login. Each API route carries its own viewer() gate
+    // instead of one blanket gate around the whole tree.
+    // Anything under /api/ that no route accepted is an authentication failure. Without this
+    // it falls through to the SPA shell below and a caller expecting JSON gets a 200 with a
+    // page of HTML, which is indistinguishable from success until it fails to parse.
+    let api_unauthorized = warp::path("api").and(warp::path::tail()).map(|_| {
+        warp::reply::with_status(
+            warp::reply::json(&"Not authenticated"),
+            warp::http::StatusCode::UNAUTHORIZED,
+        )
+    });
+
     let routes = endpoints::other_endpoints()
         .or(endpoints::api::priveleged_api_endpoints())
-        .or(valid_token()
-            .map(|_| {
-                log::trace!("valid token");
-            })
-            .untuple_one()
-            .and(endpoints::api::api_endpoints())
-            .or(root)
-            .or(unauthorized)
-            .or(manifest)
-            .or(icon)
-            .or(warp::any()
-                .and(warp::cookie::optional::<String>("token"))
-                .and(warp::path::full())
-                .then(
-                    |token: Option<String>, path: warp::filters::path::FullPath| async move {
-                        match token {
-                            None => warp::http::Response::builder()
-                                .header(
-                                    "Location",
-                                    format!(
-                                        "/login?redirect={}",
-                                        match encode_checksum_str(path.as_str()) {
-                                            Ok(x) => x,
-                                            Err(e) => {
-                                                log::error!("Error encoding checksum: {e}");
-                                                return warp::http::Response::builder()
-                                                    .header("Location", "/unauthorized")
-                                                    .status(302)
-                                                    .body(String::new());
-                                            }
-                                        }
-                                    ),
-                                )
-                                .status(302)
-                                .body(String::new()),
-                            Some(_) => warp::http::Response::builder()
-                                .header("Location", "/unauthorized")
-                                .status(302)
-                                .body(String::new()),
-                        }
-                    },
-                )));
+        .or(endpoints::api::api_endpoints())
+        .or(api_unauthorized)
+        .or(root)
+        .or(manifest)
+        .or(icon);
 
     let (sendkill, kill) = tokio::sync::oneshot::channel::<()>();
     let (killreply, killrecv) = tokio::sync::oneshot::channel::<()>();
@@ -506,49 +504,3 @@ async fn get_all_entries(dir: &str) -> anyhow::Result<Vec<tokio::fs::DirEntry>> 
     Ok(return_files)
 }
 
-fn encode_checksum_str(s: &str) -> anyhow::Result<String> {
-    // encode the string with a checksum and encrypt it using our secret key (generated at startup, does not persist)
-    // random key is at crate::statics::RANDOM_KEY;
-
-    // checksum is crc32
-
-    let checksum = {
-        let mut hasher = crc32fast::Hasher::new();
-        hasher.update(s.as_bytes());
-        hasher.finalize()
-    };
-    let mut s = s.as_bytes().to_vec();
-    s.extend_from_slice(&checksum.to_be_bytes());
-    let mut key = statics::RANDOM_KEY.iter().cycle();
-    // simple xor encryption
-    let s = s
-        .iter()
-        .map(|x| x ^ key.next().expect("KEY RAN OUT???"))
-        .collect::<Vec<u8>>();
-    let mut compressor = flate2::write::GzEncoder::new(Vec::new(), flate2::Compression::default());
-    compressor.write_all(&s)?;
-    let s = compressor.finish()?;
-    Ok(statics::BASE64_ENGINE.encode(s))
-}
-
-fn decode_checksum_str(s: &str) -> anyhow::Result<String> {
-    // decrypt the string and check the checksum
-    let s = statics::BASE64_ENGINE.decode(s.as_bytes())?;
-    let mut decompressor = flate2::read::GzDecoder::new(&s[..]);
-    let mut s = Vec::new();
-    decompressor.read_to_end(&mut s)?;
-    let mut key = statics::RANDOM_KEY.iter().cycle();
-    let s = s
-        .iter()
-        .map(|x| x ^ key.next().expect("KEY RAN OUT???"))
-        .collect::<Vec<u8>>();
-    let (s, checksum) = s.split_at(s.len() - 4);
-    let mut hasher = crc32fast::Hasher::new();
-    hasher.update(s);
-    if hasher.finalize() == u32::from_be_bytes([checksum[0], checksum[1], checksum[2], checksum[3]])
-    {
-        Ok(String::from_utf8(s.to_vec())?)
-    } else {
-        Err(anyhow::anyhow!("Checksum failed"))
-    }
-}

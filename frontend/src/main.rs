@@ -124,10 +124,15 @@ fn Root() -> Html {
         let api_ctx = api_ctx.clone();
         use_effect(move || {
             if !*dispatched {
-                wasm_bindgen_futures::spawn_local(async move {
-                    let api = api::Api::new(token).await.map(Arc::new);
-                    api_ctx.set(Some(ApiContext { api }));
-                });
+                // Evict the credential the old build cached here. Without this, anyone who
+                // loaded the previous frontend keeps a stale bearer token in web storage
+                // forever — and in the broken interim state, the literal string
+                // "Not authenticated", which is what a 401 body deserialized to.
+                token.delete();
+
+                api_ctx.set(Some(ApiContext {
+                    api: Ok(Arc::new(api::Api::new())),
+                }));
                 dispatched.set(true);
             }
         });
