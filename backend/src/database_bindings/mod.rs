@@ -797,9 +797,12 @@ impl Database {
                 }
             })?;
 
+        // An empty board list means every board. Rows created before assets were manageable
+        // express that as NULL, so both are accepted.
         let banner = banners
             .or_filter(boards.contains(vec![board.id]))
             .or_filter(boards.is_null())
+            .or_filter(boards.eq(Some(Vec::<i64>::new())))
             .load::<Banner>(conn)
             .await?;
 

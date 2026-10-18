@@ -1,4 +1,7 @@
 #![feature(async_iterator)]
+// Every `.or()` in the route tree nests another layer into one enormous filter type. The
+// admin and asset endpoints pushed it past the default limit.
+#![recursion_limit = "512"]
 #![warn(
     clippy::map_unwrap_or,
     clippy::unwrap_used,
@@ -27,6 +30,7 @@ use std::os::linux::fs::MetadataExt;
 use tokio::sync::Mutex;
 use warp::{http::HeaderValue, Filter, Reply};
 
+mod assets;
 mod auth;
 mod config;
 mod database_bindings;
@@ -433,7 +437,10 @@ async fn main() {
                     };
 
                     drop(lock);
-                    let files_to_delete = files.iter().filter(|x| !files_in_db.iter().any(|v| {
+                    // Site assets live under the same storage root but are not rows in
+                    // `files`, so the sweep below would move every uploaded banner and
+                    // spoiler to trash within minutes of upload.
+                    let files_to_delete = files.iter().filter(|x| !x.starts_with("/files/assets/")).filter(|x| !files_in_db.iter().any(|v| {
                         // if &&v.claimed.path == x || &&v.claimed.thumbnail == x {
                         //     true
                         // } else {

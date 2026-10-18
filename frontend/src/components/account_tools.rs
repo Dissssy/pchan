@@ -47,16 +47,18 @@ pub fn AccountTools() -> Html {
 
     html! {
         <div class="account-tools">
-            <h2>{"Account"}</h2>
-            if let Some(info) = &me.me {
-                <p class="account-role">{format!("Signed in as: {}", info.role)}</p>
-            }
+            <span class="account-tools-title">
+                {"Account"}
+                if let Some(info) = &me.me {
+                    <span class="account-role">{info.role.replace('_', " ")}</span>
+                }
+            </span>
 
             if can_moderate {
-                <a class="join-button" href="/admin">{"Moderation"}</a>
+                <a class="account-button" href="/admin">{"Moderation"}</a>
             }
 
-            <button class="join-button" onclick={rotate}>{"Start a new posting identity"}</button>
+            <button class="account-button" onclick={rotate}>{"Start a new posting identity"}</button>
             {
                 match &*rotate_state {
                     RotateState::Idle => html!{},
@@ -73,7 +75,9 @@ pub fn AccountTools() -> Html {
             // A form post, not fetch: logout clears the cookie and redirects, and the browser
             // should follow that navigation.
             <form method="post" action="/logout" class="account-logout">
-                <button class="join-button join-button-danger" type="submit">{"Sign out"}</button>
+                <button class="account-button account-button-danger" type="submit">
+                    {"Sign out"}
+                </button>
             </form>
         </div>
     }

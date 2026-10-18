@@ -36,6 +36,9 @@ pub fn Admin() -> Html {
     if is_site {
         tabs.push((Tab::Moderators, "Moderators"));
     }
+    if me.is_admin() {
+        tabs.push((Tab::Assets, "Banners & spoilers"));
+    }
     tabs.push((Tab::Log, "Audit log"));
 
     html! {
@@ -60,6 +63,7 @@ pub fn Admin() -> Html {
                         Tab::Requests => html! { <RequestsTab /> },
                         Tab::Boards => html! { <BoardsTab /> },
                         Tab::Moderators => html! { <ModeratorsTab /> },
+                        Tab::Assets => html! { <AssetsTab /> },
                         Tab::Log => html! { <LogTab /> },
                     }
                 }
@@ -74,6 +78,7 @@ enum Tab {
     Requests,
     Boards,
     Moderators,
+    Assets,
     Log,
 }
 
@@ -453,6 +458,234 @@ fn LogTab() -> Html {
                     </p>
                 </div>
             }) }
+        </>
+    }
+}
+
+
+/// Banner and spoiler management.
+///
+/// Dimensions are enforced server-side rather than here, so a mis-sized image is refused with
+/// a message instead of silently breaking the layout of every board it appears on.
+#[function_component]
+fn AssetsTab() -> Html {
+    let reload = use_state(|| 0u32);
+    let api_ctx = use_context::<Option<ApiContext>>().flatten();
+    let assets = use_state(|| None::<Result<crate::api::AssetLists, AttrValue>>);
+    let boards = use_listing::<SafeBoard, _, _>(*reload, |api| async move {
+        api.get_boards(true).await
+    });
+    let message = use_state(|| None::<AttrValue>);
+
+    {
+        let (api_ctx, assets) = (api_ctx.clone(), assets.clone());
+        use_effect_with(*reload, move |_| {
+            let Some(api) = api_of(&api_ctx) else {
+                assets.set(Some(Err(AttrValue::Static("No connection to the server."))));
+                return;
+            };
+            wasm_bindgen_futures::spawn_local(async move {
+                match api.list_assets().await {
+                    Ok(v) => assets.set(Some(Ok(v))),
+                    Err(e) => assets.set(Some(Err(AttrValue::from(e.to_string())))),
+                }
+            });
+        });
+    }
+
+    let upload = {
+        let (api_ctx, reload, message) = (api_ctx.clone(), reload.clone(), message.clone());
+        Callback::from(move |(kind, input): (&'static str, web_sys::HtmlInputElement)| {
+            let Some(file) = input.files().and_then(|f| f.get(0)) else { return };
+            let Some(api) = api_of(&api_ctx) else { return };
+            let (reload, message) = (reload.clone(), message.clone());
+            let (name, mime) = (file.name(), file.type_());
+            wasm_bindgen_futures::spawn_local(async move {
+                let bytes = match gloo_file::futures::read_as_bytes(&gloo_file::Blob::from(
+                    web_sys::Blob::from(file),
+                ))
+                .await
+                {
+                    Ok(b) => b,
+                    Err(e) => {
+                        message.set(Some(AttrValue::from(format!("Could not read that file: {e}"))));
+                        return;
+                    }
+                };
+                match api.upload_asset(kind, name, bytes, mime).await {
+                    Ok(m) => message.set(Some(AttrValue::from(m))),
+                    Err(e) => message.set(Some(AttrValue::from(e.to_string()))),
+                }
+                input.set_value("");
+                reload.set(*reload + 1);
+            });
+        })
+    };
+
+    let save = {
+        let (api_ctx, reload, message) = (api_ctx.clone(), reload.clone(), message.clone());
+        Callback::from(move |(kind, id, update): (&'static str, i64, common::structs::AssetUpdate)| {
+            let Some(api) = api_of(&api_ctx) else { return };
+            let (reload, message) = (reload.clone(), message.clone());
+            wasm_bindgen_futures::spawn_local(async move {
+                match api.update_asset(kind, id, update).await {
+                    Ok(m) => message.set(Some(AttrValue::from(m))),
+                    Err(e) => message.set(Some(AttrValue::from(e.to_string()))),
+                }
+                reload.set(*reload + 1);
+            });
+        })
+    };
+
+    let remove = {
+        let (api_ctx, reload) = (api_ctx.clone(), reload.clone());
+        Callback::from(move |(kind, id): (&'static str, i64)| {
+            let confirmed = web_sys::window()
+                .and_then(|w| w.confirm_with_message("Delete this image?").ok())
+                .unwrap_or(false);
+            if !confirmed {
+                return;
+            }
+            let Some(api) = api_of(&api_ctx) else { return };
+            let reload = reload.clone();
+            wasm_bindgen_futures::spawn_local(async move {
+                if let Err(e) = api.delete_asset(kind, id).await {
+                    gloo::console::error!(format!("delete failed: {}", *e));
+                }
+                reload.set(*reload + 1);
+            });
+        })
+    };
+
+    let all_boards: Vec<String> = boards
+        .as_ref()
+        .and_then(|r| r.as_ref().ok())
+        .map(|v| v.iter().map(|b| b.discriminator.clone()).collect())
+        .unwrap_or_default();
+
+    // Rendered as a plain function rather than a component so the per-item controls do not
+    // need hooks, which cannot be called from inside an iterator.
+    let section = |kind: &'static str,
+                   title: &'static str,
+                   size: (u32, u32),
+                   list: &[common::structs::AssetSummary]| {
+        let upload = upload.clone();
+        let save = save.clone();
+        let remove = remove.clone();
+        let all_boards = all_boards.clone();
+        html! {
+            <>
+                <span class="admin-section-title">
+                    { format!("{title} — must be exactly {}×{}", size.0, size.1) }
+                </span>
+                <input
+                    class="admin-input"
+                    type="file"
+                    accept="image/*"
+                    onchange={Callback::from(move |e: Event| {
+                        if let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() {
+                            upload.emit((kind, input));
+                        }
+                    })}
+                />
+                if list.is_empty() {
+                    <p class="moderation-empty">{"None yet."}</p>
+                } else {
+                    <div class="moderation-list">
+                        { for list.iter().map(|a| {
+                            let id = a.id;
+                            let current = a.boards.clone();
+                            let href_now = a.href.clone();
+                            let (save, remove) = (save.clone(), remove.clone());
+
+                            // Saving on change means no separate save button, and because a
+                            // change event fires on blur it lands before any board toggle.
+                            let on_href = {
+                                let (save, current) = (save.clone(), current.clone());
+                                Callback::from(move |e: Event| {
+                                    let Some(input) = e.target_dyn_into::<web_sys::HtmlInputElement>() else { return };
+                                    let href = Some(input.value()).filter(|v| !v.trim().is_empty());
+                                    save.emit((kind, id, common::structs::AssetUpdate {
+                                        href,
+                                        boards: current.clone(),
+                                    }));
+                                })
+                            };
+
+                            html! {
+                                <div class="moderation-item asset-item" key={id}>
+                                    <img class="asset-preview" src={a.img_path.clone()} alt="" />
+                                    <div class="asset-controls">
+                                        if kind == "banners" {
+                                            <input
+                                                class="admin-input"
+                                                placeholder="Link (leave empty for none)"
+                                                value={href_now.clone().unwrap_or_default()}
+                                                onchange={on_href}
+                                            />
+                                        }
+                                        <div class="asset-boards">
+                                            { for all_boards.iter().map(|b| {
+                                                let on = current.contains(b);
+                                                let b2 = b.clone();
+                                                let current = current.clone();
+                                                let href_now = href_now.clone();
+                                                let save = save.clone();
+                                                html! {
+                                                    <button
+                                                        class={classes!("asset-board", on.then_some("asset-board-on"))}
+                                                        onclick={Callback::from(move |_| {
+                                                            let mut next = current.clone();
+                                                            if on { next.retain(|x| x != &b2); } else { next.push(b2.clone()); }
+                                                            save.emit((kind, id, common::structs::AssetUpdate {
+                                                                href: href_now.clone(),
+                                                                boards: next,
+                                                            }));
+                                                        })}
+                                                    >{format!("/{b}/")}</button>
+                                                }
+                                            }) }
+                                        </div>
+                                        <p class="moderation-meta">
+                                            { if current.is_empty() {
+                                                "Shown on every board"
+                                            } else {
+                                                "Shown only on the boards highlighted above"
+                                            } }
+                                        </p>
+                                        <div class="moderation-actions">
+                                            <button class="join-button join-button-danger"
+                                                onclick={Callback::from(move |_| remove.emit((kind, id)))}>
+                                                {"Delete"}
+                                            </button>
+                                        </div>
+                                    </div>
+                                </div>
+                            }
+                        }) }
+                    </div>
+                }
+            </>
+        }
+    };
+
+    html! {
+        <>
+            if let Some(m) = &*message {
+                <p class="moderation-note asset-message">{m.clone()}</p>
+            }
+            {
+                match &*assets {
+                    None => html! { <crate::components::Spinner /> },
+                    Some(Err(e)) => html! { <p class="join-error">{e.clone()}</p> },
+                    Some(Ok(a)) => html! {
+                        <>
+                            { section("banners", "Banners", common::structs::BANNER_SIZE, &a.banners) }
+                            { section("spoilers", "Spoilers", common::structs::SPOILER_SIZE, &a.spoilers) }
+                        </>
+                    },
+                }
+            }
         </>
     }
 }

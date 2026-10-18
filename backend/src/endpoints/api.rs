@@ -1383,6 +1383,225 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // ------------------------------------------------------------ site assets
+
+    /// Pull the first file part out of a multipart body.
+    async fn first_file(mut form: warp::multipart::FormData) -> Option<Vec<u8>> {
+        use bytes::BufMut;
+        use futures::TryStreamExt;
+        while let Ok(Some(part)) = form.try_next().await {
+            if part.name() == "file" {
+                let data = part
+                    .stream()
+                    .try_fold(Vec::new(), |mut acc, buf| async move {
+                        acc.put(buf);
+                        Ok(acc)
+                    })
+                    .await
+                    .ok()?;
+                return Some(data);
+            }
+        }
+        None
+    }
+
+    fn asset_summaries_banners(
+        rows: Vec<(i64, String, Option<String>, Vec<i64>)>,
+        names: &std::collections::HashMap<i64, String>,
+    ) -> Vec<common::structs::AssetSummary> {
+        rows.into_iter()
+            .map(|(id, img_path, href, boards)| common::structs::AssetSummary {
+                id,
+                img_path,
+                href,
+                boards: boards.iter().filter_map(|b| names.get(b).cloned()).collect(),
+            })
+            .collect()
+    }
+
+    let upload_banner = warp::path!("api" / "v1" / "admin" / "banners")
+        .and(warp::post())
+        .and(warp::multipart::form().max_length(1024 * 1024 * 20))
+        .and(crate::filters::site_admin())
+        .and_then(|form: warp::multipart::FormData, viewer: database::Viewer| async move {
+            let Some(data) = first_file(form).await else {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"No image was sent.",
+                ));
+            };
+            let path = match crate::assets::store(data, crate::assets::AssetKind::Banner).await {
+                Ok(p) => p,
+                Err(e) => return Ok(warp::reply::json(&e.to_string())),
+            };
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    crate::assets::remove(&path).await;
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+            match database::create_banner(&mut conn, &path).await {
+                Ok(_) => {
+                    crate::auth::log_action(&mut conn, &viewer, "add_banner", None, None, None).await;
+                    Ok(warp::reply::json(&"Banner uploaded"))
+                }
+                Err(e) => {
+                    // Do not leave an orphaned file behind if the row could not be written.
+                    crate::assets::remove(&path).await;
+                    Ok(warp::reply::json(&e.to_string()))
+                }
+            }
+        });
+
+    let upload_spoiler = warp::path!("api" / "v1" / "admin" / "spoilers")
+        .and(warp::post())
+        .and(warp::multipart::form().max_length(1024 * 1024 * 20))
+        .and(crate::filters::site_admin())
+        .and_then(|form: warp::multipart::FormData, viewer: database::Viewer| async move {
+            let Some(data) = first_file(form).await else {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"No image was sent.",
+                ));
+            };
+            let path = match crate::assets::store(data, crate::assets::AssetKind::Spoiler).await {
+                Ok(p) => p,
+                Err(e) => return Ok(warp::reply::json(&e.to_string())),
+            };
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    crate::assets::remove(&path).await;
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+            match database::create_spoiler(&mut conn, &path).await {
+                Ok(_) => {
+                    crate::auth::log_action(&mut conn, &viewer, "add_spoiler", None, None, None).await;
+                    Ok(warp::reply::json(&"Spoiler uploaded"))
+                }
+                Err(e) => {
+                    crate::assets::remove(&path).await;
+                    Ok(warp::reply::json(&e.to_string()))
+                }
+            }
+        });
+
+    let list_assets = warp::path!("api" / "v1" / "admin" / "assets")
+        .and(warp::get())
+        .and(crate::filters::site_admin())
+        .and_then(|_: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+
+            let names: std::collections::HashMap<i64, String> = {
+                use database::boards::dsl as b;
+                use diesel::prelude::*;
+                use diesel_async::RunQueryDsl;
+                b::boards
+                    .select((b::id, b::discriminator))
+                    .load::<(i64, String)>(&mut conn)
+                    .await
+                    .unwrap_or_default()
+                    .into_iter()
+                    .collect()
+            };
+
+            let banners = database::list_banners(&mut conn).await.unwrap_or_default();
+            let spoilers = database::list_spoilers(&mut conn).await.unwrap_or_default();
+
+            Ok(warp::reply::json(&serde_json::json!({
+                "banners": asset_summaries_banners(banners, &names),
+                "spoilers": spoilers
+                    .into_iter()
+                    .map(|(id, img_path, boards)| common::structs::AssetSummary {
+                        id,
+                        img_path,
+                        href: None,
+                        boards: boards.iter().filter_map(|b| names.get(b).cloned()).collect(),
+                    })
+                    .collect::<Vec<_>>(),
+            })))
+        });
+
+    let edit_asset = warp::path!("api" / "v1" / "admin" / String / i64)
+        .and(warp::patch())
+        .and(warp::body::json::<common::structs::AssetUpdate>())
+        .and(crate::filters::site_admin())
+        .and_then(|kind: String, id: i64, update: common::structs::AssetUpdate, viewer: database::Viewer| async move {
+            if kind != "banners" && kind != "spoilers" {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"Unknown asset type",
+                ));
+            }
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+            let board_ids = match database::board_ids_for(&mut conn, &update.boards).await {
+                Ok(v) => v,
+                Err(e) => return Ok(warp::reply::json(&e.to_string())),
+            };
+            let href = update.href.as_deref().filter(|h| !h.trim().is_empty());
+
+            let result = if kind == "banners" {
+                database::update_banner(&mut conn, id, href, board_ids).await
+            } else {
+                database::update_spoiler(&mut conn, id, board_ids).await
+            };
+
+            match result {
+                Ok(()) => {
+                    crate::auth::log_action(&mut conn, &viewer, "edit_asset", None, Some(&id.to_string()), None).await;
+                    Ok(warp::reply::json(&"Saved"))
+                }
+                Err(e) => Ok(warp::reply::json(&e.to_string())),
+            }
+        });
+
+    let delete_asset = warp::path!("api" / "v1" / "admin" / String / i64)
+        .and(warp::delete())
+        .and(crate::filters::site_admin())
+        .and_then(|kind: String, id: i64, viewer: database::Viewer| async move {
+            if kind != "banners" && kind != "spoilers" {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"Unknown asset type",
+                ));
+            }
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+            let removed = if kind == "banners" {
+                database::delete_banner(&mut conn, id).await
+            } else {
+                database::delete_spoiler(&mut conn, id).await
+            };
+            match removed {
+                Ok(Some(path)) => {
+                    crate::assets::remove(&path).await;
+                    crate::auth::log_action(&mut conn, &viewer, "delete_asset", None, Some(&id.to_string()), None).await;
+                    Ok(warp::reply::json(&"Deleted"))
+                }
+                Ok(None) => Ok(warp::reply::json(&"No such asset")),
+                Err(e) => Ok(warp::reply::json(&e.to_string())),
+            }
+        });
+
     crate::filters::ratelimit()
         .and(
             getpost
@@ -1417,6 +1636,11 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(list_moderators)
                 .or(revoke_moderator)
                 .or(audit_log)
+                .or(upload_banner)
+                .or(upload_spoiler)
+                .or(list_assets)
+                .or(edit_asset)
+                .or(delete_asset)
                 .or(notifications()),
         )
         .recover(|err: Rejection| async move {

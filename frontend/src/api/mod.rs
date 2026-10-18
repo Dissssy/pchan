@@ -138,6 +138,54 @@ impl Api {
         standard_delete::<String>(&format!("/api/v1/admin/moderators/{id}")).await
     }
 
+    /// Banners and spoilers together, since the panel shows them side by side.
+    pub async fn list_assets(&self) -> Result<AssetLists, ApiError> {
+        standard_get::<AssetLists>("/api/v1/admin/assets").await
+    }
+
+    /// Upload an asset. `kind` is "banners" or "spoilers". Dimensions are enforced server-side.
+    pub async fn upload_asset(
+        &self,
+        kind: &str,
+        filename: String,
+        data: Vec<u8>,
+        mime: String,
+    ) -> Result<String, ApiError> {
+        let form = web_sys::FormData::new()
+            .map_err(|_| ApiError::Other(AttrValue::Static("Could not build the upload")))?;
+        let array = js_sys::Uint8Array::from(data.as_slice());
+        let parts = js_sys::Array::new();
+        parts.push(&array.buffer());
+        let opts = web_sys::BlobPropertyBag::new();
+        opts.set_type(&mime);
+        let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &opts)
+            .map_err(|_| ApiError::Other(AttrValue::Static("Could not read that file")))?;
+        form.append_with_blob_and_filename("file", &blob, &filename)
+            .map_err(|_| ApiError::Other(AttrValue::Static("Could not attach that file")))?;
+
+        let res = Request::post(&format!("/api/v1/admin/{kind}"))
+            .credentials(web_sys::RequestCredentials::SameOrigin)
+            .body(form)
+            .map_err(|e| ApiError::Other(AttrValue::from(e.to_string())))?
+            .send()
+            .await
+            .map_err(send_error)?;
+        handle_response(res).await
+    }
+
+    pub async fn update_asset(
+        &self,
+        kind: &str,
+        id: i64,
+        update: common::structs::AssetUpdate,
+    ) -> Result<String, ApiError> {
+        standard_patch::<String, _>(&format!("/api/v1/admin/{kind}/{id}"), &update).await
+    }
+
+    pub async fn delete_asset(&self, kind: &str, id: i64) -> Result<String, ApiError> {
+        standard_delete::<String>(&format!("/api/v1/admin/{kind}/{id}")).await
+    }
+
     pub async fn audit_log(&self) -> Result<Vec<common::structs::LogEntry>, ApiError> {
         standard_get::<Vec<common::structs::LogEntry>>("/api/v1/admin/log").await
     }
@@ -805,6 +853,13 @@ impl<T> CachedValue<T> {
         // ));
         self.values.remove(identifier);
     }
+}
+
+/// The two asset lists as the panel receives them.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct AssetLists {
+    pub banners: Vec<common::structs::AssetSummary>,
+    pub spoilers: Vec<common::structs::AssetSummary>,
 }
 
 /// Turn a response into a value, mapping a 401 to [`ApiError::Unauthenticated`].

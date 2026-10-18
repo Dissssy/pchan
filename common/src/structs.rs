@@ -351,3 +351,29 @@ pub struct BoardUpdate {
     pub name: Option<String>,
     pub private: Option<bool>,
 }
+
+/// A banner or spoiler image as shown in the admin panel.
+///
+/// `boards` is a list of discriminators. Empty means the asset applies to every board.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssetSummary {
+    pub id: i64,
+    pub img_path: String,
+    /// Banners only. `None` means the banner is not a link.
+    pub href: Option<String>,
+    pub boards: Vec<String>,
+}
+
+/// Full replacement of an asset's settings; a form submits all of it at once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssetUpdate {
+    /// `None` clears the link.
+    pub href: Option<String>,
+    /// Empty means every board.
+    pub boards: Vec<String>,
+}
+
+/// Exact dimensions assets must have, enforced on upload so the layout cannot be broken by a
+/// mis-sized image.
+pub const SPOILER_SIZE: (u32, u32) = (80, 80);
+pub const BANNER_SIZE: (u32, u32) = (1200, 200);

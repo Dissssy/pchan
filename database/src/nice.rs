@@ -1264,3 +1264,146 @@ pub async fn moderation_entries(
     }
     Ok(out)
 }
+
+// ---------------------------------------------------------------- site assets
+
+/// Banners and spoilers share a shape: an image, the boards it applies to, and for banners an
+/// optional link. Empty board list means every board.
+///
+/// Legacy rows express "every board" as NULL (banners) — both are accepted on read, and
+/// everything written from now on uses an empty array.
+pub async fn list_banners(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<Vec<(i64, String, Option<String>, Vec<i64>)>> {
+    use crate::banners::dsl::*;
+    Ok(banners
+        .order(id.asc())
+        .load::<Banner>(conn)
+        .await?
+        .into_iter()
+        .map(|b| (b.id, b.img_path, b.href, b.boards.unwrap_or_default()))
+        .collect())
+}
+
+pub async fn list_spoilers(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<Vec<(i64, String, Vec<i64>)>> {
+    use crate::spoilers::dsl::*;
+    Ok(spoilers
+        .order(id.asc())
+        .load::<Spoiler>(conn)
+        .await?
+        .into_iter()
+        .map(|s| (s.id, s.img_path, s.boards))
+        .collect())
+}
+
+pub async fn create_banner(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    path: &str,
+) -> Result<i64> {
+    use crate::banners::dsl::*;
+    Ok(diesel::insert_into(banners)
+        .values((img_path.eq(path), boards.eq(Vec::<i64>::new())))
+        .returning(id)
+        .get_result(conn)
+        .await?)
+}
+
+pub async fn create_spoiler(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    path: &str,
+) -> Result<i64> {
+    use crate::spoilers::dsl::*;
+    Ok(diesel::insert_into(spoilers)
+        .values((img_path.eq(path), boards.eq(Vec::<i64>::new())))
+        .returning(id)
+        .get_result(conn)
+        .await?)
+}
+
+pub async fn update_banner(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    banner_id: i64,
+    new_href: Option<&str>,
+    new_boards: Vec<i64>,
+) -> Result<()> {
+    use crate::banners::dsl::*;
+    diesel::update(banners.filter(id.eq(banner_id)))
+        .set((href.eq(new_href), boards.eq(Some(new_boards))))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+pub async fn update_spoiler(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    spoiler_id: i64,
+    new_boards: Vec<i64>,
+) -> Result<()> {
+    use crate::spoilers::dsl::*;
+    diesel::update(spoilers.filter(id.eq(spoiler_id)))
+        .set(boards.eq(new_boards))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Delete an asset, returning the image path so the file can be removed too.
+pub async fn delete_banner(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    banner_id: i64,
+) -> Result<Option<String>> {
+    use crate::banners::dsl::*;
+    use diesel::result::OptionalExtension as _;
+    let path = banners
+        .filter(id.eq(banner_id))
+        .select(img_path)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if path.is_some() {
+        diesel::delete(banners.filter(id.eq(banner_id)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(path)
+}
+
+pub async fn delete_spoiler(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    spoiler_id: i64,
+) -> Result<Option<String>> {
+    use crate::spoilers::dsl::*;
+    use diesel::result::OptionalExtension as _;
+    let path = spoilers
+        .filter(id.eq(spoiler_id))
+        .select(img_path)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if path.is_some() {
+        diesel::delete(spoilers.filter(id.eq(spoiler_id)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(path)
+}
+
+/// Map board discriminators to ids, rejecting unknown ones rather than silently dropping them.
+pub async fn board_ids_for(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    discriminators: &[String],
+) -> Result<Vec<i64>> {
+    use crate::boards::dsl::*;
+    let found = boards
+        .filter(discriminator.eq_any(discriminators))
+        .select((id, discriminator))
+        .load::<(i64, String)>(conn)
+        .await?;
+
+    if found.len() != discriminators.len() {
+        anyhow::bail!("one or more boards do not exist");
+    }
+    Ok(found.into_iter().map(|(i, _)| i).collect())
+}
