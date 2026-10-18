@@ -115,6 +115,18 @@ diesel::table! {
 }
 
 diesel::table! {
+    reports (id) {
+        id -> Uuid,
+        post_id -> Int8,
+        board_id -> Int8,
+        reason -> Text,
+        created_at -> Timestamptz,
+        resolved_at -> Nullable<Timestamptz>,
+        resolved_by -> Nullable<Uuid>,
+    }
+}
+
+diesel::table! {
     request_blocks (request_hash) {
         request_hash -> Text,
         until -> Timestamptz,
@@ -171,6 +183,9 @@ diesel::joinable!(moderation_log -> boards (board_id));
 diesel::joinable!(moderation_log -> members (actor));
 diesel::joinable!(posts -> boards (board));
 diesel::joinable!(posts -> threads (thread));
+diesel::joinable!(reports -> boards (board_id));
+diesel::joinable!(reports -> members (resolved_by));
+diesel::joinable!(reports -> posts (post_id));
 diesel::joinable!(sessions -> members (member_id));
 diesel::joinable!(threads -> boards (board));
 diesel::joinable!(user_tags -> boards (board_id));
@@ -188,6 +203,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     members,
     moderation_log,
     posts,
+    reports,
     request_blocks,
     sessions,
     spoilers,

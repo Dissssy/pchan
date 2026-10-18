@@ -103,6 +103,33 @@ impl Api {
         .await
     }
 
+    /// Flag a post for moderator attention. No reporter identity is recorded.
+    pub async fn report_post(
+        &self,
+        board: &str,
+        post_number: i64,
+        reason: String,
+    ) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            &format!("/api/v1/board/{board}/post/{post_number}/report"),
+            &common::structs::ReportRequest { reason },
+        )
+        .await
+    }
+
+    /// Open reports, already scoped by the server to boards this viewer moderates.
+    pub async fn list_reports(&self) -> Result<Vec<common::structs::ReportSummary>, ApiError> {
+        standard_get::<Vec<common::structs::ReportSummary>>("/api/v1/admin/reports").await
+    }
+
+    pub async fn resolve_report(&self, id: &str) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            &format!("/api/v1/admin/reports/{id}/resolve"),
+            &serde_json::Value::Null,
+        )
+        .await
+    }
+
     /// Lift a ban.
     pub async fn unban(&self, ban_id: &str) -> Result<String, ApiError> {
         standard_delete::<String>(&format!("/api/v1/admin/bans/{ban_id}")).await

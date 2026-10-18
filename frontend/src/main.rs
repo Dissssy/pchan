@@ -232,6 +232,10 @@ impl MeContext {
     pub fn can_moderate_site(&self) -> bool {
         self.me.as_ref().map(|m| m.can_moderate_site()).unwrap_or(false)
     }
+    /// Site role or a board grant — anything that should surface moderation UI.
+    pub fn can_moderate_anything(&self) -> bool {
+        self.me.as_ref().map(|m| m.can_moderate_anything()).unwrap_or(false)
+    }
 }
 
 #[derive(Clone, PartialEq)]

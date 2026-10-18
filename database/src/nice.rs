@@ -1012,3 +1012,134 @@ impl BoardAccessConfirmation {
         Ok(Self { id, board })
     }
 }
+
+/// A report row.
+#[derive(Queryable, Debug, Clone)]
+pub struct Report {
+    pub id: Uuid,
+    pub post_id: i64,
+    pub board_id: i64,
+    pub reason: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub resolved_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub resolved_by: Option<Uuid>,
+}
+
+/// File a report against a post.
+///
+/// No reporter is recorded. Re-reporting a post that already has an open report is a no-op
+/// rather than an error, so a pile-on neither fails loudly nor accumulates rows.
+pub async fn create_report(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    post: i64,
+    board: i64,
+    text: &str,
+) -> Result<()> {
+    use crate::reports::dsl::*;
+    diesel::insert_into(reports)
+        .values((post_id.eq(post), board_id.eq(board), reason.eq(text)))
+        .on_conflict_do_nothing()
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Open reports, oldest first. `boards` limits the inbox to a moderator's own boards; an empty
+/// slice means no restriction (site-level).
+pub async fn open_reports(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    boards: Option<&[i64]>,
+) -> Result<Vec<(Report, String, i64)>> {
+    use crate::reports::dsl as r;
+
+    let mut query = r::reports.filter(r::resolved_at.is_null()).into_boxed();
+    if let Some(ids) = boards {
+        query = query.filter(r::board_id.eq_any(ids.to_vec()));
+    }
+    let rows = query.order(r::created_at.asc()).load::<Report>(conn).await?;
+
+    // Resolve each post to something a moderator can navigate to. Reports are few, so a
+    // lookup per row is fine; if the inbox ever grows this wants a join.
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let post = {
+            use crate::posts::dsl as p;
+            p::posts
+                .filter(p::id.eq(row.post_id))
+                .select(p::post_number)
+                .first::<i64>(conn)
+                .await
+                .optional()?
+        };
+        let discriminator = get_board_discrim(row.board_id, conn).await?;
+        if let Some(number) = post {
+            out.push((row, discriminator, number));
+        }
+    }
+    Ok(out)
+}
+
+/// Mark a report handled.
+pub async fn resolve_report(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    report_id: &Uuid,
+    by: &Uuid,
+) -> Result<Option<i64>> {
+    use crate::reports::dsl::*;
+    let board = reports
+        .filter(id.eq(report_id))
+        .filter(resolved_at.is_null())
+        .select(board_id)
+        .first::<i64>(conn)
+        .await
+        .optional()?;
+
+    if board.is_some() {
+        diesel::update(reports.filter(id.eq(report_id)))
+            .set((resolved_at.eq(chrono::Utc::now()), resolved_by.eq(by)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(board)
+}
+
+/// Board ids this viewer moderates. Site-level roles return `None`, meaning "all boards".
+///
+/// Two queries regardless of how many boards exist: the per-board grant hashes are computed
+/// locally and matched in one `IN`, rather than asking the database once per board.
+pub async fn moderated_boards(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    viewer: &Viewer,
+) -> Result<Option<Vec<i64>>> {
+    if viewer.role.can_moderate_site() {
+        return Ok(None);
+    }
+
+    let all = {
+        use crate::boards::dsl as b;
+        b::boards.select(b::id).load::<i64>(conn).await?
+    };
+
+    // Each board has a distinct grant hash for this member, so the lookup is by value.
+    let hashes: Vec<String> = all.iter().map(|b| viewer.invite_hash(*b)).collect();
+
+    let found = {
+        use crate::user_tags::dsl as t;
+        t::user_tags
+            .filter(t::tag_kind.eq(UserTag::Moderator.to_string()))
+            .filter(t::invite_hash.eq_any(&hashes))
+            .select((t::board_id, t::invite_hash))
+            .load::<(i64, Option<String>)>(conn)
+            .await?
+    };
+
+    // Match the grant back to the board it was computed for, so a hash cannot be credited to
+    // the wrong board.
+    let mine = found
+        .into_iter()
+        .filter(|(board, hash)| hash.as_deref() == Some(viewer.invite_hash(*board).as_str()))
+        .map(|(board, _)| board)
+        .collect();
+
+    Ok(Some(mine))
+}

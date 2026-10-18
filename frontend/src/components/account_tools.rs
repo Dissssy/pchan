@@ -43,7 +43,7 @@ pub fn AccountTools() -> Html {
         })
     };
 
-    let can_moderate = me.can_moderate_site();
+    let can_moderate = me.can_moderate_anything();
 
     html! {
         <div class="account-tools">
@@ -53,7 +53,7 @@ pub fn AccountTools() -> Html {
             }
 
             if can_moderate {
-                <a class="join-button" href="/moderation">{"Review join requests"}</a>
+                <a class="join-button" href="/moderation">{"Moderation"}</a>
             }
 
             <button class="join-button" onclick={rotate}>{"Start a new posting identity"}</button>

@@ -272,7 +272,13 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                 // is formatted as after the url
                 let rawpath = path.as_str();
                 let mut path = rawpath.split('/').skip(3);
-                let path = [path.next(), path.next(), path.next(), path.next()];
+                let path = [
+                    path.next(),
+                    path.next(),
+                    path.next(),
+                    path.next(),
+                    path.next(),
+                ];
 
                 // POST /board/?/thread/?
                 // DELETE /board/?/post/?
@@ -288,13 +294,14 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                         .unwrap_or_default();
 
                 let (seconds, ident): (u64, Arc<str>) =
-                    match (method, path[0], path[1], path[2], path[3]) {
+                    match (method, path[0], path[1], path[2], path[3], path[4]) {
                         (
                             Method::POST,
                             Some("board"),
                             Some(discrim),
                             Some("thread"),
                             Some(thread),
+                            _,
                         ) => (
                             5,
                             format!(
@@ -318,6 +325,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                             Some(discrim),
                             Some("post"),
                             Some(post),
+                            _,
                         ) => (
                             5,
                             format!(
@@ -335,7 +343,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                             )
                             .into(),
                         ),
-                        (Method::POST, Some("board"), Some(discrim), Some("thread"), None) => (
+                        (Method::POST, Some("board"), Some(discrim), Some("thread"), None, _) => (
                             10,
                             format!(
                                 "make thread{}",
@@ -347,14 +355,21 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                             )
                             .into(),
                         ),
-                        (Method::POST, Some("subscribe"), _, _, _) => (3, "subscribe".into()),
-                        (Method::POST, Some("file"), _, _, _) => (15, "file upload".into()),
-                        (Method::PUT, _, _, _, _) => (0, "PUT".into()),
-                        (Method::PATCH, Some("consume_code"), None, None, None) => {
+                        (Method::POST, Some("subscribe"), _, _, _, _) => (3, "subscribe".into()),
+                        (Method::POST, Some("file"), _, _, _, _) => (15, "file upload".into()),
+                        // Reporting is cheap to do and easy to weaponise, so it gets the longest
+                        // cooldown of anything here.
+                        (Method::POST, Some("board"), _, Some("post"), _, Some("report")) => {
+                            (120, "report".into())
+                        }
+                        (Method::PUT, _, _, _, _, _) => (0, "PUT".into()),
+                        (Method::PATCH, Some("consume_code"), None, None, None, _) => {
                             (60, "consume code".into())
                         }
                         path => {
-                            log::info!("path: {:?}", path);
+                            // Logged at trace, not info: this prints board and post for every
+                            // unmatched mutating request, which is noise at best.
+                            log::trace!("unbucketed path: {:?}", path);
                             (5, rawpath.into())
                         }
                     };

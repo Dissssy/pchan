@@ -831,11 +831,28 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
     let me = warp::path!("api" / "v1" / "me")
         .and(warp::get())
         .and(viewer())
-        .map(|viewer: database::Viewer| {
-            warp::reply::json(&common::structs::MeInfo {
-                role: viewer.role.as_str().to_owned(),
-                banned: viewer.ban != database::Ban::None,
-            })
+        .and_then(|viewer: database::Viewer| async move {
+            let moderates_any_board = if viewer.role.can_moderate_site() {
+                true
+            } else {
+                match crate::POOL.get().await {
+                    Ok(mut conn) => database::moderated_boards(&mut conn, &viewer)
+                        .await
+                        .map(|b| b.map(|v| !v.is_empty()).unwrap_or(true))
+                        .unwrap_or(false),
+                    Err(e) => {
+                        log::error!("error connecting to backend: {}", e);
+                        false
+                    }
+                }
+            };
+            Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                &common::structs::MeInfo {
+                    role: viewer.role.as_str().to_owned(),
+                    banned: viewer.ban != database::Ban::None,
+                    moderates_any_board,
+                },
+            ))
         });
 
     // POST /me/rotate_author_seed - sever yourself from your own posting history.
@@ -993,6 +1010,197 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // POST /admin/bans/{id}/escalate - widen a board ban to the whole site. Site-level only.
+    let escalate_ban = warp::path!("api" / "v1" / "admin" / "bans" / String / "escalate")
+        .and(warp::post())
+        .and(warp::body::json::<common::structs::BanRequest>())
+        .and(viewer())
+        .and_then(|id: String, req: common::structs::BanRequest, viewer: database::Viewer| async move {
+            let Ok(id) = id.parse::<uuid::Uuid>() else {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"Invalid ban id",
+                ));
+            };
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+            match crate::auth::escalate_ban(&mut conn, &id, &viewer, req.reason.as_deref()).await {
+                Ok(true) => Ok(warp::reply::json(&"Ban widened to the whole site")),
+                Ok(false) => Ok(warp::reply::json(&"No such ban")),
+                Err(e) => {
+                    log::warn!("ban escalation refused or failed: {e}");
+                    Ok(warp::reply::json(&format!("{e}")))
+                }
+            }
+        });
+
+    // POST /board/{disc}/post/{n}/report - any member may flag a post. No reporter recorded.
+    let report_post = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "report")
+        .and(warp::post())
+        .and(warp::body::json::<common::structs::ReportRequest>())
+        .and(viewer())
+        .and_then(|disc: String, post_number: i64, req: common::structs::ReportRequest, viewer: database::Viewer| async move {
+            let reason = req.reason.trim().to_owned();
+            if reason.is_empty() {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"Say what is wrong with it.",
+                ));
+            }
+            if reason.len() > 1000 {
+                return Ok(warp::reply::json(&"That reason is too long."));
+            }
+
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+
+            // Through get_board, so a post on a board the reporter cannot see cannot be
+            // reported — and the existence of such a board is not revealed.
+            let board = match crate::database_bindings::Database::get_board(&mut conn, &disc, &viewer).await {
+                Ok(b) => b,
+                Err(e) => return Ok(warp::reply::json(&e.to_string())),
+            };
+
+            let post = {
+                use database::posts::dsl as p;
+                use diesel::prelude::*;
+                use diesel_async::RunQueryDsl;
+                p::posts
+                    .filter(p::board.eq(board.id))
+                    .filter(p::post_number.eq(post_number))
+                    .select(p::id)
+                    .first::<i64>(&mut conn)
+                    .await
+                    .ok()
+            };
+
+            let Some(post) = post else {
+                return Ok(warp::reply::json(&"No such post"));
+            };
+
+            match database::create_report(&mut conn, post, board.id, &reason).await {
+                Ok(()) => Ok(warp::reply::json(&"Reported. A moderator will look.")),
+                Err(e) => {
+                    log::error!("could not record a report: {e}");
+                    Ok(warp::reply::json(&"Could not file that report"))
+                }
+            }
+        });
+
+    // GET /admin/reports - the inbox, scoped to boards the viewer moderates.
+    let list_reports = warp::path!("api" / "v1" / "admin" / "reports")
+        .and(warp::get())
+        .and(viewer())
+        .and_then(|viewer: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+
+            let scope = match database::moderated_boards(&mut conn, &viewer).await {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!("could not resolve moderated boards: {e}");
+                    return Ok(warp::reply::json(&"Could not load reports"));
+                }
+            };
+
+            // Not a moderator anywhere: an empty inbox rather than an error, so the panel can
+            // render the same component tree for everyone.
+            if matches!(&scope, Some(b) if b.is_empty()) {
+                return Ok(warp::reply::json(&Vec::<common::structs::ReportSummary>::new()));
+            }
+
+            match database::open_reports(&mut conn, scope.as_deref()).await {
+                Ok(rows) => Ok(warp::reply::json(
+                    &rows
+                        .into_iter()
+                        .map(|(r, disc, number)| common::structs::ReportSummary {
+                            id: r.id.to_string(),
+                            board_discriminator: disc,
+                            post_number: number,
+                            reason: r.reason,
+                            created_at: r.created_at,
+                        })
+                        .collect::<Vec<_>>(),
+                )),
+                Err(e) => {
+                    log::error!("could not list reports: {e}");
+                    Ok(warp::reply::json(&"Could not load reports"))
+                }
+            }
+        });
+
+    // POST /admin/reports/{id}/resolve - mark handled.
+    let resolve_report = warp::path!("api" / "v1" / "admin" / "reports" / String / "resolve")
+        .and(warp::post())
+        .and(viewer())
+        .and_then(|id: String, viewer: database::Viewer| async move {
+            let Ok(id) = id.parse::<uuid::Uuid>() else {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"Invalid report id",
+                ));
+            };
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+
+            // Resolve first to learn the board, then check authority over that board.
+            let board = {
+                use database::reports::dsl as r;
+                use diesel::prelude::*;
+                use diesel_async::RunQueryDsl;
+                r::reports
+                    .filter(r::id.eq(id))
+                    .select(r::board_id)
+                    .first::<i64>(&mut conn)
+                    .await
+                    .ok()
+            };
+            let Some(board) = board else {
+                return Ok(warp::reply::json(&"No such report"));
+            };
+
+            let permitted = viewer.role.can_moderate_site()
+                || database::permission_level(&mut conn, board, &viewer)
+                    .await
+                    .map(|p| p.is_moderator())
+                    .unwrap_or(false);
+            if !permitted {
+                return Ok(warp::reply::json(&"Not a moderator of that board"));
+            }
+
+            match database::resolve_report(&mut conn, &id, &viewer.id).await {
+                Ok(Some(b)) => {
+                    crate::auth::log_action(&mut conn, &viewer, "resolve_report", Some(b), None, None)
+                        .await;
+                    Ok(warp::reply::json(&"Resolved"))
+                }
+                Ok(None) => Ok(warp::reply::json(&"Already resolved")),
+                Err(e) => {
+                    log::error!("could not resolve report: {e}");
+                    Ok(warp::reply::json(&"Could not resolve that report"))
+                }
+            }
+        });
+
     crate::filters::ratelimit()
         .and(
             getpost
@@ -1017,6 +1225,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(decide_request)
                 .or(ban_author)
                 .or(unban)
+                .or(escalate_ban)
+                .or(report_post)
+                .or(list_reports)
+                .or(resolve_report)
                 .or(notifications()),
         )
         .recover(|err: Rejection| async move {

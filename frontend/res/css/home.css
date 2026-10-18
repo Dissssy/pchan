@@ -199,3 +199,7 @@
 .post-header-ban-button { display: inline-block; padding-inline: 0.25rem; cursor: pointer; }
 .post-header-ban-button a { color: var(--error-color); text-decoration: none; }
 .post-header-ban-button a:hover { opacity: 0.7; }
+
+.post-header-report-button { display: inline-block; padding-inline: 0.25rem; cursor: pointer; }
+.post-header-report-button a { color: var(--secondary-text-color); text-decoration: none; }
+.post-header-report-button a:hover { color: var(--error-color); }

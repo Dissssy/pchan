@@ -248,11 +248,19 @@ pub struct MeInfo {
     /// "member", "site_mod" or "admin".
     pub role: String,
     pub banned: bool,
+    /// Whether this viewer moderates at least one board. Site roles imply it. Without this
+    /// the UI cannot tell a board moderator from an ordinary member, and they would never be
+    /// shown their own report inbox.
+    pub moderates_any_board: bool,
 }
 
 impl MeInfo {
     pub fn can_moderate_site(&self) -> bool {
         self.role == "site_mod" || self.role == "admin"
+    }
+    /// Anything moderation-related to show at all.
+    pub fn can_moderate_anything(&self) -> bool {
+        self.can_moderate_site() || self.moderates_any_board
     }
     pub fn is_admin(&self) -> bool {
         self.role == "admin"
@@ -285,4 +293,23 @@ pub struct AccessRequest {
 pub struct BanRequest {
     pub sitewide: bool,
     pub reason: Option<String>,
+}
+
+/// Body of a report submission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportRequest {
+    pub reason: String,
+}
+
+/// An open report as shown to a moderator.
+///
+/// Identifies the post by board and post number — what a moderator can actually navigate to —
+/// and carries no reporter, because none is stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportSummary {
+    pub id: String,
+    pub board_discriminator: String,
+    pub post_number: i64,
+    pub reason: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
 }

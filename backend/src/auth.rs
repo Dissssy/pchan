@@ -434,6 +434,75 @@ pub async fn unban(conn: &mut Conn, ban_id: &Uuid, actor: &database::Viewer) -> 
     Ok(true)
 }
 
+/// Widen a board-scoped ban to the whole site.
+///
+/// Site-level only: a board moderator decided this person was unwelcome on their board, and
+/// an admin reviewing that can decide the behaviour was unacceptable anywhere. Recorded as its
+/// own action so the escalation is visible in the log rather than looking like the original
+/// moderator issued a sitewide ban.
+pub async fn escalate_ban(
+    conn: &mut Conn,
+    ban_id: &Uuid,
+    actor: &database::Viewer,
+    reason_text: Option<&str>,
+) -> Result<bool> {
+    if !actor.role.can_moderate_site() {
+        bail!("only site moderators can widen a ban to the whole site");
+    }
+
+    let row = {
+        use database::bans::dsl::*;
+        bans.filter(id.eq(ban_id))
+            .select((member_id, board_id, reason))
+            .first::<(Uuid, Option<i64>, Option<String>)>(conn)
+            .await
+            .optional()?
+    };
+
+    let Some((member, scope, old_reason)) = row else {
+        return Ok(false);
+    };
+
+    if scope.is_none() {
+        bail!("that ban is already sitewide");
+    }
+
+    // The member may already be banned sitewide by another route. The unique index would
+    // reject the update, so collapse into the existing row instead.
+    let already_sitewide: bool = {
+        use database::bans::dsl::*;
+        use diesel::dsl::{exists, select};
+        select(exists(
+            bans.filter(member_id.eq(member)).filter(board_id.is_null()),
+        ))
+        .get_result(conn)
+        .await?
+    };
+
+    {
+        use database::bans::dsl::*;
+        if already_sitewide {
+            diesel::delete(bans.filter(id.eq(ban_id))).execute(conn).await?;
+        } else {
+            diesel::update(bans.filter(id.eq(ban_id)))
+                .set((
+                    board_id.eq(None::<i64>),
+                    issued_by.eq(actor.id),
+                    reason.eq(reason_text.map(|r| r.to_owned()).or(old_reason)),
+                ))
+                .execute(conn)
+                .await?;
+        }
+    }
+
+    // Now sitewide, so it should bite immediately.
+    crate::session::destroy_all_for_member(conn, &member).await?;
+    crate::filters::forget_cached_member(&member).await;
+
+    log_action(conn, actor, "escalate_ban", scope, None, reason_text).await;
+    Ok(true)
+}
+
 /// Record a moderation action.
 ///
 /// Best-effort: a failure to log must not fail the action itself, since the alternative is a

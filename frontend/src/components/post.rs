@@ -3,7 +3,7 @@ use yew::prelude::*;
 use yew_router::prelude::use_route;
 
 use crate::{
-    components::{BanButton, DeleteButton, File, MaybeLink, Reply, RichText, WatchButton},
+    components::{BanButton, DeleteButton, File, MaybeLink, Reply, ReportButton, RichText, WatchButton},
     helpers::CallbackContext,
     BaseRoute,
 };
@@ -66,7 +66,8 @@ pub fn Post(props: &Props) -> Html {
             } >
                 <div class="post-header">
                     <DeleteButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
-                    if me.can_moderate_site() {
+                    <ReportButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
+                    if me.can_moderate_anything() {
                         <BanButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
                     }
                     if props.topic.is_some() {
