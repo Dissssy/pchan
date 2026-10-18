@@ -402,17 +402,17 @@ impl Database {
 
     pub async fn create_file(
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        file: ClaimedFileInfo,
+        file: crate::unclaimedfiles::ClaimedFile,
         post_id: i64,
     ) -> Result<database::File> {
         use database::files::dsl::*;
 
         let tf = insert_into(files)
             .values((
-                filepath.eq(file.path),
+                filepath.eq(file.info.path),
                 hash.eq(file.hash),
                 id.eq(post_id),
-                spoiler.eq(file.spoiler),
+                spoiler.eq(file.info.spoiler),
             ))
             .get_result::<database::File>(conn)
             .await?;
@@ -504,7 +504,7 @@ impl Database {
             t.id,
             thread.post,
             viewer,
-            None,
+            false,
         )
         .await
         {
@@ -527,7 +527,7 @@ impl Database {
         tthread: i64,
         mut post: CreatePost,
         viewer: &database::Viewer,
-        check_hash_against: Option<Vec<FileInfo>>,
+        check_duplicates_in_thread: bool,
     ) -> Result<database::Post> {
         use database::posts::dsl::*;
 
@@ -584,8 +584,19 @@ impl Database {
                 .claim_file(&file, viewer, thread_post_number == this_post_number)
                 .await?;
 
-            if let Some(files_check) = check_hash_against {
-                if files_check.iter().any(|x| x.claimed.hash == f.hash) {
+            if check_duplicates_in_thread {
+                // files.id is the post id, so this needs a subquery rather than a join.
+                use database::files::dsl as fd;
+                use database::posts::dsl as pd;
+                use diesel::dsl::{exists, select};
+                let duplicate: bool = select(exists(
+                    fd::files.filter(fd::hash.eq(&f.hash)).filter(
+                        fd::id.eq_any(pd::posts.filter(pd::thread.eq(tthread)).select(pd::id)),
+                    ),
+                ))
+                .get_result(conn)
+                .await?;
+                if duplicate {
                     return Err(anyhow::anyhow!("File already exists"));
                 }
             }

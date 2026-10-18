@@ -271,7 +271,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     tid,
                     post,
                     &viewer,
-                    Some(files),
+                    true,
                 )
                 .await
                 {

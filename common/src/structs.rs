@@ -102,9 +102,13 @@ pub struct FileInfo {
 pub struct ClaimedFileInfo {
     pub path: String,
     pub thumbnail: String,
-    pub hash: String,
     pub spoiler: bool,
 }
+
+// `hash` used to be here. It is sha256 of the raw bytes and was sent to every client, so
+// anyone holding a copy of a file obtained elsewhere could hash it and find the exact post it
+// was uploaded to. The server still stores it for duplicate detection; it is simply no longer
+// published.
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MicroBoardInfo {

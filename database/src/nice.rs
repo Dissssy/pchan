@@ -333,7 +333,6 @@ impl File {
             claimed: ClaimedFileInfo {
                 path: self.filepath.clone(),
                 thumbnail,
-                hash: self.hash.clone(),
                 spoiler: self.spoiler,
             },
             board: MicroBoardInfo {
