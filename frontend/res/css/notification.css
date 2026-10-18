@@ -49,3 +49,23 @@
   padding-inline: 0.4em;
   padding-block: 0.2em;
 }
+.update-banner {
+  position: fixed;
+  left: 0.4em;
+  bottom: 0.4em;
+  max-width: calc(100vw - 0.8em);
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.4em;
+  padding-inline: 0.4em;
+  padding-block: 0.2em;
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--primary-color);
+}
+
+.update-banner-button {
+  cursor: pointer;
+  text-decoration: underline;
+}

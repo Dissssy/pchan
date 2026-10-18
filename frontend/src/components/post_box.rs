@@ -188,14 +188,16 @@ pub fn PostBox(props: &Props) -> Html {
     let on_input_moderator = post.moderator_change_callback(possible_moderator.clone());
     let on_input_topic = post.topic_change_callback();
     let on_input_content = post.content_change_callback();
+    let file_input = use_node_ref();
     let on_change_file = post.file_change_callback();
+    let on_paste = post.paste_callback(file_input.clone());
     let on_click_spoiler = post.spoiler_change_callback();
 
     match routeinfo {
         Some((Some(_), thread)) => {
             html! {
                 <div class={thread.class().to_string()}>
-                    <div class="post-box">
+                    <div class="post-box" onpaste={on_paste}>
                         <div class="post-box-meta">
                             <a
                                 onclick={ let opened = post.opened.clone(); Callback::from(move |e: MouseEvent| {e.prevent_default(); opened.set(!*opened)})}
@@ -254,7 +256,7 @@ pub fn PostBox(props: &Props) -> Html {
                                     }
                                 }
                             </a>
-                            <input type="file" onchange={on_change_file} />
+                            <input type="file" ref={file_input} onchange={on_change_file} />
                             <span>{format!("({})", if thread.is_some() { if post.content.is_empty() { "Or Content" } else { "Optional" } } else { "Required" })}</span>
                         </div>
                         <div class="post-box-submit" style={ if *post.opened { "" } else { "display: none;" } }>
@@ -357,6 +359,48 @@ impl CreatePostInfo {
             {
                 file.set(Some(value));
             }
+        })
+    }
+
+    /// Treat a pasted image as the attached file, from any text field in the box.
+    ///
+    /// Pasted text is left alone: the default is only suppressed when the clipboard actually
+    /// carries an image. The file input is updated as well as the state so it shows the file
+    /// that will be sent rather than whatever was chosen before.
+    pub fn paste_callback(&self, input: NodeRef) -> Callback<Event> {
+        use wasm_bindgen::JsCast as _;
+
+        let file = self.file.clone();
+        Callback::from(move |e: Event| {
+            let Some(items) = e
+                .dyn_ref::<web_sys::ClipboardEvent>()
+                .and_then(|c| c.clipboard_data())
+                .map(|d| d.items())
+            else {
+                return;
+            };
+
+            let image = (0..items.length())
+                .filter_map(|i| items.get(i))
+                .filter(|item| item.kind() == "file" && item.type_().starts_with("image/"))
+                .find_map(|item| item.get_as_file().ok().flatten());
+
+            let Some(image) = image else {
+                return;
+            };
+
+            e.prevent_default();
+
+            if let (Some(input), Ok(transfer)) = (
+                input.cast::<web_sys::HtmlInputElement>(),
+                web_sys::DataTransfer::new(),
+            ) {
+                if transfer.items().add_with_file(&image).is_ok() {
+                    input.set_files(transfer.files().as_ref());
+                }
+            }
+
+            file.set(Some(image));
         })
     }
 

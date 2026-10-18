@@ -35,6 +35,69 @@ pub fn other_endpoints(
         .or(logout())
         .or(access_request())
         .or(get_access_request())
+        .or(version())
+}
+
+/// GET /api/v1/version — which frontend build is currently deployed.
+///
+/// Public on purpose: a logged-out visitor on the sign-in page is running the frontend too.
+/// It carries no member data, only the content hash that `build.sh` puts in the wasm filename.
+/// Read from the `index.html` the shell is actually serving, so it cannot disagree with what a
+/// reload would load, and it needs no restart when the frontend is rebuilt.
+fn version() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    warp::path!("api" / "v1" / "version")
+        .and(warp::get())
+        .then(|| async {
+            let path = concat!(env!("DISTRIBUTION_PATH"), "/index.html");
+            let version = match tokio::fs::read_to_string(path).await {
+                Ok(html) => frontend_version(&html),
+                Err(e) => {
+                    log::warn!("could not read {path} for the version endpoint: {e}");
+                    None
+                }
+            };
+
+            let status = if version.is_some() {
+                warp::http::StatusCode::OK
+            } else {
+                warp::http::StatusCode::SERVICE_UNAVAILABLE
+            };
+
+            // Never cached: a stale answer here defeats the point of asking.
+            warp::reply::with_header(
+                warp::reply::with_status(warp::reply::json(&version), status),
+                "cache-control",
+                "no-store",
+            )
+        })
+}
+
+/// The hash in `frontend_bg-<hash>.wasm`, as rewritten into `index.html` by `build.sh`.
+fn frontend_version(index_html: &str) -> Option<String> {
+    const PREFIX: &str = "frontend_bg-";
+    let start = index_html.find(PREFIX)? + PREFIX.len();
+    let hash: String = index_html[start..]
+        .chars()
+        .take_while(char::is_ascii_hexdigit)
+        .collect();
+    (!hash.is_empty()).then_some(hash)
+}
+
+#[cfg(test)]
+mod version_tests {
+    use super::frontend_version;
+
+    #[test]
+    fn reads_the_hash_from_the_wasm_filename() {
+        let html = r#"<link rel="preload" href="/frontend_bg-65d478ab.wasm" as="fetch">"#;
+        assert_eq!(frontend_version(html).as_deref(), Some("65d478ab"));
+    }
+
+    #[test]
+    fn unrewritten_or_missing_is_none() {
+        assert_eq!(frontend_version(r#"href="/frontend_bg.wasm""#), None);
+        assert_eq!(frontend_version("<html></html>"), None);
+    }
 }
 
 /// Maximum length of what an applicant writes about themselves. Long enough to explain who

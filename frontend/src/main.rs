@@ -29,7 +29,7 @@ use yew_hooks::{use_local_storage, UseLocalStorageHandle};
 use yew_router::prelude::*;
 pub mod hooks;
 
-use crate::components::{NotificationBox, SettingsButton};
+use crate::components::{NotificationBox, SettingsButton, UpdateBanner};
 
 #[derive(Clone, Routable, PartialEq, Debug)]
 pub enum BaseRoute {
@@ -200,6 +200,7 @@ fn Root() -> Html {
                                         <SettingsButton/>
                                         // <FeedbackButton/>
                                         <NotificationBox/>
+                                        <UpdateBanner/>
                                         <Switch<BaseRoute> render={switch} />
                                     </BrowserRouter>
                                 </ContextProvider<Favicon>>

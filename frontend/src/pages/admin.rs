@@ -579,7 +579,7 @@ fn AssetsTab() -> Html {
                     { format!("{title} — must be exactly {}×{}", size.0, size.1) }
                 </span>
                 <input
-                    class="admin-input"
+                    class="asset-upload"
                     type="file"
                     accept="image/*"
                     onchange={Callback::from(move |e: Event| {
@@ -591,7 +591,7 @@ fn AssetsTab() -> Html {
                 if list.is_empty() {
                     <p class="moderation-empty">{"None yet."}</p>
                 } else {
-                    <div class="moderation-list">
+                    <div class="asset-list">
                         { for list.iter().map(|a| {
                             let id = a.id;
                             let current = a.boards.clone();
@@ -613,12 +613,12 @@ fn AssetsTab() -> Html {
                             };
 
                             html! {
-                                <div class="moderation-item asset-item" key={id}>
+                                <div class={classes!("asset-card", format!("asset-card-{kind}"))} key={id}>
                                     <img class="asset-preview" src={a.img_path.clone()} alt="" />
                                     <div class="asset-controls">
                                         if kind == "banners" {
                                             <input
-                                                class="admin-input"
+                                                class="asset-link"
                                                 placeholder="Link (leave empty for none)"
                                                 value={href_now.clone().unwrap_or_default()}
                                                 onchange={on_href}
@@ -646,14 +646,14 @@ fn AssetsTab() -> Html {
                                                 }
                                             }) }
                                         </div>
-                                        <p class="moderation-meta">
+                                        <p class="asset-scope">
                                             { if current.is_empty() {
                                                 "Shown on every board"
                                             } else {
                                                 "Shown only on the boards highlighted above"
                                             } }
                                         </p>
-                                        <div class="moderation-actions">
+                                        <div class="asset-actions">
                                             <button class="join-button join-button-danger"
                                                 onclick={Callback::from(move |_| remove.emit((kind, id)))}>
                                                 {"Delete"}

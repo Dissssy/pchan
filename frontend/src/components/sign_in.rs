@@ -7,12 +7,7 @@ use yew::prelude::*;
 /// comes back to where they were.
 #[function_component]
 pub fn SignIn() -> Html {
-    let href = {
-        let path = web_sys::window()
-            .and_then(|w| w.location().pathname().ok())
-            .unwrap_or_else(|| "/".to_owned());
-        format!("/login?redirect={}", urlencode(&path))
-    };
+    let href = sign_in_href();
 
     html! {
         <div class="sign-in">
@@ -21,6 +16,23 @@ pub fn SignIn() -> Html {
             <a class="sign-in-button" href={href}>{"Sign in"}</a>
         </div>
     }
+}
+
+/// The login URL that returns to the current page.
+///
+/// The query string is part of "where they were": an invite link is `/redeem?invite_code=...`,
+/// and an approved applicant's member is only created by the very login this leads to, so
+/// dropping the query would lose the code at exactly the moment it first becomes usable.
+pub fn sign_in_href() -> String {
+    let location = web_sys::window().map(|w| w.location());
+    let path = location
+        .as_ref()
+        .and_then(|l| l.pathname().ok())
+        .unwrap_or_else(|| "/".to_owned());
+    let search = location
+        .and_then(|l| l.search().ok())
+        .unwrap_or_default();
+    format!("/login?redirect={}", urlencode(&format!("{path}{search}")))
 }
 
 fn urlencode(s: &str) -> String {
