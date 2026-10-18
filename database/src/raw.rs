@@ -48,6 +48,7 @@ diesel::table! {
         request_hash -> Text,
         disclosure -> Text,
         created_at -> Timestamptz,
+        approved_at -> Nullable<Timestamptz>,
     }
 }
 

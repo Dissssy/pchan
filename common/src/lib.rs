@@ -27,13 +27,8 @@ pub fn format_seconds(s: u64) -> String {
     out.trim().to_string()
 }
 
-pub fn hash_with_salt(s: &str, salt: &str) -> String {
-    let mut hasher = sha2::Sha256::new();
-    hasher.update(s.as_bytes());
-    hasher.update(salt);
-    let result = hasher.finalize();
-    format!("{result:x}")
-}
+// hash_with_salt and hash_invitation are gone. They were sha256(value || salt) over small
+// enumerable inputs, recoverable by brute force from a database dump. See database::keys.
 
 pub fn hash_file(data: &[u8]) -> String {
     let mut hasher = sha2::Sha256::new();
@@ -42,6 +37,3 @@ pub fn hash_file(data: &[u8]) -> String {
     format!("{result:x}")
 }
 
-pub fn hash_invitation(token: &str, board_id: i64) -> String {
-    hash_with_salt(token, &format!("{board_id}"))
-}

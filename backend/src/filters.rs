@@ -1,11 +1,9 @@
 use base64::Engine as _;
-use common::hash_with_salt;
 use lazy_static::lazy_static;
 use serde::{Deserialize, Serialize};
 use std::{
     collections::{hash_map::Entry, HashMap},
     fmt::Display,
-    hash::{Hash, Hasher},
     str::FromStr,
     sync::Arc,
 };
@@ -36,6 +34,20 @@ pub fn viewer() -> impl Filter<Extract = (database::Viewer,), Error = warp::Reje
                 None => Err(warp::reject::reject()),
             }
         })
+}
+
+/// A viewer who may review the join queue and act on reported posts.
+///
+/// The role lives in Postgres, never in Auth0: a mod with the Auth0 dashboard could correlate
+/// login timestamps against post timestamps and deanonymise a small population.
+pub fn site_mod() -> impl Filter<Extract = (database::Viewer,), Error = warp::Rejection> + Clone {
+    viewer().and_then(|v: database::Viewer| async move {
+        if v.role.can_moderate_site() {
+            Ok(v)
+        } else {
+            Err(warp::reject::reject())
+        }
+    })
 }
 
 /// Serves the frontend shell to everyone, so a logged-out visitor can reach the login and
@@ -87,6 +99,9 @@ pub fn optional_viewer(
                 })?;
 
             if let Some(v) = &resolved {
+                // Only on a cache miss, so this is at most one write per cache TTL per
+                // session rather than one per request.
+                crate::session::touch(&mut conn, &token).await;
                 SESSION_CACHE
                     .lock()
                     .await
@@ -423,95 +438,6 @@ impl Display for Bearer {
     }
 }
 
-#[derive(Clone)]
-pub struct Token {
-    token: Arc<String>,
-    cached_member_hash: Option<MemberToken>,
-}
+// Token and MemberToken are gone: credentials are no longer values the app derives and
+// passes around. A session cookie resolves to a database::Viewer (see crate::session).
 
-// Display and Debug are deliberately redacted. This value is a bearer credential, and log
-// access has to be treated as equivalent to deanonymizing every member. Use cookie_value()
-// at the one place that legitimately needs the raw string.
-impl std::fmt::Debug for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Token(redacted)")
-    }
-}
-
-impl PartialEq for Token {
-    fn eq(&self, other: &Self) -> bool {
-        self.token == other.token
-    }
-}
-
-impl Eq for Token {}
-
-impl Hash for Token {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.token.hash(state);
-    }
-}
-
-impl Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("Token(redacted)")
-    }
-}
-
-impl Token {
-    pub fn new(token: String) -> Self {
-        Self {
-            token: Arc::new(token),
-            cached_member_hash: None,
-        }
-    }
-    pub fn member_hash(&mut self) -> MemberToken {
-        if let Some(member_hash) = &self.cached_member_hash {
-            return member_hash.clone();
-        }
-        let m = MemberToken::new(Arc::new(hash_with_salt(
-            &self.token,
-            &crate::statics::TOKEN_SALT,
-        )));
-        self.cached_member_hash = Some(m.clone());
-        m
-    }
-    pub fn from_id(id: &str) -> Self {
-        Self::new(hash_with_salt(id, &crate::statics::HASH_SALT))
-    }
-    /// The raw cookie value. Only for emitting the Set-Cookie header; never log this.
-    pub fn cookie_value(&self) -> &str {
-        &self.token
-    }
-}
-
-#[derive(Clone)]
-pub struct MemberToken {
-    token: Arc<String>,
-}
-
-// Redacted for the same reason as Token: the member hash alone is enough to enumerate a
-// member's posts via actual_author.
-impl std::fmt::Debug for MemberToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("MemberToken(redacted)")
-    }
-}
-
-impl Display for MemberToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        f.write_str("MemberToken(redacted)")
-    }
-}
-
-impl MemberToken {
-    pub fn new(token: Arc<String>) -> Self {
-        Self { token }
-    }
-    pub fn post_hash(&self, id: &str) -> String {
-        hash_with_salt(&self.token, id)
-    }
-    pub fn database_hash(&self) -> Arc<String> {
-        Arc::clone(&self.token)
-    }
-}

@@ -30,7 +30,83 @@ struct LoginFlow {
 
 pub fn other_endpoints(
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    login().or(callback()).or(logout())
+    login().or(callback()).or(logout()).or(access_request())
+}
+
+/// Maximum length of what an applicant writes about themselves. Long enough to explain who
+/// you are, short enough not to become a storage surface.
+const MAX_DISCLOSURE: usize = 2000;
+
+/// POST /api/v1/access_request — submit a join request.
+///
+/// Deliberately outside `api_endpoints`: everything there sits behind a session, and an
+/// applicant does not have one yet. Authorisation comes from the signed join ticket issued at
+/// the end of login, which carries the request hash and nothing else.
+fn access_request() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    warp::path!("api" / "v1" / "access_request")
+        .and(warp::post())
+        .and(warp::body::json::<common::structs::AccessRequest>())
+        .and(warp::cookie::optional(crate::auth::ticket_cookie_name()))
+        .then(
+            |body: common::structs::AccessRequest, ticket: Option<String>| async move {
+                let Some(ticket) = ticket else {
+                    return warp::reply::with_status(
+                        warp::reply::json(&"Start by signing in."),
+                        warp::http::StatusCode::UNAUTHORIZED,
+                    );
+                };
+
+                let request = match crate::auth::verify_ticket(&ticket) {
+                    Ok(r) => r,
+                    Err(e) => {
+                        log::warn!("rejected a join ticket: {e}");
+                        return warp::reply::with_status(
+                            warp::reply::json(&"That sign-in has expired. Sign in again."),
+                            warp::http::StatusCode::UNAUTHORIZED,
+                        );
+                    }
+                };
+
+                let disclosure = body.disclosure.trim();
+                if disclosure.is_empty() {
+                    return warp::reply::with_status(
+                        warp::reply::json(&"Tell us something about yourself first."),
+                        warp::http::StatusCode::BAD_REQUEST,
+                    );
+                }
+                if disclosure.len() > MAX_DISCLOSURE {
+                    return warp::reply::with_status(
+                        warp::reply::json(&"That message is too long."),
+                        warp::http::StatusCode::BAD_REQUEST,
+                    );
+                }
+
+                let mut conn = match crate::POOL.get().await {
+                    Ok(c) => c,
+                    Err(e) => {
+                        log::error!("could not get a connection for a join request: {e}");
+                        return warp::reply::with_status(
+                            warp::reply::json(&"Something went wrong. Try again."),
+                            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        );
+                    }
+                };
+
+                match crate::auth::submit_request(&mut conn, &request, disclosure).await {
+                    Ok(()) => warp::reply::with_status(
+                        warp::reply::json(&"ok"),
+                        warp::http::StatusCode::OK,
+                    ),
+                    Err(e) => {
+                        log::error!("could not record a join request: {e}");
+                        warp::reply::with_status(
+                            warp::reply::json(&"Something went wrong. Try again."),
+                            warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+                        )
+                    }
+                }
+            },
+        )
 }
 
 fn random_token() -> String {

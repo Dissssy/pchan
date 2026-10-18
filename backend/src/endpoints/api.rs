@@ -788,6 +788,122 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // ------------------------------------------------------------ member + moderation
+
+    // GET /me - what the frontend needs to decide which controls to show. No identity.
+    let me = warp::path!("api" / "v1" / "me")
+        .and(warp::get())
+        .and(viewer())
+        .map(|viewer: database::Viewer| {
+            warp::reply::json(&common::structs::MeInfo {
+                role: viewer.role.as_str().to_owned(),
+                banned: viewer.banned,
+            })
+        });
+
+    // POST /me/rotate_author_seed - sever yourself from your own posting history.
+    let rotate_seed = warp::path!("api" / "v1" / "me" / "rotate_author_seed")
+        .and(warp::post())
+        .and(viewer())
+        .and_then(|viewer: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+            match crate::auth::rotate_author_seed(&mut conn, &viewer.id).await {
+                Ok(()) => Ok(warp::reply::json(&"ok")),
+                Err(e) => {
+                    log::error!("could not rotate author seed: {e}");
+                    Ok(warp::reply::json(&"Could not rotate identity"))
+                }
+            }
+        });
+
+    // GET /access_requests - the review queue. Nothing identifying is returned.
+    let list_requests = warp::path!("api" / "v1" / "access_requests")
+        .and(warp::get())
+        .and(crate::filters::site_mod())
+        .and_then(|_: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+            match crate::auth::list_pending_requests(&mut conn).await {
+                Ok(v) => Ok(warp::reply::json(&v)),
+                Err(e) => {
+                    log::error!("could not list join requests: {e}");
+                    Ok(warp::reply::json(&"Could not list requests"))
+                }
+            }
+        });
+
+    // POST /access_requests/{id}/{approve|decline}
+    let decide_request = warp::path!("api" / "v1" / "access_requests" / String / String)
+        .and(warp::post())
+        .and(crate::filters::site_mod())
+        .and_then(|id: String, action: String, _: database::Viewer| async move {
+            let Ok(id) = id.parse::<uuid::Uuid>() else {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"Invalid request id",
+                ));
+            };
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+            let outcome = match action.as_str() {
+                "approve" => crate::auth::approve_request(&mut conn, &id).await,
+                "decline" => crate::auth::decline_request(&mut conn, &id).await,
+                _ => return Ok(warp::reply::json(&"Unknown action")),
+            };
+            match outcome {
+                Ok(true) => Ok(warp::reply::json(&"ok")),
+                Ok(false) => Ok(warp::reply::json(&"No such pending request")),
+                Err(e) => {
+                    log::error!("could not {action} join request: {e}");
+                    Ok(warp::reply::json(&"Could not record the decision"))
+                }
+            }
+        });
+
+    // POST /post/{id}/ban_author - the server resolves the author; the caller is never told
+    // who it was.
+    let ban_author = warp::path!("api" / "v1" / "post" / i64 / "ban_author")
+        .and(warp::post())
+        .and(crate::filters::site_mod())
+        .and_then(|post_id: i64, _: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+            match crate::auth::ban_post_author(&mut conn, post_id).await {
+                Ok(true) => Ok(warp::reply::json(&"Author banned")),
+                Ok(false) => Ok(warp::reply::json(&"No current author for that post")),
+                Err(e) => {
+                    log::error!("could not ban post author: {e}");
+                    Ok(warp::reply::json(&"Could not ban the author"))
+                }
+            }
+        });
+
     crate::filters::ratelimit()
         .and(
             getpost
@@ -806,6 +922,11 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(create_invite)
                 .or(create_moderator)
                 .or(consume_code)
+                .or(me)
+                .or(rotate_seed)
+                .or(list_requests)
+                .or(decide_request)
+                .or(ban_author)
                 .or(notifications()),
         )
         .recover(|err: Rejection| async move {

@@ -238,3 +238,41 @@ pub struct SubscriptionKeys {
     pub auth: String,
     pub p256dh: String,
 }
+
+/// What the frontend is told about the current viewer.
+///
+/// Carries no identity — not a name, not an email, not an Auth0 subject. Enough to decide
+/// which controls to render and nothing more.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeInfo {
+    /// "member", "site_mod" or "admin".
+    pub role: String,
+    pub banned: bool,
+}
+
+impl MeInfo {
+    pub fn can_moderate_site(&self) -> bool {
+        self.role == "site_mod" || self.role == "admin"
+    }
+    pub fn is_admin(&self) -> bool {
+        self.role == "admin"
+    }
+}
+
+/// A pending join request as shown to a reviewer.
+///
+/// Deliberately minimal: the id to act on, whatever the applicant chose to say about
+/// themselves, and when. No hash, no subject, nothing that could later be correlated with a
+/// member row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoinRequestSummary {
+    pub id: String,
+    pub disclosure: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Body of a join request submission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessRequest {
+    pub disclosure: String,
+}

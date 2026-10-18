@@ -404,6 +404,7 @@ async fn main() {
 
     let mut trim_files = tokio::time::interval(std::time::Duration::from_secs(*statics::TRIM_TIME));
     let mut delete_old_files = tokio::time::interval(std::time::Duration::from_secs(1));
+    let mut purge_sessions = tokio::time::interval(std::time::Duration::from_secs(60 * 60));
     let mut auto_delete = tokio::time::Instant::now();
     loop {
         tokio::select! {
@@ -474,6 +475,17 @@ async fn main() {
             _ = trim_files.tick() => {
                 if let Err(e) = UNCLAIMED_FILES.lock().await.trim_files().await {
                     log::error!("Error trimming files: {e}");
+                }
+            }
+            _ = purge_sessions.tick() => {
+                // Expired rows are unreadable but still a record of when people were active.
+                match POOL.get().await {
+                    Ok(mut conn) => match session::purge_expired(&mut conn).await {
+                        Ok(n) if n > 0 => log::info!("purged {n} expired sessions"),
+                        Ok(_) => {}
+                        Err(e) => log::error!("Error purging sessions: {e}"),
+                    },
+                    Err(e) => log::error!("Error connecting to purge sessions: {e}"),
                 }
             }
             _ = tokio::signal::ctrl_c() => {

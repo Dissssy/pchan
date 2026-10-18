@@ -87,14 +87,27 @@ pub async fn resolve_subject(conn: &mut Conn, subject: &str) -> Result<SubjectOu
 
     {
         use database::join_requests::dsl::*;
-        let pending = join_requests
+        let existing = join_requests
             .filter(request_hash.eq(&request))
-            .select(id)
-            .first::<Uuid>(conn)
+            .select((id, approved_at))
+            .first::<(Uuid, Option<chrono::DateTime<Utc>>)>(conn)
             .await
             .optional()?;
-        if pending.is_some() {
-            return Ok(SubjectOutcome::Pending);
+
+        match existing {
+            // Approved and now claimed. This is the only moment the Auth0 subject and the
+            // approval exist together, so it is the only moment the member can be created.
+            Some((row_id, Some(_))) => {
+                let member = create_member(conn, &identity, database::Role::Member).await?;
+                // The disclosure text does not outlive the decision it informed.
+                use database::join_requests::dsl as jr;
+                diesel::delete(jr::join_requests.filter(jr::id.eq(row_id)))
+                    .execute(conn)
+                    .await?;
+                return Ok(SubjectOutcome::Member(member));
+            }
+            Some((_, None)) => return Ok(SubjectOutcome::Pending),
+            None => {}
         }
     }
 
@@ -147,16 +160,196 @@ pub async fn create_member(
     .await
 }
 
-/// Approve a pending request: create the member and bind the identity, then delete the
-/// request so the disclosure text does not outlive the decision.
+/// How long a declined applicant is blocked from reapplying.
 ///
-/// `subject_identity_hash` has to be supplied because the request row cannot be linked back to
-/// an identity by design — the member is only created when that person next logs in.
-pub async fn approve_request(conn: &mut Conn, request: &str) -> Result<()> {
-    use database::join_requests::dsl as jr;
-    diesel::delete(jr::join_requests.filter(jr::request_hash.eq(request)))
+/// Finite on purpose: a permanent row keyed on the subject would be a permanent pseudonym for
+/// that person, which is the kind of durable record this schema exists to avoid.
+const DECLINE_BLOCK_DAYS: i64 = 30;
+
+/// Mark a pending request approved. The member is created when that person next logs in —
+/// see [`resolve_subject`] for why it cannot happen here.
+pub async fn approve_request(conn: &mut Conn, request_id: &Uuid) -> Result<bool> {
+    use database::join_requests::dsl::*;
+    let updated = diesel::update(
+        join_requests
+            .filter(id.eq(request_id))
+            .filter(approved_at.is_null()),
+    )
+    .set(approved_at.eq(Utc::now()))
+    .execute(conn)
+    .await?;
+    Ok(updated > 0)
+}
+
+/// Decline a request: drop it, and block reapplication for a while.
+pub async fn decline_request(conn: &mut Conn, request_id: &Uuid) -> Result<bool> {
+    use diesel_async::scoped_futures::ScopedFutureExt as _;
+    use diesel_async::AsyncConnection as _;
+
+    let request_id = *request_id;
+
+    conn.transaction::<bool, anyhow::Error, _>(|conn| {
+        async move {
+            let hash = {
+                use database::join_requests::dsl::*;
+                join_requests
+                    .filter(id.eq(request_id))
+                    .select(request_hash)
+                    .first::<String>(conn)
+                    .await
+                    .optional()?
+            };
+
+            let Some(hash) = hash else {
+                return Ok(false);
+            };
+
+            {
+                use database::request_blocks::dsl::*;
+                diesel::insert_into(request_blocks)
+                    .values((
+                        request_hash.eq(&hash),
+                        until.eq(Utc::now() + chrono::Duration::days(DECLINE_BLOCK_DAYS)),
+                    ))
+                    .on_conflict(request_hash)
+                    .do_update()
+                    .set(until.eq(Utc::now() + chrono::Duration::days(DECLINE_BLOCK_DAYS)))
+                    .execute(conn)
+                    .await?;
+            }
+
+            {
+                use database::join_requests::dsl::*;
+                diesel::delete(join_requests.filter(id.eq(request_id)))
+                    .execute(conn)
+                    .await?;
+            }
+
+            Ok(true)
+        }
+        .scope_boxed()
+    })
+    .await
+}
+
+/// Record a join request against the ticket issued at login.
+pub async fn submit_request(conn: &mut Conn, request: &str, disclosure_text: &str) -> Result<()> {
+    use database::join_requests::dsl::*;
+    diesel::insert_into(join_requests)
+        .values((request_hash.eq(request), disclosure.eq(disclosure_text)))
+        // Re-submitting replaces the text rather than queueing a second row.
+        .on_conflict(request_hash)
+        .do_update()
+        .set(disclosure.eq(disclosure_text))
         .execute(conn)
         .await?;
+    Ok(())
+}
+
+/// Pending requests, oldest first.
+///
+/// Returns only the id, the applicant's own words, and the time. Never `request_hash` — a
+/// reviewer who recorded that could look for it later and link a person to the member they
+/// became.
+pub async fn list_pending_requests(
+    conn: &mut Conn,
+) -> Result<Vec<common::structs::JoinRequestSummary>> {
+    use database::join_requests::dsl::*;
+
+    let rows = join_requests
+        .filter(approved_at.is_null())
+        .order(created_at.asc())
+        .select((id, disclosure, created_at))
+        .load::<(Uuid, String, chrono::DateTime<Utc>)>(conn)
+        .await?;
+
+    Ok(rows
+        .into_iter()
+        .map(|(row_id, text, at)| common::structs::JoinRequestSummary {
+            id: row_id.to_string(),
+            disclosure: text,
+            created_at: at,
+        })
+        .collect())
+}
+
+/// Ban the author of a post without telling the caller who that is.
+///
+/// Moderation is expressed against posts, never against members: a mod acts on something they
+/// can see, and the server does the resolution. `actual_author` is
+/// `HMAC(POST_AUTHOR_KEY, author_seed ‖ post_id)`, so finding the author means recomputing it
+/// for each member — one HMAC per member, which is nothing at this scale and is the price of
+/// the table not storing who wrote what.
+///
+/// Returns whether an author was found. The caller is told only that, never the identity.
+pub async fn ban_post_author(conn: &mut Conn, post_id: i64) -> Result<bool> {
+    let target = {
+        use database::posts::dsl::*;
+        posts
+            .filter(id.eq(post_id))
+            .select(actual_author)
+            .first::<String>(conn)
+            .await
+            .optional()?
+    };
+
+    let Some(target) = target else {
+        return Ok(false);
+    };
+
+    let candidates = {
+        use database::members::dsl::*;
+        members
+            .filter(banned.eq(false))
+            .select((id, author_seed))
+            .load::<(Uuid, String)>(conn)
+            .await?
+    };
+
+    let found = candidates
+        .into_iter()
+        .find(|(_, seed)| keys::post_author_hash(seed, post_id) == target);
+
+    let Some((member, _)) = found else {
+        // The author rotated their seed, or their account is gone. Nothing to ban.
+        return Ok(false);
+    };
+
+    {
+        use database::members::dsl::*;
+        diesel::update(members.filter(id.eq(member)))
+            .set(banned.eq(true))
+            .execute(conn)
+            .await?;
+    }
+
+    // Revoke their sessions so the ban is immediate rather than lasting until expiry.
+    crate::session::destroy_all_for_member(conn, &member).await?;
+    crate::filters::forget_cached_member(&member).await;
+
+    Ok(true)
+}
+
+/// Replace a member's author seed, severing them from everything they have posted.
+///
+/// The cost is deliberate and must be surfaced in the UI: they can no longer delete their own
+/// earlier posts, because `actual_author` no longer matches.
+pub async fn rotate_author_seed(conn: &mut Conn, member: &Uuid) -> Result<()> {
+    use database::members::dsl::*;
+
+    let seed = {
+        let mut raw = [0u8; 32];
+        rand::RngCore::fill_bytes(&mut rand::thread_rng(), &mut raw);
+        hex::encode(raw)
+    };
+
+    diesel::update(members.filter(id.eq(member)))
+        .set(author_seed.eq(seed))
+        .execute(conn)
+        .await?;
+
+    // The cached viewer still holds the old seed.
+    crate::filters::forget_cached_member(member).await;
     Ok(())
 }
 
@@ -311,4 +504,61 @@ pub async fn verify_id_token(id_token: &str, expected_nonce: &str) -> Result<Str
     }
 
     Ok(token.claims.sub)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn keyring() {
+        // Independent values; the real ones come from the environment.
+        let _ = database::keys::init(database::keys::Keyring {
+            identity: vec![11; 32],
+            request: vec![22; 32],
+            post_author: vec![33; 32],
+            invite: vec![44; 32],
+            push_encryption: vec![55; 32],
+        });
+    }
+
+    #[test]
+    fn ticket_round_trips() {
+        keyring();
+        let request = keys::request_hash("oauth2|discord|123");
+        let ticket = sign_ticket(&request);
+        assert_eq!(verify_ticket(&ticket).expect("valid ticket"), request);
+    }
+
+    #[test]
+    fn ticket_rejects_tampering() {
+        keyring();
+        let request = keys::request_hash("oauth2|discord|123");
+        let ticket = sign_ticket(&request);
+
+        // Swapping in someone else's request hash must not verify: otherwise anyone could
+        // file a join request against an arbitrary identity.
+        let other = keys::request_hash("oauth2|discord|999");
+        let parts: Vec<&str> = ticket.split('.').collect();
+        let forged = format!("{}.{}.{}", other, parts[1], parts[2]);
+        assert!(verify_ticket(&forged).is_err(), "forged hash must be refused");
+
+        // Extending the expiry must not verify either.
+        let far_future = Utc::now().timestamp() + 999_999;
+        let extended = format!("{}.{}.{}", parts[0], far_future, parts[2]);
+        assert!(verify_ticket(&extended).is_err(), "extended expiry must be refused");
+
+        assert!(verify_ticket("nonsense").is_err());
+        assert!(verify_ticket("a.b.c").is_err());
+    }
+
+    #[test]
+    fn ticket_rejects_expired() {
+        keyring();
+        let request = keys::request_hash("oauth2|discord|123");
+        let expiry = Utc::now().timestamp() - 1;
+        let mac = keys::ticket_mac(&request, expiry);
+        // Correctly signed but stale: the signature is valid, the window is not.
+        let stale = format!("{request}.{expiry}.{mac}");
+        assert!(verify_ticket(&stale).is_err(), "expired ticket must be refused");
+    }
 }
