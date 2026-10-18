@@ -27,8 +27,9 @@ const TICKET_TTL_SECONDS: i64 = 1800;
 pub enum SubjectOutcome {
     /// Known member; issue a session.
     Member(Uuid),
-    /// Join request already submitted and awaiting review.
-    Pending,
+    /// Join request already submitted and awaiting review. Carries a ticket so the applicant
+    /// can amend what they wrote while it sits in the queue.
+    Pending(String),
     /// Declined recently, and the block has not expired.
     Blocked,
     /// Never seen. Carries the ticket authorising one join request.
@@ -106,7 +107,7 @@ pub async fn resolve_subject(conn: &mut Conn, subject: &str) -> Result<SubjectOu
                     .await?;
                 return Ok(SubjectOutcome::Member(member));
             }
-            Some((_, None)) => return Ok(SubjectOutcome::Pending),
+            Some((_, None)) => return Ok(SubjectOutcome::Pending(sign_ticket(&request))),
             None => {}
         }
     }
@@ -230,6 +231,17 @@ pub async fn decline_request(conn: &mut Conn, request_id: &Uuid) -> Result<bool>
         .scope_boxed()
     })
     .await
+}
+
+/// The disclosure text already on file for this request, if any.
+pub async fn get_request(conn: &mut Conn, request: &str) -> Result<Option<String>> {
+    use database::join_requests::dsl::*;
+    Ok(join_requests
+        .filter(request_hash.eq(request))
+        .select(disclosure)
+        .first::<String>(conn)
+        .await
+        .optional()?)
 }
 
 /// Record a join request against the ticket issued at login.

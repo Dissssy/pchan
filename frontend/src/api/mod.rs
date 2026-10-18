@@ -51,8 +51,13 @@ impl Api {
         standard_get::<common::structs::MeInfo>("/api/v1/me").await
     }
 
-    /// Submit a join request. Authorised by the join ticket cookie, not a session — the
-    /// applicant does not have one yet.
+    /// What this applicant has already written, if anything. `None` means no request on file.
+    pub async fn get_access_request(&self) -> Result<Option<String>, ApiError> {
+        standard_get::<Option<String>>("/api/v1/access_request").await
+    }
+
+    /// Submit or update a join request. Authorised by the join ticket cookie, not a session —
+    /// the applicant does not have one yet.
     pub async fn submit_access_request(&self, disclosure: String) -> Result<String, ApiError> {
         standard_post::<String, _>(
             "/api/v1/access_request",

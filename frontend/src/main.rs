@@ -42,9 +42,6 @@ pub enum BaseRoute {
     /// Signed in with Auth0 but not yet a member.
     #[at("/request-access")]
     RequestAccess,
-    /// Request submitted, awaiting review.
-    #[at("/pending")]
-    Pending,
     /// Request was declined.
     #[at("/declined")]
     Declined,
@@ -264,14 +261,9 @@ fn switch(routes: BaseRoute) -> Html {
                 <pages::RequestAccess/>
             }
         }
-        BaseRoute::Pending => {
-            html! {
-                <pages::JoinStatus declined={false} />
-            }
-        }
         BaseRoute::Declined => {
             html! {
-                <pages::JoinStatus declined={true} />
+                <pages::Declined/>
             }
         }
         BaseRoute::Moderation => {

@@ -30,7 +30,11 @@ struct LoginFlow {
 
 pub fn other_endpoints(
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    login().or(callback()).or(logout()).or(access_request())
+    login()
+        .or(callback())
+        .or(logout())
+        .or(access_request())
+        .or(get_access_request())
 }
 
 /// Maximum length of what an applicant writes about themselves. Long enough to explain who
@@ -107,6 +111,50 @@ fn access_request() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::
                 }
             },
         )
+}
+
+/// GET /api/v1/access_request — what this applicant has already written, if anything.
+///
+/// Lets the form be prefilled so reloading the page shows the pending text rather than an
+/// empty box, since submitting again updates in place. Authorised by the same ticket, so an
+/// applicant can only ever read back their own request.
+fn get_access_request(
+) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
+    warp::path!("api" / "v1" / "access_request")
+        .and(warp::get())
+        .and(warp::cookie::optional(crate::auth::ticket_cookie_name()))
+        .then(|ticket: Option<String>| async move {
+            let Some(request) = ticket.and_then(|t| crate::auth::verify_ticket(&t).ok()) else {
+                return warp::reply::with_status(
+                    warp::reply::json(&Option::<String>::None),
+                    warp::http::StatusCode::UNAUTHORIZED,
+                );
+            };
+
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("could not get a connection to read a join request: {e}");
+                    return warp::reply::with_status(
+                        warp::reply::json(&Option::<String>::None),
+                        warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    );
+                }
+            };
+
+            match crate::auth::get_request(&mut conn, &request).await {
+                Ok(existing) => {
+                    warp::reply::with_status(warp::reply::json(&existing), warp::http::StatusCode::OK)
+                }
+                Err(e) => {
+                    log::error!("could not read a join request: {e}");
+                    warp::reply::with_status(
+                        warp::reply::json(&Option::<String>::None),
+                        warp::http::StatusCode::INTERNAL_SERVER_ERROR,
+                    )
+                }
+            }
+        })
 }
 
 fn random_token() -> String {
@@ -241,7 +289,12 @@ async fn handle_callback(q: CallbackQuery, flow: Option<String>) -> Result<warp:
         }
         // No member yet. The frontend decides what to show; the backend hands over only a
         // coarse status, never anything identifying.
-        crate::auth::SubjectOutcome::Pending => Ok(finish_flow("/pending")),
+        crate::auth::SubjectOutcome::Pending(ticket) => Ok(warp::reply::with_header(
+            redirect_to("/request-access"),
+            "set-cookie",
+            crate::auth::ticket_cookie_header(&ticket),
+        )
+        .into_response()),
         crate::auth::SubjectOutcome::Blocked => Ok(finish_flow("/declined")),
         crate::auth::SubjectOutcome::NeedsRequest(ticket) => Ok(warp::reply::with_header(
             redirect_to("/request-access"),
