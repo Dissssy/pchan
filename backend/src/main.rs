@@ -376,7 +376,7 @@ async fn main() {
     });
 
     let routes = endpoints::other_endpoints()
-        .or(endpoints::api::priveleged_api_endpoints())
+        .or(endpoints::api::retired_bot_endpoints())
         .or(endpoints::api::api_endpoints())
         .or(api_unauthorized)
         .or(root)

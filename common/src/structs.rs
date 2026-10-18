@@ -313,3 +313,34 @@ pub struct ReportSummary {
     pub reason: String,
     pub created_at: chrono::DateTime<chrono::Utc>,
 }
+
+/// A moderator grant, as shown in the panel.
+///
+/// `label` is free text typed by whoever issued the code, and `redeemed` says only whether
+/// somebody has claimed it. There is deliberately no way to go from a grant to the member
+/// holding it — the panel manages grants, never a roster of people.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModeratorGrant {
+    pub id: String,
+    pub board_discriminator: String,
+    pub label: String,
+    pub redeemed: bool,
+}
+
+/// One entry from the moderation log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub action: String,
+    pub board_discriminator: Option<String>,
+    pub target: Option<String>,
+    pub detail: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Board settings a panel can change. The discriminator is not editable: it appears in every
+/// URL and in derived access grants, so changing it would orphan them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardUpdate {
+    pub name: Option<String>,
+    pub private: Option<bool>,
+}

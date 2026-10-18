@@ -130,6 +130,38 @@ impl Api {
         .await
     }
 
+    pub async fn list_moderators(&self) -> Result<Vec<common::structs::ModeratorGrant>, ApiError> {
+        standard_get::<Vec<common::structs::ModeratorGrant>>("/api/v1/admin/moderators").await
+    }
+
+    pub async fn revoke_moderator(&self, id: &str) -> Result<String, ApiError> {
+        standard_delete::<String>(&format!("/api/v1/admin/moderators/{id}")).await
+    }
+
+    pub async fn audit_log(&self) -> Result<Vec<common::structs::LogEntry>, ApiError> {
+        standard_get::<Vec<common::structs::LogEntry>>("/api/v1/admin/log").await
+    }
+
+    pub async fn create_board(&self, name: String, discriminator: String) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            "/api/v1/admin/boards",
+            &common::structs::CreateBoard { name, discriminator },
+        )
+        .await
+    }
+
+    pub async fn update_board(
+        &self,
+        discriminator: &str,
+        update: common::structs::BoardUpdate,
+    ) -> Result<String, ApiError> {
+        standard_patch::<String, _>(&format!("/api/v1/admin/boards/{discriminator}"), &update).await
+    }
+
+    pub async fn delete_board(&self, discriminator: &str) -> Result<String, ApiError> {
+        standard_delete::<String>(&format!("/api/v1/admin/boards/{discriminator}")).await
+    }
+
     /// Lift a ban.
     pub async fn unban(&self, ban_id: &str) -> Result<String, ApiError> {
         standard_delete::<String>(&format!("/api/v1/admin/bans/{ban_id}")).await

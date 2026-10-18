@@ -1143,3 +1143,121 @@ pub async fn moderated_boards(
 
     Ok(Some(mine))
 }
+
+/// Change a board's display name and privacy.
+///
+/// The discriminator is deliberately not editable: it is in every URL and in
+/// `user_tags.board_id`-derived grants, so renaming it would orphan links rather than move
+/// them.
+pub async fn update_board(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    board: i64,
+    new_name: Option<&str>,
+    new_private: Option<bool>,
+) -> Result<()> {
+    use crate::boards::dsl::*;
+    if let Some(n) = new_name {
+        if n.trim().is_empty() {
+            anyhow::bail!("a board needs a name");
+        }
+        diesel::update(boards.filter(id.eq(board)))
+            .set(name.eq(n.trim()))
+            .execute(conn)
+            .await?;
+    }
+    if let Some(p) = new_private {
+        diesel::update(boards.filter(id.eq(board)))
+            .set(private.eq(p))
+            .execute(conn)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Delete a board and everything on it.
+pub async fn delete_board(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    board: i64,
+) -> Result<()> {
+    use crate::boards::dsl::*;
+    diesel::delete(boards.filter(id.eq(board)))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Moderator grants, per board.
+///
+/// Returns the grant rows, never a member roster: `user_name` is a label typed by whoever
+/// issued the code and `invite_hash` is only ever shown as redeemed-or-not. There is
+/// deliberately no way to go from a grant to the member holding it.
+pub async fn moderator_grants(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<Vec<(Uuid, String, String, bool)>> {
+    use crate::user_tags::dsl as t;
+
+    let rows = t::user_tags
+        .filter(t::tag_kind.eq(UserTag::Moderator.to_string()))
+        .select((t::id, t::board_id, t::user_name, t::invite_hash))
+        .load::<(Uuid, i64, String, Option<String>)>(conn)
+        .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for (grant_id, board, label, hash) in rows {
+        let discriminator = get_board_discrim(board, conn).await?;
+        out.push((grant_id, discriminator, label, hash.is_some()));
+    }
+    Ok(out)
+}
+
+/// Revoke a moderator grant. The cascade trigger removes any invites descended from it.
+pub async fn revoke_grant(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    grant_id: &Uuid,
+) -> Result<Option<i64>> {
+    use crate::user_tags::dsl::*;
+    let board = user_tags
+        .filter(id.eq(grant_id))
+        .select(board_id)
+        .first::<i64>(conn)
+        .await
+        .optional()?;
+
+    if board.is_some() {
+        diesel::delete(user_tags.filter(id.eq(grant_id)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(board)
+}
+
+/// Recent moderation actions. `actor_filter` limits the view to one moderator's own entries.
+pub async fn moderation_entries(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    actor_filter: Option<&Uuid>,
+    limit: i64,
+) -> Result<Vec<(String, Option<String>, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>>
+{
+    use crate::moderation_log::dsl as l;
+
+    let mut query = l::moderation_log.into_boxed();
+    if let Some(a) = actor_filter {
+        query = query.filter(l::actor.eq(a));
+    }
+    let rows = query
+        .order(l::created_at.desc())
+        .limit(limit)
+        .select((l::action, l::board_id, l::target, l::detail, l::created_at))
+        .load::<(String, Option<i64>, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>(conn)
+        .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for (action, board, target, detail, at) in rows {
+        let discriminator = match board {
+            Some(b) => get_board_discrim(b, conn).await.ok(),
+            None => None,
+        };
+        out.push((action, discriminator, target, detail, at));
+    }
+    Ok(out)
+}

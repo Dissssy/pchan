@@ -6,52 +6,19 @@ use common::structs::{
 use serde::{Deserialize, Serialize};
 use warp::{Filter, Rejection, Reply};
 
-use crate::filters::priveleged_endpoint;
 
-pub fn priveleged_api_endpoints(
+/// Inert endpoints the retired Discord bot may still be calling.
+///
+/// They stay registered so the bot gets a definite answer rather than a 404, touch no state,
+/// and do not parse their body, so Discord user IDs are not ingested at all. The warning is
+/// the only way to observe whether the bot is still running; it records nothing identifying.
+///
+/// No longer behind the shared static token: board creation was its last real user and now
+/// lives at POST /api/v1/admin/boards behind the admin role. That retires a secret compared
+/// in non-constant time, and with it the Bearer header path entirely.
+pub fn retired_bot_endpoints(
 ) -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone {
-    // PUT /board - creates a new board
-    let putboard = warp::path!("api" / "v1" / "board")
-        .and(warp::put())
-        .and(warp::body::json::<CreateBoard>())
-        .and_then(|board: CreateBoard| async move {
-            match crate::database_bindings::Database::create_board(
-                &mut match crate::POOL.get().await {
-                    Ok(pool) => pool,
-                    Err(e) => {
-                        log::error!("error connecting to backend: {}", e);
-                        return Ok::<warp::reply::Json, warp::reject::Rejection>(
-                            warp::reply::json(&"error connecting to backend"),
-                        );
-                    }
-                },
-                &board.discriminator,
-                &board.name,
-            )
-            .await
-            {
-                Ok(_) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                    &"OK".to_owned(),
-                )),
-                Err(e) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                    &e.to_string(),
-                )),
-            }
-        });
-
-    // The Discord bot integration is retired: membership no longer derives from a guild
-    // roster. These three routes stay registered so the bot gets a definite answer rather
-    // than a 404, but they no longer touch the database and no longer parse their body, so
-    // Discord user IDs are not ingested at all.
-    //
-    // /api/set/user was the dangerous one. It ran
-    // `DELETE FROM members WHERE token_hash <> ALL($list)`, so leaving it live would delete
-    // every account the bot does not know about — which, after the identity migration, is
-    // all of them.
-    //
-    // The warning is deliberate: it is the only way to observe whether the bot is still
-    // calling. It records no identifying detail.
-    fn retired_bot_endpoint(route: &str) -> warp::reply::WithStatus<warp::reply::Json> {
+    fn gone(route: &str) -> warp::reply::WithStatus<warp::reply::Json> {
         log::warn!("retired Discord bot endpoint called: {route}");
         warp::reply::with_status(
             warp::reply::json(
@@ -61,19 +28,14 @@ pub fn priveleged_api_endpoints(
         )
     }
 
-    let adduser = warp::path!("api" / "add" / "user")
-        .and(warp::post())
-        .map(|| retired_bot_endpoint("POST /api/add/user"));
-
-    let removeuser = warp::path!("api" / "remove" / "user")
-        .and(warp::post())
-        .map(|| retired_bot_endpoint("POST /api/remove/user"));
-
-    let setusers = warp::path!("api" / "set" / "user")
-        .and(warp::post())
-        .map(|| retired_bot_endpoint("POST /api/set/user"));
-
-    priveleged_endpoint().and(adduser.or(removeuser).or(setusers).or(putboard))
+    warp::post().and(
+        warp::path!("api" / "add" / "user")
+            .map(|| gone("POST /api/add/user"))
+            .or(warp::path!("api" / "remove" / "user").map(|| gone("POST /api/remove/user")))
+            .unify()
+            .or(warp::path!("api" / "set" / "user").map(|| gone("POST /api/set/user")))
+            .unify(),
+    )
 }
 
 pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
@@ -1201,6 +1163,214 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // ------------------------------------------------------------ admin panel
+
+    // Boards. Creation moves here from the static-token endpoint so it is gated by a real
+    // role rather than one shared secret compared in non-constant time.
+    let create_board = warp::path!("api" / "v1" / "admin" / "boards")
+        .and(warp::post())
+        .and(warp::body::json::<CreateBoard>())
+        .and(crate::filters::site_admin())
+        .and_then(|board: CreateBoard, viewer: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+            match crate::database_bindings::Database::create_board(
+                &mut conn,
+                &board.discriminator,
+                &board.name,
+            )
+            .await
+            {
+                Ok(()) => {
+                    crate::auth::log_action(
+                        &mut conn,
+                        &viewer,
+                        "create_board",
+                        None,
+                        Some(&board.discriminator),
+                        None,
+                    )
+                    .await;
+                    Ok(warp::reply::json(&"Board created"))
+                }
+                Err(e) => Ok(warp::reply::json(&e.to_string())),
+            }
+        });
+
+    let edit_board = warp::path!("api" / "v1" / "admin" / "boards" / String)
+        .and(warp::patch())
+        .and(warp::body::json::<common::structs::BoardUpdate>())
+        .and(crate::filters::site_admin())
+        .and_then(|disc: String, update: common::structs::BoardUpdate, viewer: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+            let board = match crate::database_bindings::Database::get_raw_board(&mut conn, &disc).await {
+                Ok(b) => b,
+                Err(_) => return Ok(warp::reply::json(&"No such board")),
+            };
+            match database::update_board(
+                &mut conn,
+                board.id,
+                update.name.as_deref(),
+                update.private,
+            )
+            .await
+            {
+                Ok(()) => {
+                    crate::auth::log_action(
+                        &mut conn, &viewer, "edit_board", Some(board.id), Some(&disc), None,
+                    )
+                    .await;
+                    Ok(warp::reply::json(&"Board updated"))
+                }
+                Err(e) => Ok(warp::reply::json(&e.to_string())),
+            }
+        });
+
+    let delete_board = warp::path!("api" / "v1" / "admin" / "boards" / String)
+        .and(warp::delete())
+        .and(crate::filters::site_admin())
+        .and_then(|disc: String, viewer: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+            let board = match crate::database_bindings::Database::get_raw_board(&mut conn, &disc).await {
+                Ok(b) => b,
+                Err(_) => return Ok(warp::reply::json(&"No such board")),
+            };
+            match database::delete_board(&mut conn, board.id).await {
+                Ok(()) => {
+                    crate::auth::log_action(
+                        &mut conn, &viewer, "delete_board", None, Some(&disc), None,
+                    )
+                    .await;
+                    Ok(warp::reply::json(&"Board deleted"))
+                }
+                Err(e) => Ok(warp::reply::json(&e.to_string())),
+            }
+        });
+
+    // Moderator grants. Grants, not people: nothing here resolves to a member.
+    let list_moderators = warp::path!("api" / "v1" / "admin" / "moderators")
+        .and(warp::get())
+        .and(crate::filters::site_admin())
+        .and_then(|_: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+            match database::moderator_grants(&mut conn).await {
+                Ok(rows) => Ok(warp::reply::json(
+                    &rows
+                        .into_iter()
+                        .map(|(id, disc, label, redeemed)| common::structs::ModeratorGrant {
+                            id: id.to_string(),
+                            board_discriminator: disc,
+                            label,
+                            redeemed,
+                        })
+                        .collect::<Vec<_>>(),
+                )),
+                Err(e) => {
+                    log::error!("could not list moderator grants: {e}");
+                    Ok(warp::reply::json(&"Could not load moderators"))
+                }
+            }
+        });
+
+    let revoke_moderator = warp::path!("api" / "v1" / "admin" / "moderators" / String)
+        .and(warp::delete())
+        .and(crate::filters::site_admin())
+        .and_then(|id: String, viewer: database::Viewer| async move {
+            let Ok(id) = id.parse::<uuid::Uuid>() else {
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                    &"Invalid grant id",
+                ));
+            };
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok(warp::reply::json(&"error connecting to backend"));
+                }
+            };
+            match database::revoke_grant(&mut conn, &id).await {
+                Ok(Some(board)) => {
+                    crate::auth::log_action(
+                        &mut conn, &viewer, "revoke_moderator", Some(board), None, None,
+                    )
+                    .await;
+                    Ok(warp::reply::json(&"Moderator revoked"))
+                }
+                Ok(None) => Ok(warp::reply::json(&"No such grant")),
+                Err(e) => {
+                    log::error!("could not revoke grant: {e}");
+                    Ok(warp::reply::json(&"Could not revoke that grant"))
+                }
+            }
+        });
+
+    // The audit log. Admins see everything; a moderator sees only their own actions, because
+    // the full log correlates bans to posts and is the one place that exception lives.
+    let audit_log = warp::path!("api" / "v1" / "admin" / "log")
+        .and(warp::get())
+        .and(viewer())
+        .and_then(|viewer: database::Viewer| async move {
+            let mut conn = match crate::POOL.get().await {
+                Ok(c) => c,
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
+                        &"error connecting to backend",
+                    ));
+                }
+            };
+            let scope = if viewer.role.is_admin() { None } else { Some(&viewer.id) };
+            match database::moderation_entries(&mut conn, scope, 200).await {
+                Ok(rows) => Ok(warp::reply::json(
+                    &rows
+                        .into_iter()
+                        .map(|(action, board, target, detail, at)| common::structs::LogEntry {
+                            action,
+                            board_discriminator: board,
+                            target,
+                            detail,
+                            created_at: at,
+                        })
+                        .collect::<Vec<_>>(),
+                )),
+                Err(e) => {
+                    log::error!("could not read the moderation log: {e}");
+                    Ok(warp::reply::json(&"Could not load the log"))
+                }
+            }
+        });
+
     crate::filters::ratelimit()
         .and(
             getpost
@@ -1229,6 +1399,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(report_post)
                 .or(list_reports)
                 .or(resolve_report)
+                .or(create_board)
+                .or(edit_board)
+                .or(delete_board)
+                .or(list_moderators)
+                .or(revoke_moderator)
+                .or(audit_log)
                 .or(notifications()),
         )
         .recover(|err: Rejection| async move {

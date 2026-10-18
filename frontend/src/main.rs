@@ -45,9 +45,9 @@ pub enum BaseRoute {
     /// Request was declined.
     #[at("/declined")]
     Declined,
-    /// Join-request review queue, for site mods.
-    #[at("/moderation")]
-    Moderation,
+    /// Moderation panel. Which tabs appear depends on the viewer's scope.
+    #[at("/admin")]
+    Admin,
     #[at("/:board_discriminator/")]
     BoardPage { board_discriminator: String },
     #[at("/:board_discriminator/thread/:thread_id")]
@@ -270,9 +270,9 @@ fn switch(routes: BaseRoute) -> Html {
                 <pages::Declined/>
             }
         }
-        BaseRoute::Moderation => {
+        BaseRoute::Admin => {
             html! {
-                <pages::Moderation/>
+                <pages::Admin/>
             }
         }
         BaseRoute::BoardPage {

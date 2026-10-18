@@ -1,10 +1,8 @@
 use base64::Engine as _;
 use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::Display,
-    str::FromStr,
     sync::Arc,
 };
 use tokio::{sync::Mutex, time::Instant};
@@ -34,6 +32,17 @@ pub fn viewer() -> impl Filter<Extract = (database::Viewer,), Error = warp::Reje
                 None => Err(warp::reject::reject()),
             }
         })
+}
+
+/// A viewer with site-admin authority: boards, moderator grants, the audit log.
+pub fn site_admin() -> impl Filter<Extract = (database::Viewer,), Error = warp::Rejection> + Clone {
+    viewer().and_then(|v: database::Viewer| async move {
+        if v.role.is_admin() {
+            Ok(v)
+        } else {
+            Err(warp::reject::reject())
+        }
+    })
 }
 
 /// A viewer who may review the join queue and act on reported posts.
@@ -220,18 +229,8 @@ pub struct MaybeFileSig {
     pub sig: Option<String>,
 }
 
-pub fn priveleged_endpoint() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
-    warp::header::header::<Bearer>("authorization")
-        .and_then(|header: Bearer| async move {
-            if header.token != *crate::statics::TOKEN {
-                Err(warp::reject::reject())
-            } else {
-                Ok(())
-            }
-        })
-        .and(warp::any())
-        .untuple_one()
-}
+// priveleged_endpoint is gone with the shared static TOKEN it compared, in non-constant
+// time, against an Authorization header. Admin actions are gated by the admin role.
 
 pub fn user_agent_is_scraper() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
     warp::header::header::<String>("user-agent")
@@ -428,30 +427,6 @@ impl warp::reject::Reject for Ratelimited {}
 //         .untuple_one()
 // }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Bearer {
-    pub token: String,
-}
-
-impl FromStr for Bearer {
-    type Err = anyhow::Error;
-
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s
-            .split("Bearer ")
-            .nth(1)
-            .ok_or_else(|| anyhow::anyhow!("Invalid Bearer token"))?;
-        Ok(Self {
-            token: s.to_string(),
-        })
-    }
-}
-
-impl Display for Bearer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Bearer {}", self.token)
-    }
-}
 
 // Token and MemberToken are gone: credentials are no longer values the app derives and
 // passes around. A session cookie resolves to a database::Viewer (see crate::session).

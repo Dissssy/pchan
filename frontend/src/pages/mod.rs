@@ -1,17 +1,17 @@
+mod admin;
 mod board;
 mod home;
 mod declined;
-mod moderation;
 mod not_found;
 mod redeem;
 mod request_access;
 mod settings;
 mod thread;
 
+pub use admin::Admin;
 pub use board::BoardPage;
 pub use home::Home;
 pub use declined::Declined;
-pub use moderation::Moderation;
 pub use not_found::NotFound;
 pub use redeem::Redeem;
 pub use request_access::RequestAccess;
