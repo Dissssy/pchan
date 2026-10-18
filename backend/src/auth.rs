@@ -282,19 +282,28 @@ pub async fn list_pending_requests(
 /// the table not storing who wrote what.
 ///
 /// Returns whether an author was found. The caller is told only that, never the identity.
-pub async fn ban_post_author(conn: &mut Conn, post_id: i64) -> Result<bool> {
-    let target = {
-        use database::posts::dsl::*;
-        posts
-            .filter(id.eq(post_id))
-            .select(actual_author)
-            .first::<String>(conn)
+pub async fn ban_post_author(
+    conn: &mut Conn,
+    discriminator: &str,
+    post_number: i64,
+    viewer: &database::Viewer,
+) -> Result<bool> {
+    // Addressed the way every other post endpoint is, because board + post number is what a
+    // client actually has; the internal row id is never exposed. get_raw_post is reached via
+    // get_board so a mod cannot act on a board they cannot see.
+    let target_board =
+        crate::database_bindings::Database::get_board(conn, discriminator, viewer).await?;
+
+    let (post_id, target) = {
+        use database::posts::dsl as p;
+        p::posts
+            .filter(p::board.eq(target_board.id))
+            .filter(p::post_number.eq(post_number))
+            .select((p::id, p::actual_author))
+            .first::<(i64, String)>(conn)
             .await
             .optional()?
-    };
-
-    let Some(target) = target else {
-        return Ok(false);
+            .ok_or_else(|| anyhow!("no such post"))?
     };
 
     let candidates = {

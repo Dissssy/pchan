@@ -1,3 +1,5 @@
+mod account_tools;
+mod ban_button;
 mod banner_ad;
 mod board_name;
 mod board_select;
@@ -23,6 +25,8 @@ mod spinner;
 mod thread;
 mod watch_button;
 
+pub use account_tools::AccountTools;
+pub use ban_button::BanButton;
 pub use banner_ad::BannerAd;
 pub use board_name::{BoardName, BoardNameType};
 pub use board_select::BoardSelectBar;

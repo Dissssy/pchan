@@ -881,10 +881,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
 
     // POST /post/{id}/ban_author - the server resolves the author; the caller is never told
     // who it was.
-    let ban_author = warp::path!("api" / "v1" / "post" / i64 / "ban_author")
+    let ban_author = warp::path!("api" / "v1" / "board" / String / "post" / i64 / "ban_author")
         .and(warp::post())
         .and(crate::filters::site_mod())
-        .and_then(|post_id: i64, _: database::Viewer| async move {
+        .and_then(|disc: String, post_number: i64, viewer: database::Viewer| async move {
             let mut conn = match crate::POOL.get().await {
                 Ok(c) => c,
                 Err(e) => {
@@ -894,7 +894,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     ));
                 }
             };
-            match crate::auth::ban_post_author(&mut conn, post_id).await {
+            match crate::auth::ban_post_author(&mut conn, &disc, post_number, &viewer).await {
                 Ok(true) => Ok(warp::reply::json(&"Author banned")),
                 Ok(false) => Ok(warp::reply::json(&"No current author for that post")),
                 Err(e) => {

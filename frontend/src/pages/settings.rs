@@ -1,7 +1,6 @@
 use yew::prelude::*;
-use yew_hooks::use_local_storage;
 
-use crate::components::{InviteTools, PoweredBy, ThemeEditor, TimezoneEditor};
+use crate::components::{AccountTools, InviteTools, PoweredBy, ThemeEditor, TimezoneEditor};
 
 #[function_component]
 pub fn Settings() -> Html {
@@ -10,20 +9,6 @@ pub fn Settings() -> Html {
             document.set_title(&format!("{}Settings", crate::PREFIX));
         }
     }
-    let token = use_local_storage::<String>("token".to_string());
-
-    let on_click = {
-        let token = token.clone();
-        Callback::from(move |e: MouseEvent| {
-            e.prevent_default();
-            if let Some(the) = token.as_ref() {
-                if let Some(window) = web_sys::window() {
-                    let clip = window.navigator().clipboard();
-                    let _ = clip.write_text(the);
-                }
-            };
-        })
-    };
 
     html! {
         <div class="valign">
@@ -32,15 +17,9 @@ pub fn Settings() -> Html {
                     <ThemeEditor />
                     <TimezoneEditor />
                     <InviteTools expandable={true} />
-                    {
-                        if token.is_some() {
-                            html! {
-                                <span onclick={on_click} class="token-button">{"Click here to copy your token (DO NOT SHARE WITH ANYONE)"}</span>
-                            }
-                        } else {
-                            html! {}
-                        }
-                    }
+                    // The "copy your token" control is gone with the token it copied: the
+                    // session cookie is HttpOnly and is not something to hand around.
+                    <AccountTools />
                     <PoweredBy />
                 </div>
             </div>

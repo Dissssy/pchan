@@ -43,6 +43,61 @@ impl Api {
         }
     }
 
+    // ------------------------------------------------------------ membership
+
+    /// Role and ban state for the current viewer. Never cached: a ban or a role change has
+    /// to take effect on the next page load, not whenever a cache happens to expire.
+    pub async fn get_me(&self) -> Result<common::structs::MeInfo, ApiError> {
+        standard_get::<common::structs::MeInfo>("/api/v1/me").await
+    }
+
+    /// Submit a join request. Authorised by the join ticket cookie, not a session — the
+    /// applicant does not have one yet.
+    pub async fn submit_access_request(&self, disclosure: String) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            "/api/v1/access_request",
+            &common::structs::AccessRequest { disclosure },
+        )
+        .await
+    }
+
+    pub async fn list_access_requests(
+        &self,
+    ) -> Result<Vec<common::structs::JoinRequestSummary>, ApiError> {
+        standard_get::<Vec<common::structs::JoinRequestSummary>>("/api/v1/access_requests").await
+    }
+
+    /// `action` is "approve" or "decline".
+    pub async fn decide_access_request(
+        &self,
+        id: &str,
+        action: &str,
+    ) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            &format!("/api/v1/access_requests/{id}/{action}"),
+            &serde_json::Value::Null,
+        )
+        .await
+    }
+
+    /// Ban whoever wrote this post. The server resolves them; the response names nobody.
+    pub async fn ban_post_author(
+        &self,
+        board: &str,
+        post_number: i64,
+    ) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            &format!("/api/v1/board/{board}/post/{post_number}/ban_author"),
+            &serde_json::Value::Null,
+        )
+        .await
+    }
+
+    /// Replace your own author seed, orphaning everything you have posted.
+    pub async fn rotate_author_seed(&self) -> Result<String, ApiError> {
+        standard_post::<String, _>("/api/v1/me/rotate_author_seed", &serde_json::Value::Null).await
+    }
+
     #[allow(unused_variables)]
     pub async fn get_boards(&self, override_cache: bool) -> Result<Vec<SafeBoard>, ApiError> {
         let ident = String::new();

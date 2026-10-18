@@ -3,7 +3,7 @@ use yew::prelude::*;
 use yew_router::prelude::use_route;
 
 use crate::{
-    components::{DeleteButton, File, MaybeLink, Reply, RichText, WatchButton},
+    components::{BanButton, DeleteButton, File, MaybeLink, Reply, RichText, WatchButton},
     helpers::CallbackContext,
     BaseRoute,
 };
@@ -13,6 +13,7 @@ pub fn Post(props: &Props) -> Html {
     let is_thread = use_route::<BaseRoute>().map_or(false, |b| b.thread_id().is_some());
 
     let timezone = use_context::<UseStateHandle<chrono_tz::Tz>>();
+    let me = use_context::<crate::MeContext>().unwrap_or_default();
 
     let on_click = use_state(|| None);
     let callback = use_context::<Option<CallbackContext>>().flatten();
@@ -65,6 +66,9 @@ pub fn Post(props: &Props) -> Html {
             } >
                 <div class="post-header">
                     <DeleteButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
+                    if me.can_moderate_site() {
+                        <BanButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
+                    }
                     if props.topic.is_some() {
                         <WatchButton post_number={props.post.post_number} board_discriminator={props.post.board_discriminator.clone()} />
                     }
