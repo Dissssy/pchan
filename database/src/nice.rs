@@ -542,9 +542,12 @@ pub async fn get_random_spoiler(
 
     // let spoiler = spoilers.select(img).load::<String>(conn).await?;
 
+    // An empty board list means the spoiler applies everywhere. The previous schema expressed
+    // that with NULL, but the column is NOT NULL now, and `is_null()` on a non-nullable
+    // column always evaluates false — which silently disabled every global spoiler.
     let spoiler = spoilers
         .or_filter(boards.contains(vec![board]))
-        .or_filter(boards.is_null())
+        .or_filter(boards.eq(Vec::<i64>::new()))
         .select(img_path)
         .load::<String>(conn)
         .await?;
