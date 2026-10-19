@@ -130,6 +130,10 @@ pub struct CreatePost {
     pub content: String,
     pub author: Option<String>,
     pub moderator: bool,
+    /// Watch the thread this post lands in. Decided by the member's own setting, and done
+    /// here rather than in a second request so a failure cannot leave the post unwatched.
+    #[serde(default)]
+    pub watch: bool,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -224,11 +228,65 @@ pub struct Banner {
     pub href: Option<String>,
 }
 
+/// What the live event stream carries. `Open` and `Resync` are control messages; the rest
+/// describe something that happened.
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum PushMessage {
+    /// The stream is connected.
     Open,
     NewPost(Arc<SafePost>),
-    Close,
+    PostDeleted(Arc<DeletedPost>),
+    /// The server cannot replay what this client missed (it was away too long, or the server
+    /// restarted). Anything on screen should be reloaded.
+    Resync,
+    /// This member's unread notifications changed, perhaps from another tab or device.
+    InboxChanged,
+}
+
+/// A watched thread with posts the member has not read, as the notification inbox lists it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct ThreadNotification {
+    pub board_discriminator: String,
+    pub thread_post_number: i64,
+    pub topic: String,
+    /// Posts above the member's read mark.
+    pub unread: i64,
+    /// Number of the oldest unread post, where "jump to it" should land.
+    pub first_unread: i64,
+    /// The newest unread post, shown as the preview.
+    pub latest: SafePost,
+}
+
+/// What one of the member's tabs is doing: facts, not conclusions. The server works out from
+/// the tabs which one the member is using, and how closely, so the answer keeps changing as
+/// time passes without any further report. Sent as things change and repeated while visible,
+/// kept only in memory, and it expires on its own if a tab disappears.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct Presence {
+    /// Random per page load. Tells one tab from another; identifies nobody.
+    pub tab: String,
+    /// The tab is visible. A hidden tab is not being used.
+    pub visible: bool,
+    /// `board/number` of the full thread view this tab is showing, if it is showing one.
+    pub reading: Option<String>,
+    /// Seconds since the member last touched this tab (mouse, keys, scrolling, touch).
+    pub quiet_secs: u32,
+}
+
+/// How far a member has read in a thread.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReadMark {
+    pub through: i64,
+}
+
+/// A post, or a whole thread, that no longer exists.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct DeletedPost {
+    pub board_discriminator: String,
+    pub thread_post_number: i64,
+    pub post_number: i64,
+    /// The deleted post was the thread's first, so the thread is gone with it.
+    pub thread_deleted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
@@ -259,6 +317,38 @@ pub struct MeInfo {
     /// Boards this viewer moderates directly, by discriminator. Empty for site roles, which
     /// are not scoped to particular boards — check `can_moderate_site` first.
     pub moderated_boards: Vec<String>,
+    /// A label for what this browser may remember about the member's own posts. It changes
+    /// when someone else signs in or the member starts a new posting identity, and the browser
+    /// drops what it remembered when it does. Meaningless to anyone else, and sent to no one
+    /// else.
+    pub cache_key: String,
+    /// The member asked to be pushed when someone replies to one of their posts.
+    pub reply_push: bool,
+}
+
+/// A post, named the way a link names it.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub struct PostRef {
+    pub board_discriminator: String,
+    pub post_number: i64,
+}
+
+/// Replies made since a position, for a browser that was away. The same for everyone (apart
+/// from leaving out the asker's own posts), so it needs no idea of who might care about which.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RepliesPage {
+    /// Posts that reply to other posts, oldest first, on boards the asker can see.
+    pub posts: Vec<SafePost>,
+    /// Where to ask from next time. Moves forward even when nothing was returned.
+    pub cursor: i64,
+    /// There are more waiting; ask again from `cursor`.
+    pub more: bool,
+}
+
+/// Asks which of these posts the member wrote.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AuthoredRequest {
+    pub posts: Vec<PostRef>,
 }
 
 impl MeInfo {

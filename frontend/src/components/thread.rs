@@ -21,7 +21,6 @@ pub fn Thread(props: &Props) -> Html {
     if let Some(refresh) = &props.refresh {
         if let Some((window, x, y)) = &**refresh {
             refresh.set(None);
-            set_watching.set(Some(true));
             state.set(props.thread.clone_with_handle(pending.clone()));
             let (window, x, y) = (window.clone(), *x, *y);
             gloo_timers::callback::Timeout::new(10, move || match (x, y) {
@@ -33,6 +32,16 @@ pub fn Thread(props: &Props) -> Html {
                 }
             })
             .forget();
+        }
+    }
+
+    // A post the viewer just made also watched the thread; tell the watch button, which would
+    // otherwise keep showing what it fetched when the page loaded. Live updates from other
+    // people say nothing about whether the viewer is watching, so they no longer touch it.
+    if let Some(hint) = &props.watch_hint {
+        if let Some(watching) = **hint {
+            hint.set(None);
+            set_watching.set(Some(watching));
         }
     }
 
@@ -133,6 +142,8 @@ pub struct Props {
     pub thread: ThreadState,
     #[prop_or_default]
     pub refresh: Option<Refresher>,
+    #[prop_or_default]
+    pub watch_hint: Option<UseStateHandle<Option<bool>>>,
     pub scroll_on_load: bool,
 }
 

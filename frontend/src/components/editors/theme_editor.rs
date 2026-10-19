@@ -106,6 +106,8 @@ pub fn ThemeEditor() -> Html {
                                     <ColorEditor label="Bluetext Color" field={theme.bluetext_color.clone()} position={Position::Middle} />
                                     <ColorEditor label="Peetext Color" field={theme.peetext_color.clone()} position={Position::Middle} />
                                     <ColorEditor label="Topic Color" field={theme.topic_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Own Post Color" field={theme.own_post_color.clone()} position={Position::Middle} />
+                                    <ColorEditor label="Own Post Border Color" field={theme.own_post_border_color.clone()} position={Position::Middle} />
                                     <ColorEditor label="Error Color" field={theme.error_color.clone()} position={Position::Last} />
                                     //<SizeEditor label="Border Width" field="border_width" />
                                     //<BorderTypeEditor label="Border Type" field="border_type" />

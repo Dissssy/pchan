@@ -337,3 +337,22 @@
     filter: brightness(90%);
   }
 }
+/* A post the member wrote, known from what this browser remembers (see authored.rs). Starts
+   as a copy of how any other post looks; the colors come from the theme's "own post" entries
+   so they can be changed on their own. */
+.post.mine,
+.parent-post.mine {
+  border-radius: var(--border-radius);
+  height: min-content;
+  background-color: var(--own-post-color, var(--primary-color));
+}
+
+.post.mine {
+  margin-block: 0.4rem;
+}
+
+.post.mine .post-header,
+.parent-post.mine .post-header,
+.post.mine .post-body {
+  border-color: var(--own-post-border-color, var(--border-color));
+}

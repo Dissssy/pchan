@@ -22,6 +22,51 @@ pub struct Config {
     /// Whether to mark the session cookie `Secure`. Must be true in production; settable to
     /// false only so the site can be exercised over plain HTTP locally.
     pub cookie_secure: bool,
+    pub vapid: Vapid,
+}
+
+/// The key pair the server signs web pushes with.
+///
+/// Only the private half is configured. The public half is what the browser needs to subscribe
+/// (`applicationServerKey`), and it is worked out from the private one, so the two cannot be
+/// set to values that do not belong together, and there is nothing second to rotate.
+#[derive(Debug)]
+pub struct Vapid {
+    /// `VAPID_PRIVATE_KEY`: the P-256 private key, base64url without padding.
+    pub private_key: String,
+    /// The matching public key in the form `pushManager.subscribe` takes.
+    pub public_key: String,
+}
+
+impl Vapid {
+    pub fn from_private(private_key: &str) -> Result<Self> {
+        use base64::Engine as _;
+        let private_key = private_key.trim();
+        // The library panics, rather than failing, on a key of the wrong length, so a typo here
+        // would otherwise crash startup with an unhelpful message. A P-256 scalar is 32 bytes.
+        let raw = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(private_key)
+            .map_err(|e| anyhow::anyhow!("VAPID_PRIVATE_KEY is not base64url ({e})"))?;
+        if raw.len() != 32 {
+            bail!(
+                "VAPID_PRIVATE_KEY decodes to {} bytes, not 32. It must be the PRIVATE key (the \
+                 public one is 65 bytes), base64url without padding, as printed by \
+                 `npx web-push generate-vapid-keys`",
+                raw.len()
+            );
+        }
+        let builder = web_push::VapidSignatureBuilder::from_base64_no_sub(private_key).map_err(|e| {
+            anyhow::anyhow!(
+                "VAPID_PRIVATE_KEY is not a usable P-256 private key ({e}); it is the base64url \
+                 (no padding) form, as printed by `npx web-push generate-vapid-keys`"
+            )
+        })?;
+        Ok(Self {
+            private_key: private_key.to_owned(),
+            public_key: base64::engine::general_purpose::URL_SAFE_NO_PAD
+                .encode(builder.get_public_key()),
+        })
+    }
 }
 
 #[derive(Debug)]
@@ -187,6 +232,7 @@ impl Config {
             keys,
             public_url,
             cookie_secure,
+            vapid: Vapid::from_private(&var("VAPID_PRIVATE_KEY")?)?,
         })
     }
 }
@@ -267,6 +313,31 @@ mod tests {
             post_author: vec![3; 32],
             invite: vec![4; 32],
             push_encryption: vec![5; 32],
+        }
+    }
+
+    #[test]
+    fn the_public_vapid_key_follows_from_the_private_one() {
+        use base64::Engine as _;
+        // A throwaway key, not one in use anywhere.
+        let private = base64::engine::general_purpose::URL_SAFE_NO_PAD.encode((1u8..=32).collect::<Vec<_>>());
+        let vapid = Vapid::from_private(&format!("  {private}\n")).expect("a valid key, whitespace tolerated");
+        assert_eq!(vapid.private_key, private);
+
+        // Browsers want an uncompressed P-256 point: 0x04 followed by two 32-byte coordinates.
+        let public = base64::engine::general_purpose::URL_SAFE_NO_PAD
+            .decode(&vapid.public_key)
+            .expect("base64url");
+        assert_eq!(public.len(), 65);
+        assert_eq!(public[0], 4);
+        assert_eq!(vapid.public_key, Vapid::from_private(&private).unwrap().public_key, "stable");
+    }
+
+    #[test]
+    fn a_bad_vapid_key_is_refused_at_startup() {
+        for bad in ["", "not base64!", "AAAA", "BD5mCRfVrSTvzmpHYulsiKI5ogPBC9y_K-JJBVxavAqulOQP94lgFYoEfg93xy7ZPGKapn8jAyamwHukxYaQFHA"] {
+            // The last is a *public* key, the easy mistake of pasting the wrong half.
+            assert!(Vapid::from_private(bad).is_err(), "{bad:?} should be refused");
         }
     }
 

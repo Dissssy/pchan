@@ -168,13 +168,14 @@ impl Post {
         viewer: &Viewer,
     ) -> Result<SafePost> {
         use crate::posts::dsl::*;
+        // Ask the database which posts reply to this one. This used to load every post in the
+        // table and filter in Rust, on every post made and every thread read.
+        use diesel::PgArrayExpressionMethods;
         let replies = posts
-            .select(Self::as_select())
-            .load::<Self>(conn)
-            .await?
-            .iter()
-            .flat_map(|p| p.replies_to.contains(&self.id).then_some(p.id))
-            .collect::<Vec<i64>>();
+            .filter(replies_to.contains(vec![self.id]))
+            .select(id)
+            .load::<i64>(conn)
+            .await?;
 
         let mut newreplies = Vec::new();
         for reply in replies {
@@ -528,6 +529,10 @@ impl Viewer {
     pub fn post_author_hash(&self, post_id: i64) -> String {
         crate::keys::post_author_hash(&self.author_seed, post_id)
     }
+    /// See [`crate::keys::authored_cache_key`].
+    pub fn authored_cache_key(&self) -> String {
+        crate::keys::authored_cache_key(&self.id, &self.author_seed)
+    }
     /// This member's access-grant hash for one board.
     pub fn invite_hash(&self, board_id: i64) -> String {
         crate::keys::invite_hash(&self.id, board_id)
@@ -772,6 +777,58 @@ pub struct StoredPush {
     pub id: Uuid,
     pub member_id: Uuid,
     pub data: Vec<u8>,
+    pub endpoint_hash: Option<String>,
+}
+
+/// Most devices one member may register. Every post in a watched thread fans out to all of
+/// them, so an unbounded list is an amplifier.
+const MAX_PUSH_SUBSCRIPTIONS: i64 = 20;
+
+/// Hosts a browser's push service can legitimately live on.
+///
+/// The server POSTs to the stored endpoint, so accepting any URL lets a member aim it at
+/// localhost, the docker network or a metadata service. Browsers only ever hand out endpoints
+/// on their vendor's push service, so anything else is not a real subscription. Extend this if
+/// a vendor is missing; do not loosen it to "any https host".
+const PUSH_HOSTS_EXACT: &[&str] = &["fcm.googleapis.com", "android.googleapis.com"];
+const PUSH_HOST_SUFFIXES: &[&str] = &[
+    ".push.services.mozilla.com",
+    ".push.apple.com",
+    ".notify.windows.com",
+];
+
+/// Whether `endpoint` is an https URL on a known push service, with no credentials, no custom
+/// port and no IP-literal host.
+pub fn push_endpoint_allowed(endpoint: &str) -> bool {
+    if endpoint.len() > 2048 {
+        return false;
+    }
+    let Ok(url) = url::Url::parse(endpoint) else {
+        return false;
+    };
+    if url.scheme() != "https"
+        || !url.username().is_empty()
+        || url.password().is_some()
+        || url.port().is_some()
+    {
+        return false;
+    }
+    let Some(url::Host::Domain(host)) = url.host() else {
+        return false;
+    };
+    PUSH_HOSTS_EXACT.contains(&host) || PUSH_HOST_SUFFIXES.iter().any(|s| host.ends_with(s))
+}
+
+fn validate_subscription(sub: &SubscriptionData) -> Result<()> {
+    if !push_endpoint_allowed(&sub.endpoint) {
+        anyhow::bail!("unsupported push endpoint");
+    }
+    for key in [&sub.keys.auth, &sub.keys.p256dh] {
+        if key.is_empty() || key.len() > 256 {
+            anyhow::bail!("malformed push subscription keys");
+        }
+    }
+    Ok(())
 }
 
 /// A member's push subscriptions, decrypted. The row id comes back too so a subscription that
@@ -790,45 +847,171 @@ pub async fn get_push_subscriptions(
         .load::<StoredPush>(conn)
         .await?;
 
-    let mut out = Vec::with_capacity(rows.len());
-    for row in rows {
-        let plain = match crate::keys::open_push(&row.data) {
-            Ok(p) => p,
-            Err(e) => {
-                log::warn!("skipping undecryptable push subscription {}: {e}", row.id);
-                continue;
-            }
-        };
-        match serde_json::from_slice::<SubscriptionData>(&plain) {
-            Ok(sub) => out.push((row.id, sub)),
-            Err(e) => log::warn!("skipping malformed push subscription {}: {e}", row.id),
-        }
-    }
-    Ok(out)
+    Ok(rows.into_iter().filter_map(decrypt_row).collect())
 }
 
-/// Store a push subscription, ignoring one this member already has.
+fn decrypt_row(row: StoredPush) -> Option<(Uuid, SubscriptionData)> {
+    let plain = match crate::keys::open_push(&row.data) {
+        Ok(p) => p,
+        Err(e) => {
+            log::warn!("skipping undecryptable push subscription {}: {e}", row.id);
+            return None;
+        }
+    };
+    match serde_json::from_slice::<SubscriptionData>(&plain) {
+        Ok(sub) => Some((row.id, sub)),
+        Err(e) => {
+            log::warn!("skipping malformed push subscription {}: {e}", row.id);
+            None
+        }
+    }
+}
+
+/// This member's rows from before `endpoint_hash` existed that hold `endpoint`.
+async fn unhashed_rows_for_endpoint(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    member: &Uuid,
+    endpoint: &str,
+) -> Result<Vec<Uuid>> {
+    use crate::member_push::dsl::*;
+
+    let rows = member_push
+        .filter(member_id.eq(member))
+        .filter(endpoint_hash.is_null())
+        .load::<StoredPush>(conn)
+        .await?;
+    Ok(rows
+        .into_iter()
+        .filter_map(decrypt_row)
+        .filter(|(_, sub)| sub.endpoint == endpoint)
+        .map(|(row, _)| row)
+        .collect())
+}
+
+/// Store a push subscription for `member`, taking the endpoint over from anyone else.
+///
+/// An endpoint is a browser, not a login: if another member registered it earlier (they were
+/// logged in on this browser before), their row is replaced rather than left to deliver this
+/// member's notifications to them, and theirs to this member. The upsert on the unique
+/// `endpoint_hash` does that in one statement, so two tabs subscribing at once cannot race.
 pub async fn add_push_subscription(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     member: &Uuid,
     sub: &SubscriptionData,
 ) -> Result<()> {
-    // Ciphertext differs every time (fresh nonce), so duplicates have to be detected by
-    // comparing decrypted values rather than by a unique index.
-    if get_push_subscriptions(conn, member)
-        .await?
-        .iter()
-        .any(|(_, existing)| existing == sub)
-    {
-        return Ok(());
+    use crate::member_push::dsl::*;
+    use diesel::upsert::excluded;
+
+    validate_subscription(sub)?;
+    let hash = crate::keys::push_endpoint_hash(&sub.endpoint);
+
+    // Adopt this member's own pre-hash row instead of adding a second one beside it.
+    for stale in unhashed_rows_for_endpoint(conn, member, &sub.endpoint).await? {
+        diesel::delete(member_push.filter(id.eq(stale)))
+            .execute(conn)
+            .await?;
     }
 
-    use crate::member_push::dsl::*;
+    let already_mine: bool = diesel::select(diesel::dsl::exists(
+        member_push
+            .filter(member_id.eq(member))
+            .filter(endpoint_hash.eq(&hash)),
+    ))
+    .get_result(conn)
+    .await?;
+    if !already_mine {
+        let held: i64 = member_push
+            .filter(member_id.eq(member))
+            .select(count(id))
+            .first(conn)
+            .await?;
+        if held >= MAX_PUSH_SUBSCRIPTIONS {
+            anyhow::bail!("too many registered devices");
+        }
+    }
+
     let sealed = crate::keys::seal_push(&serde_json::to_vec(sub)?)?;
     diesel::insert_into(member_push)
-        .values((member_id.eq(member), data.eq(sealed)))
+        .values((
+            member_id.eq(member),
+            data.eq(&sealed),
+            endpoint_hash.eq(&hash),
+        ))
+        .on_conflict(endpoint_hash)
+        .do_update()
+        .set((
+            member_id.eq(excluded(member_id)),
+            data.eq(excluded(data)),
+        ))
         .execute(conn)
         .await?;
+    Ok(())
+}
+
+/// Forget this member's subscription for `endpoint`. Called on logout, while the session that
+/// proves who is asking still exists. Only ever touches the caller's own rows.
+pub async fn remove_push_endpoint(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    member: &Uuid,
+    endpoint: &str,
+) -> Result<()> {
+    use crate::member_push::dsl::*;
+
+    let hash = crate::keys::push_endpoint_hash(endpoint);
+    diesel::delete(
+        member_push
+            .filter(member_id.eq(member))
+            .filter(endpoint_hash.eq(&hash)),
+    )
+    .execute(conn)
+    .await?;
+    for stale in unhashed_rows_for_endpoint(conn, member, endpoint).await? {
+        diesel::delete(member_push.filter(id.eq(stale)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Give rows from before `endpoint_hash` existed a hash. Run once at startup.
+///
+/// Two legacy rows can hold the same endpoint (that was the bug). The first keeps it; the
+/// rest are deleted, and the member they belonged to re-registers on their next page load.
+pub async fn backfill_push_endpoint_hashes(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<()> {
+    use crate::member_push::dsl::*;
+    use diesel::result::{DatabaseErrorKind, Error};
+
+    let rows = member_push
+        .filter(endpoint_hash.is_null())
+        .load::<StoredPush>(conn)
+        .await?;
+    let (mut filled, mut dropped) = (0, 0);
+    for row in rows {
+        let row_id = row.id;
+        let Some((_, sub)) = decrypt_row(row) else {
+            continue;
+        };
+        let hash = crate::keys::push_endpoint_hash(&sub.endpoint);
+        match diesel::update(member_push.filter(id.eq(row_id)))
+            .set(endpoint_hash.eq(&hash))
+            .execute(conn)
+            .await
+        {
+            Ok(_) => filled += 1,
+            Err(Error::DatabaseError(DatabaseErrorKind::UniqueViolation, _)) => {
+                diesel::delete(member_push.filter(id.eq(row_id)))
+                    .execute(conn)
+                    .await?;
+                dropped += 1;
+            }
+            Err(e) => return Err(e.into()),
+        }
+    }
+    if filled + dropped > 0 {
+        log::info!("push endpoint hashes: {filled} filled, {dropped} duplicate rows dropped");
+    }
     Ok(())
 }
 
@@ -842,6 +1025,88 @@ pub async fn remove_push_subscription(
         .execute(conn)
         .await?;
     Ok(())
+}
+
+#[cfg(test)]
+mod push_tests {
+    use super::push_endpoint_allowed as ok;
+
+    #[test]
+    fn accepts_real_push_services() {
+        assert!(ok("https://fcm.googleapis.com/fcm/send/abc"));
+        assert!(ok("https://updates.push.services.mozilla.com/wpush/v2/abc"));
+        assert!(ok("https://web.push.apple.com/QAbc"));
+        assert!(ok("https://wns2-par02p.notify.windows.com/w/?token=abc"));
+    }
+
+    #[test]
+    fn rejects_everything_else() {
+        for bad in [
+            "http://fcm.googleapis.com/fcm/send/abc",
+            "https://localhost/x",
+            "https://127.0.0.1/x",
+            "https://[::1]/x",
+            "https://169.254.169.254/latest/meta-data",
+            "https://fcm.googleapis.com:8443/x",
+            "https://fcm.googleapis.com@evil.example/x",
+            "https://user:pw@fcm.googleapis.com/x",
+            "https://evil.example/fcm.googleapis.com",
+            "https://fcm.googleapis.com.evil.example/x",
+            "https://notpush.apple.com.evil.example/x",
+            "https://evilpush.apple.com/x",
+            "https://push.apple.com/x",
+            "fcm.googleapis.com/x",
+            "",
+        ] {
+            assert!(!ok(bad), "{bad} should be rejected");
+        }
+    }
+}
+
+/// Whether this member asked to be pushed when someone replies to one of their posts.
+pub async fn reply_push_enabled(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    member: &Uuid,
+) -> Result<bool> {
+    use crate::member_reply_push::dsl::*;
+    Ok(diesel::select(diesel::dsl::exists(
+        member_reply_push.filter(member_id.eq(member)),
+    ))
+    .get_result(conn)
+    .await?)
+}
+
+/// Opt a member in or out of reply pushes.
+pub async fn set_reply_push(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    member: &Uuid,
+    enabled: bool,
+) -> Result<()> {
+    use crate::member_reply_push::dsl::*;
+    if enabled {
+        diesel::insert_into(member_reply_push)
+            .values(member_id.eq(member))
+            .on_conflict_do_nothing()
+            .execute(conn)
+            .await?;
+    } else {
+        diesel::delete(member_reply_push.filter(member_id.eq(member)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Every member who opted in to reply pushes.
+pub async fn reply_push_members(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<Vec<Member>> {
+    use crate::members::dsl as m;
+    use crate::member_reply_push::dsl as r;
+    Ok(m::members
+        .filter(m::id.eq_any(r::member_reply_push.select(r::member_id)))
+        .load::<Member>(conn)
+        .await?)
 }
 
 /// Look up a member by id. Returns `None` if the row is gone.

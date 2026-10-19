@@ -12,6 +12,23 @@ use crate::{
 pub fn Post(props: &Props) -> Html {
     let is_thread = use_route::<BaseRoute>().map_or(false, |b| b.thread_id().is_some());
 
+    // Posts the member wrote are drawn differently. This browser may not know yet, in which
+    // case it asks (together with every other post that came on screen at once) and this
+    // redraws when the answer arrives.
+    let authored = crate::authored::use_authored();
+    let board = props.post.board_discriminator.clone();
+    let number = props.post.post_number;
+    let mine = authored.is_mine(&board, number) == Some(true);
+    {
+        let unknown = authored.is_mine(&board, number).is_none();
+        let rev = authored.rev;
+        use_effect_with((board.clone(), number, unknown, rev), move |(board, number, unknown, _)| {
+            if *unknown {
+                authored.want([(board.clone(), *number)]);
+            }
+        });
+    }
+
     let timezone = use_context::<UseStateHandle<chrono_tz::Tz>>();
     let me = use_context::<crate::MeContext>().unwrap_or_default();
 
@@ -59,9 +76,10 @@ pub fn Post(props: &Props) -> Html {
                 }
             }
             <div class={
-                format!("{} {}",
+                format!("{} {} {}",
                     if props.topic.is_some() { "parent-post" } else { "post" },
-                    if props.invert { "invert" } else { "normal" }
+                    if props.invert { "invert" } else { "normal" },
+                    if mine { "mine" } else { "" }
                 )
             } >
                 <div class="post-header">

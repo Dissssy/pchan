@@ -102,6 +102,20 @@ pub fn invite_hash(member_id: &Uuid, board_id: i64) -> String {
     )
 }
 
+/// What a browser's memory of "which posts are mine" is tied to.
+///
+/// Keyed on the member and on their current author seed: a different member signing in on the
+/// same browser, or this member starting a new posting identity, both change it, and the
+/// browser throws the memory away. It is only ever sent to the member it describes.
+pub fn authored_cache_key(member_id: &Uuid, author_seed: &str) -> String {
+    mac(
+        &keyring().invite,
+        "authored-cache:v1",
+        &[member_id.as_bytes(), author_seed.as_bytes()],
+    )[..16]
+        .to_owned()
+}
+
 /// MAC for the short-lived join ticket, which carries a request hash across the one round
 /// trip between logging in and submitting a join request (there is no session yet).
 ///
@@ -125,6 +139,19 @@ pub fn session_token_hash(token: &str) -> String {
     let mut hasher = Sha256::new();
     hasher.update(token.as_bytes());
     hex::encode(hasher.finalize())
+}
+
+/// `member_push.endpoint_hash` — lets a subscribe find, and take over, the row another member
+/// left for the same browser.
+///
+/// Keyed with the push encryption key under its own domain label rather than a sixth key: it
+/// protects the same value and has the same lifetime, and the label keeps the two uses apart.
+pub fn push_endpoint_hash(endpoint: &str) -> String {
+    mac(
+        &keyring().push_encryption,
+        "push-endpoint:v1",
+        &[endpoint.as_bytes()],
+    )
 }
 
 /// Encrypt a push subscription for storage.
@@ -215,6 +242,42 @@ mod tests {
         assert_ne!(invite_hash(&member, 1), invite_hash(&member, 2));
         assert_ne!(invite_hash(&member, 1), invite_hash(&other, 1));
         assert_eq!(invite_hash(&member, 1), invite_hash(&member, 1));
+    }
+
+    /// The authorship check runs this once per post asked about, so how cheap it is decides how
+    /// large a batch the endpoint can safely take. Kept as a test so the figure stays honest.
+    #[test]
+    fn checking_authorship_is_cheap() {
+        let _ = init(test_keyring());
+        let started = std::time::Instant::now();
+        let mut last = String::new();
+        for post in 0..10_000i64 {
+            last = post_author_hash("seed-for-timing", post);
+        }
+        let per_check = started.elapsed() / 10_000;
+        eprintln!("post_author_hash: {per_check:?} each");
+        assert_eq!(last.len(), 64);
+        // Generous: it is microseconds. This only guards against it becoming expensive.
+        assert!(per_check < std::time::Duration::from_micros(500), "{per_check:?}");
+    }
+
+    #[test]
+    fn the_authored_cache_key_follows_the_member_and_their_seed() {
+        let _ = init(test_keyring());
+        let (a, b) = (Uuid::new_v4(), Uuid::new_v4());
+        let key = authored_cache_key(&a, "seed");
+        assert_eq!(key, authored_cache_key(&a, "seed"));
+        assert_ne!(key, authored_cache_key(&b, "seed"), "another member");
+        assert_ne!(key, authored_cache_key(&a, "new seed"), "a new posting identity");
+        assert_eq!(key.len(), 16);
+    }
+
+    #[test]
+    fn push_endpoint_hash_is_stable_and_distinct() {
+        let _ = init(test_keyring());
+        let a = push_endpoint_hash("https://fcm.googleapis.com/fcm/send/a");
+        assert_eq!(a, push_endpoint_hash("https://fcm.googleapis.com/fcm/send/a"));
+        assert_ne!(a, push_endpoint_hash("https://fcm.googleapis.com/fcm/send/b"));
     }
 
     #[test]

@@ -1,54 +1,157 @@
-.notification-popup {
+/* The bell, next to the settings icon. */
+.notification-bell {
   position: fixed;
-  right: 0.4em;
-  bottom: 0.4em;
+  right: 2.6rem;
+  top: 0.45rem;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  gap: 0.2rem;
+  cursor: pointer;
+  user-select: none;
+}
+
+.notification-badge {
+  min-width: 1.1em;
+  padding-inline: 0.3em;
+  text-align: center;
+  font-size: 0.75em;
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--secondary-color);
+}
+
+.notification-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 4;
+}
+
+.notification-panel {
+  position: fixed;
+  top: 2.2rem;
+  right: 0.6rem;
+  z-index: 5;
+  box-sizing: border-box;
+  width: min(30rem, calc(100vw - 1.2rem));
+  max-height: 75vh;
+  overflow-y: auto;
+  padding: 0.4rem;
   border: var(--border-width) var(--border-type) var(--border-color);
   border-radius: var(--border-radius);
   background-color: var(--primary-color);
-  display: flex;
-  flex-direction: column;
 }
 
-.notification-popup-toggle {
-  text-align: center;
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+.notification-panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  padding-bottom: 0.2rem;
+}
+
+.notification-section {
+  padding: 0.3rem 0.1rem 0.1rem;
+  opacity: 0.7;
+  font-size: 0.85em;
+}
+
+.notification-empty {
+  padding: 0.6rem 0.2rem;
+  opacity: 0.7;
+}
+
+.notification-toasts {
+  position: fixed;
+  right: 0.4rem;
+  bottom: 0.4rem;
+  z-index: 5;
+  display: flex;
+  flex-direction: column;
+  width: min(26rem, calc(100vw - 0.8rem));
+  pointer-events: none;
+}
+
+.notification-toasts > * {
+  pointer-events: auto;
+}
+
+/* A notification is drawn as a post, so it uses the post's own header and body styles. These
+   only undo what a post assumes about its surroundings. */
+.notification-card {
+  box-sizing: border-box;
+  width: 100%;
   cursor: pointer;
 }
 
-.notification {
-  border-top: var(--border-width) var(--border-type) var(--border-color);
-  display: flex;
-  flex-direction: column;
+.notification-card .post-header {
+  flex-wrap: wrap;
+  white-space: normal;
+  align-items: baseline;
+  column-gap: 0.5rem;
 }
 
-.notification-header {
-  display: flex;
-  flex-direction: row;
-  border-bottom: var(--border-width) var(--border-type) var(--border-color);
+.notification-card .post-body {
+  display: flow-root;
 }
 
-.notification-close {
-  border-right: var(--border-width) var(--border-type) var(--border-color);
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+.notification-toast {
+  background-color: var(--primary-color);
+  animation: notification-toast-in 0.25s ease-out;
+}
+
+.notification-thumb {
+  float: left;
+  max-width: 4.5rem;
+  max-height: 4.5rem;
+  margin-right: 0.4rem;
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius);
+}
+
+/* Same icon buttons the post header uses: glyphs, not words. */
+.notification-icon-button {
   cursor: pointer;
+  padding-inline: 0.2rem;
+  opacity: 0.85;
 }
 
-.notification-title {
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+.notification-icon-button:hover {
+  opacity: 1;
+  color: var(--secondary-text-color);
 }
 
-.notification-body {
-  display: flex;
-  flex-direction: row;
+.notification-actions {
+  margin-left: auto;
+  display: inline-flex;
 }
 
-.notification-content {
-  padding-inline: 0.4em;
-  padding-block: 0.2em;
+.notification-action {
+  cursor: pointer;
+  text-decoration: underline;
 }
+
+/* A reply to one of the member's own posts. */
+.notification-reply-chip {
+  color: var(--secondary-text-color);
+}
+
+.notification-reply .post-header {
+  border-left: 0.2rem var(--border-type) var(--secondary-text-color);
+}
+
+@keyframes notification-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .notification-toast {
+    animation: none;
+  }
+}
+
 .update-banner {
   position: fixed;
   left: 0.4em;
@@ -68,4 +171,23 @@
 .update-banner-button {
   cursor: pointer;
   text-decoration: underline;
+}
+
+.live-paused {
+  position: fixed;
+  left: 0.4em;
+  bottom: 0.4em;
+  padding-inline: 0.6em;
+  padding-block: 0.3em;
+  border: var(--border-width) var(--border-type) var(--border-color);
+  border-radius: var(--border-radius);
+  background-color: var(--primary-color);
+  opacity: 0;
+  animation: live-paused-in 0.3s ease 4s forwards;
+}
+
+@keyframes live-paused-in {
+  to {
+    opacity: 1;
+  }
 }

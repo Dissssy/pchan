@@ -60,29 +60,281 @@
             }
         }
 
+        // Reports errors to the server so they can be read from its log instead of described.
+        // Plain JavaScript on purpose: it has to keep working when the WASM module has died,
+        // which is exactly when it is needed.
+        //
+        // What leaves the browser: the error text and stack, a page type with board and thread
+        // numbers replaced, a browser family and version, and the frontend build. Nothing
+        // about the person or what they have written. Turned off by the setting "error_reports".
+        (function () {
+            var sent = {};
+            var count = 0;
+            var MAX_PER_PAGE = 10;
+            var staticPages = ['/', '/settings', '/redeem', '/request-access', '/declined', '/admin', '/404'];
+
+            function enabled() {
+                try {
+                    return window.localStorage.getItem('error_reports') !== 'false';
+                } catch (e) {
+                    return true;
+                }
+            }
+
+            function pageType() {
+                var path = window.location.pathname;
+                var trimmed = path.length > 1 ? path.replace(/\/$/, '') : path;
+                if (staticPages.indexOf(trimmed) >= 0) {
+                    return trimmed;
+                }
+                if (/^\/[^\/]+\/thread\/[^\/]+$/.test(trimmed)) {
+                    return '/:board/thread/:id';
+                }
+                if (/^\/[^\/]+$/.test(trimmed)) {
+                    return '/:board';
+                }
+                return '/:other';
+            }
+
+            function browser() {
+                var ua = navigator.userAgent || '';
+                var m = /(Firefox|Edg|OPR|Chrome|Version)\/(\d+)/.exec(ua);
+                if (!m) {
+                    return null;
+                }
+                var names = { Edg: 'Edge', OPR: 'Opera', Version: 'Safari' };
+                return (names[m[1]] || m[1]) + ' ' + m[2];
+            }
+
+            function build() {
+                var el = document.querySelector('link[href*="frontend_bg"]');
+                var m = el && /frontend_bg-([0-9a-f]{8})/.exec(el.getAttribute('href') || '');
+                return m ? m[1] : null;
+            }
+
+            window.pchanReport = function (kind, message, stack) {
+                try {
+                    if (!enabled() || count >= MAX_PER_PAGE) {
+                        return;
+                    }
+                    message = String(message || '');
+                    var key = kind + '|' + message.slice(0, 200);
+                    if (sent[key]) {
+                        return;
+                    }
+                    sent[key] = true;
+                    count++;
+                    fetch('/api/v1/client_errors', {
+                        method: 'post',
+                        headers: { 'Content-type': 'application/json' },
+                        body: JSON.stringify({
+                            kind: kind,
+                            message: message,
+                            stack: stack ? String(stack) : null,
+                            route: pageType(),
+                            build: build(),
+                            browser: browser()
+                        }),
+                        keepalive: true
+                    }).catch(function () { });
+                } catch (e) {
+                    // Reporting an error must never be the thing that breaks the page.
+                }
+            };
+
+            window.addEventListener('error', function (e) {
+                window.pchanReport('error', e.message || String(e.error), e.error && e.error.stack);
+            });
+            window.addEventListener('unhandledrejection', function (e) {
+                var reason = e.reason;
+                window.pchanReport('rejection', (reason && reason.message) || String(reason), reason && reason.stack);
+            });
+        })();
+
+        // Each page load gets an id so the server can tell a member's tabs apart (it identifies
+        // no one). When the page goes away for good, say so: the server drops what it knew about
+        // this tab straight away instead of waiting for its report to lapse.
+        window.pchanTabId = Math.floor(Math.random() * 1e15).toString(16) + Date.now().toString(16);
+        window.addEventListener('pagehide', function () {
+            try {
+                navigator.sendBeacon('/api/v1/presence', new Blob(
+                    [JSON.stringify({ tab: window.pchanTabId, visible: false, reading: null, quiet_secs: 0 })],
+                    { type: 'application/json' }
+                ));
+            } catch (e) { }
+        });
+
+        // Puts the unread count in the tab title, "(3) Title". Pages set their own titles whenever
+        // they render, so the count is put back each time the title changes.
+        (function () {
+            var unread = 0;
+            function apply() {
+                var base = document.title.replace(/^\(\d+\) /, '');
+                var wanted = unread > 0 ? '(' + unread + ') ' + base : base;
+                if (document.title !== wanted) {
+                    document.title = wanted;
+                }
+            }
+            window.pchanSetUnread = function (n) {
+                unread = n > 0 ? n : 0;
+                apply();
+            };
+            var title = document.querySelector('title');
+            if (title) {
+                new MutationObserver(apply).observe(title, { childList: true, characterData: true, subtree: true });
+            }
+        })();
+
+        // A push subscription belongs to this browser, not to whoever is logged in. Before
+        // the session ends, tell the server to forget this browser's subscription for the
+        // member leaving and drop it from the browser too, so the next person to log in here
+        // does not inherit the last one's notifications (and the last one does not receive
+        // theirs). The server also hands the subscription to whoever subscribes next, which
+        // covers a session that expired instead of being logged out.
+        function forgetPushSubscription() {
+            if (!('serviceWorker' in navigator)) {
+                return Promise.resolve();
+            }
+            return navigator.serviceWorker.getRegistration().then(function (registration) {
+                return registration && registration.pushManager.getSubscription();
+            }).then(function (subscription) {
+                if (!subscription) {
+                    return;
+                }
+                return fetch('/api/v1/unsubscribe', {
+                    method: 'post',
+                    headers: { 'Content-type': 'application/json' },
+                    body: JSON.stringify({ endpoint: subscription.endpoint })
+                }).catch(function (e) {
+                    console.error(e);
+                }).then(function () {
+                    return subscription.unsubscribe();
+                });
+            });
+        }
+
+        document.addEventListener('submit', function (event) {
+            var form = event.target;
+            if (!form || !form.getAttribute || form.getAttribute('action') !== '/logout') {
+                return;
+            }
+            event.preventDefault();
+            // What this browser remembered about the member's posts goes with the session.
+            try { window.localStorage.removeItem('authored_posts'); window.localStorage.removeItem('reply_notes'); window.localStorage.removeItem('reply_cursor'); } catch (e) { }
+            var sent = false;
+            var logout = function () {
+                if (!sent) {
+                    sent = true;
+                    form.submit();
+                }
+            };
+            // Never let a broken push service trap someone on the page they are leaving.
+            setTimeout(logout, 3000);
+            forgetPushSubscription().then(logout, logout);
+        }, true);
+
+        // Push notifications are something a member turns on, not something the page does to
+        // everyone who loads it. Nothing here asks for permission or subscribes by itself:
+        // `pchanEnablePush` is called from a click (watching a thread, the settings), and
+        // `pchanSyncPush` only re-tells the server about a subscription the browser already has.
+        function pushSupported() {
+            return 'serviceWorker' in navigator && 'PushManager' in window && 'Notification' in window;
+        }
+
+        function sendSubscription(subscription) {
+            return fetch('/api/v1/subscribe', {
+                method: 'post',
+                headers: { 'Content-type': 'application/json' },
+                body: JSON.stringify(subscription)
+            }).then(function (response) {
+                return response.text();
+            }).then(function (text) {
+                if (text !== '"ok"') {
+                    throw new Error(text);
+                }
+            });
+        }
+
+        // 'unsupported', 'denied', 'on' (subscribed on this device) or 'off'.
+        window.pchanPushState = function () {
+            if (!pushSupported()) {
+                return Promise.resolve('unsupported');
+            }
+            if (Notification.permission === 'denied') {
+                return Promise.resolve('denied');
+            }
+            return navigator.serviceWorker.getRegistration().then(function (registration) {
+                return registration && registration.pushManager.getSubscription();
+            }).then(function (subscription) {
+                return subscription ? 'on' : 'off';
+            }).catch(function () {
+                return 'off';
+            });
+        };
+
+        // Ask for permission if needed, subscribe, and tell the server. Resolves to the state
+        // afterwards, or 'error'. Must be called from a user action so the browser will prompt.
+        window.pchanEnablePush = function () {
+            if (!pushSupported()) {
+                return Promise.resolve('unsupported');
+            }
+            // Asked for first and synchronously: some browsers only prompt while handling the click.
+            var permission = Notification.permission === 'default'
+                ? Notification.requestPermission()
+                : Promise.resolve(Notification.permission);
+            return permission.then(function (result) {
+                if (result !== 'granted') {
+                    return 'denied';
+                }
+                return Promise.all([
+                    navigator.serviceWorker.ready,
+                    fetch('/api/v1/push_key', { credentials: 'same-origin' }).then(function (r) { return r.json(); })
+                ]).then(function (both) {
+                    var registration = both[0];
+                    var publicKey = both[1];
+                    return registration.pushManager.getSubscription().then(function (existing) {
+                        return existing || registration.pushManager.subscribe({
+                            userVisibleOnly: true,
+                            applicationServerKey: urlBase64ToUint8Array(publicKey)
+                        });
+                    });
+                }).then(sendSubscription).then(function () {
+                    return 'on';
+                });
+            }).catch(function (error) {
+                console.error(error);
+                return 'error';
+            });
+        };
+
+        // For a member who already turned push on: tell the server this browser belongs to whoever
+        // is signed in now (it moves a subscription from whoever had it before). Never prompts and
+        // never creates a subscription.
+        window.pchanSyncPush = function () {
+            if (!pushSupported() || Notification.permission !== 'granted') {
+                return Promise.resolve();
+            }
+            return navigator.serviceWorker.getRegistration().then(function (registration) {
+                return registration && registration.pushManager.getSubscription();
+            }).then(function (subscription) {
+                return subscription ? sendSubscription(subscription) : null;
+            }).catch(function (error) {
+                console.error(error);
+            });
+        };
+
+        // Turn push off on this device: the server forgets it and the browser drops it.
+        window.pchanDisablePush = function () {
+            return forgetPushSubscription().then(function () { return 'off'; }, function () { return 'error'; });
+        };
+
         window.onload = function () {
             'use strict';
+            // The worker is needed for any notification, but registering it asks for nothing.
             if ('serviceWorker' in navigator) {
-                navigator.serviceWorker
-                    .register('./service_worker.js').then((serviceWorkerRegistration) => {
-                        serviceWorkerRegistration.pushManager.subscribe({ userVisibleOnly: true, applicationServerKey: urlBase64ToUint8Array("BD5mCRfVrSTvzmpHYulsiKI5ogPBC9y_K-JJBVxavAqulOQP94lgFYoEfg93xy7ZPGKapn8jAyamwHukxYaQFHA") }).then(
-                            (pushSubscription) => {
-                                fetch('/api/v1/subscribe', {
-                                    method: 'post',
-                                    headers: { 'Content-type': 'application/json' },
-                                    body: JSON.stringify(pushSubscription)
-                                }).then((response) => {
-                                    response.text().then((text) => {
-                                        if (text != "\"ok\"") {
-                                            console.error(text);
-                                        }
-                                    });
-                                });
-                            },
-                            (error) => {
-                                console.error(error);
-                            });
-                    });
+                navigator.serviceWorker.register('./service_worker.js').catch(function (error) {
+                    console.error(error);
+                });
             }
         };
     </script>

@@ -85,6 +85,7 @@ pub fn PostBox(props: &Props) -> Html {
                         content: (*post.content).clone(),
                         moderator: *post.moderator,
                         file,
+                        watch: crate::helpers::auto_watch_enabled(),
                     };
 
                     match match routeinfo.map(|(board, thread)| (board, thread.id())) {
@@ -111,21 +112,10 @@ pub fn PostBox(props: &Props) -> Html {
                         }
                     } {
                         Ok(v) => {
+                            // Known to be the member's own, with no need to ask the server.
+                            crate::authored::record_mine(&v.board_discriminator, v.post_number);
                             if let Some(c) = on_successful {
                                 c.callback.emit(v.clone());
-                                if let Err(e) = api
-                                    .set_watching(
-                                        &v.board_discriminator,
-                                        v.thread_post_number,
-                                        true,
-                                    )
-                                    .await
-                                {
-                                    gloo::console::error!(format!(
-                                        "Failed to set watching: {}",
-                                        *e
-                                    ));
-                                }
                             }
                             post.reset();
                             state.set(ApiState::Loaded(v))

@@ -48,14 +48,7 @@ fn version() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejecti
     warp::path!("api" / "v1" / "version")
         .and(warp::get())
         .then(|| async {
-            let path = concat!(env!("DISTRIBUTION_PATH"), "/index.html");
-            let version = match tokio::fs::read_to_string(path).await {
-                Ok(html) => frontend_version(&html),
-                Err(e) => {
-                    log::warn!("could not read {path} for the version endpoint: {e}");
-                    None
-                }
-            };
+            let version = served_frontend_build().await;
 
             let status = if version.is_some() {
                 warp::http::StatusCode::OK
@@ -72,15 +65,31 @@ fn version() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejecti
         })
 }
 
+/// Which frontend build `index.html` currently points at, or `None` if it cannot be read.
+pub async fn served_frontend_build() -> Option<String> {
+    let path = concat!(env!("DISTRIBUTION_PATH"), "/index.html");
+    match tokio::fs::read_to_string(path).await {
+        Ok(html) => frontend_version(&html),
+        Err(e) => {
+            log::warn!("could not read {path} for the version endpoint: {e}");
+            None
+        }
+    }
+}
+
 /// The hash in `frontend_bg-<hash>.wasm`, as rewritten into `index.html` by `build.sh`.
+///
+/// The page may mention `frontend_bg-` elsewhere (script that looks the build up, a comment),
+/// so every occurrence is tried and the first one actually followed by a hash wins.
 fn frontend_version(index_html: &str) -> Option<String> {
     const PREFIX: &str = "frontend_bg-";
-    let start = index_html.find(PREFIX)? + PREFIX.len();
-    let hash: String = index_html[start..]
-        .chars()
-        .take_while(char::is_ascii_hexdigit)
-        .collect();
-    (!hash.is_empty()).then_some(hash)
+    index_html.match_indices(PREFIX).find_map(|(at, _)| {
+        let hash: String = index_html[at + PREFIX.len()..]
+            .chars()
+            .take_while(char::is_ascii_hexdigit)
+            .collect();
+        (!hash.is_empty()).then_some(hash)
+    })
 }
 
 #[cfg(test)]
@@ -91,6 +100,13 @@ mod version_tests {
     fn reads_the_hash_from_the_wasm_filename() {
         let html = r#"<link rel="preload" href="/frontend_bg-65d478ab.wasm" as="fetch">"#;
         assert_eq!(frontend_version(html).as_deref(), Some("65d478ab"));
+    }
+
+    #[test]
+    fn ignores_mentions_that_are_not_a_hash() {
+        let html = r#"<script>var m = /frontend_bg-([0-9a-f]{8})/.exec(href);</script>
+            <link rel="preload" href="/frontend_bg-3c9123721cb39e73.wasm">"#;
+        assert_eq!(frontend_version(html).as_deref(), Some("3c9123721cb39e73"));
     }
 
     #[test]
@@ -448,6 +464,8 @@ fn logout() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejectio
                 // Evict the cache first so the session stops working immediately rather than
                 // at the end of the resolve TTL.
                 crate::filters::forget_cached_session(&token).await;
+                crate::push::lock(&crate::PUSH_NOTIFS)
+                    .disconnect_session(&database::keys::session_token_hash(&token));
                 match crate::POOL.get().await {
                     Ok(mut conn) => {
                         if let Err(e) = crate::session::destroy(&mut conn, &token).await {

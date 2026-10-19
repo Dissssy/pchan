@@ -133,6 +133,9 @@ pub async fn forget_cached_session(token: &str) {
 /// Drop every cached session for one member. Used when banning.
 pub async fn forget_cached_member(member: &uuid::Uuid) {
     SESSION_CACHE.lock().await.retain(|_, (_, v)| &v.id != member);
+    // Their live streams were authorised by sessions that no longer count. Closing them makes
+    // the browser reconnect, and the reconnect is refused.
+    crate::push::lock(&crate::PUSH_NOTIFS).disconnect_member(member);
 }
 
 pub fn optional_file_sig(
@@ -283,6 +286,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                 // DELETE /board/?/post/?
                 // POST /board/?/thread
                 // POST /subscribe
+                // POST /unsubscribe
                 // POST /file
                 let include_thread = std::env::var("THREAD_SPECIFIC_RATELIMIT")
                     .map(|v| v.parse::<bool>().unwrap_or_default())
@@ -355,6 +359,15 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                             .into(),
                         ),
                         (Method::POST, Some("subscribe"), _, _, _, _) => (3, "subscribe".into()),
+                        // About 0.1ms of database and 3-27us per post asked about (see the timing test
+                        // in database::keys), at 200 posts a request: once a second is generous.
+                        (Method::POST, Some("authored"), _, _, _, _) => (1, "authored".into()),
+                        (Method::POST, Some("client_errors"), _, _, _, _) => {
+                            (2, "client errors".into())
+                        }
+                        (Method::POST, Some("unsubscribe"), _, _, _, _) => {
+                            (3, "unsubscribe".into())
+                        }
                         (Method::POST, Some("file"), _, _, _, _) => (15, "file upload".into()),
                         // Reporting is cheap to do and easy to weaponise, so it gets the longest
                         // cooldown of anything here.

@@ -36,6 +36,9 @@ mod config;
 mod database_bindings;
 mod endpoints;
 mod filters;
+mod client_log;
+#[cfg(test)]
+mod testing;
 mod push;
 mod session;
 // pub mod schema;
@@ -61,7 +64,12 @@ lazy_static::lazy_static! {
     pub static ref FS_LOCK: Arc<Mutex<()>> = Arc::new(Mutex::new(()));
     pub static ref QUOTES: Arc<Quotes> = Arc::new(Quotes::load(env!("QUOTES_PATH")).expect("Failed to load quotes"));
     pub static ref RATELIMIT: Arc<Mutex<HashMap<String, tokio::time::Instant>>> = Arc::new(Mutex::new(HashMap::new()));
-    pub static ref PUSH_NOTIFS: Arc<Mutex<push::PushHolder>> = Arc::new(Mutex::new(push::PushHolder::new()));
+    /// Errors reported by the web client. Written to `FRONTEND_LOG_PATH`, which defaults to
+    /// `logs/frontend-errors.json` relative to the working directory.
+    pub static ref CLIENT_LOG: Mutex<client_log::ClientLog> = Mutex::new(client_log::ClientLog::load(
+        std::env::var("FRONTEND_LOG_PATH").unwrap_or_else(|_| "logs/frontend-errors.json".to_owned())
+    ));
+    pub static ref PUSH_NOTIFS: push::SharedHub = Arc::new(std::sync::Mutex::new(push::Hub::new()));
 }
 
 fn is_safe_mimetype(mimetype: &str) -> bool {
@@ -405,6 +413,24 @@ async fn main() {
         },
     );
     tokio::spawn(server);
+
+    // Errors the web client reported against an older frontend build are history, not news.
+    if let Some(build) = endpoints::served_frontend_build().await {
+        if let Err(e) = CLIENT_LOG.lock().await.sync_build(&build).await {
+            log::error!("could not tidy the client error log: {e:#}");
+        }
+    }
+
+    // Rows from before endpoint hashes existed get one, so the first subscribe from a shared
+    // browser can find and replace the previous member's row.
+    match POOL.get().await {
+        Ok(mut conn) => {
+            if let Err(e) = database::backfill_push_endpoint_hashes(&mut conn).await {
+                log::error!("could not backfill push endpoint hashes: {e:#}");
+            }
+        }
+        Err(e) => log::error!("could not backfill push endpoint hashes: {e}"),
+    }
 
     let mut trim_files = tokio::time::interval(std::time::Duration::from_secs(*statics::TRIM_TIME));
     let mut delete_old_files = tokio::time::interval(std::time::Duration::from_secs(1));

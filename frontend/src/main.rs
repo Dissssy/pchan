@@ -19,6 +19,7 @@
 )]
 
 pub mod api;
+pub mod authored;
 pub mod components;
 pub mod helpers;
 pub mod pages;
@@ -27,7 +28,10 @@ use std::sync::Arc;
 use yew::prelude::*;
 use yew_hooks::{use_local_storage, UseLocalStorageHandle};
 use yew_router::prelude::*;
-pub mod hooks;
+pub mod error_report;
+pub mod events;
+pub mod inbox;
+pub mod push_client;
 
 use crate::components::{NotificationBox, SettingsButton, UpdateBanner};
 
@@ -94,6 +98,12 @@ impl From<common::structs::Reply> for BaseRoute {
 }
 
 fn main() {
+    // Without this a panic in the WASM module leaves nothing in the console, only a dead page.
+    std::panic::set_hook(Box::new(|info| {
+        let text = info.to_string();
+        gloo::console::error!(format!("panic: {text}"));
+        error_report::send("panic", &text);
+    }));
     yew::Renderer::<Root>::new().render();
 }
 
@@ -127,6 +137,8 @@ fn Root() -> Html {
         edge_padding: use_local_storage::<String>("edge_padding".to_owned()),
         animation_speed: use_local_storage::<String>("animation_speed".to_owned()),
         border_radius: use_local_storage::<String>("border_radius".to_owned()),
+        own_post_color: use_local_storage::<String>("own_post_color".to_owned()),
+        own_post_border_color: use_local_storage::<String>("own_post_border_color".to_owned()),
     };
 
     theme_data.ensure_set();
@@ -153,6 +165,17 @@ fn Root() -> Html {
                 }
                 api_ctx.set(Some(ApiContext { api: Ok(api) }));
                 dispatched.set(true);
+            }
+        });
+    }
+
+    // A device that already has push on is handed to whoever is signed in now, which moves it
+    // from the previous member if the browser is shared. This never prompts or subscribes.
+    {
+        let signed_in = me.is_some();
+        use_effect_with(signed_in, |signed_in| {
+            if *signed_in {
+                wasm_bindgen_futures::spawn_local(push_client::sync());
             }
         });
     }
@@ -197,11 +220,17 @@ fn Root() -> Html {
                                 <ContextProvider<Favicon> context={Favicon { favicon: favicon.clone(), } }>
                                     <link rel="icon" type="image/x-icon" href={(*favicon).clone()} />
                                     <BrowserRouter>
-                                        <SettingsButton/>
-                                        // <FeedbackButton/>
-                                        <NotificationBox/>
-                                        <UpdateBanner/>
-                                        <Switch<BaseRoute> render={switch} />
+                                        <authored::AuthoredProvider>
+                                        <events::EventsProvider>
+                                            <inbox::InboxProvider>
+                                                <SettingsButton/>
+                                                // <FeedbackButton/>
+                                                <NotificationBox/>
+                                                <UpdateBanner/>
+                                                <Switch<BaseRoute> render={switch} />
+                                            </inbox::InboxProvider>
+                                        </events::EventsProvider>
+                                        </authored::AuthoredProvider>
                                     </BrowserRouter>
                                 </ContextProvider<Favicon>>
                             </ContextProvider<ThemeData>>
@@ -329,12 +358,16 @@ pub struct ThemeData {
     pub edge_padding: UseLocalStorageHandle<String>,
     pub animation_speed: UseLocalStorageHandle<String>,
     pub border_radius: UseLocalStorageHandle<String>,
+    /// Background of a post the member wrote.
+    pub own_post_color: UseLocalStorageHandle<String>,
+    /// Border of a post the member wrote.
+    pub own_post_border_color: UseLocalStorageHandle<String>,
 }
 
 impl ThemeData {
     pub fn css(&self) -> String {
         format!(
-            "--primary-color: {}; --secondary-color: {}; --topic-color: {}; --bluetext-color: {}; --peetext-color: {}; --border-color: {}; --error-color: {}; --text-color: {}; --secondary-text-color: {}; --border-width: {}; --border-type: {}; --link-color: {}; --post-link-valid-color: {}; --post-link-unloaded-color: {}; --post-link-invalid-color: {}; --edge-padding: {}; --animation-speed: {}; --border-radius: {};",
+            "--primary-color: {}; --secondary-color: {}; --topic-color: {}; --bluetext-color: {}; --peetext-color: {}; --border-color: {}; --error-color: {}; --text-color: {}; --secondary-text-color: {}; --border-width: {}; --border-type: {}; --link-color: {}; --post-link-valid-color: {}; --post-link-unloaded-color: {}; --post-link-invalid-color: {}; --edge-padding: {}; --animation-speed: {}; --border-radius: {}; --own-post-color: {}; --own-post-border-color: {};",
             (*self.primary_color).clone().unwrap_or("#282a2e".to_string()),
             (*self.secondary_color).clone().unwrap_or("#1d1f21".to_string()),
             (*self.topic_color).clone().unwrap_or("lightblue".to_string()),
@@ -353,6 +386,8 @@ impl ThemeData {
             (*self.edge_padding).clone().unwrap_or("2%".to_string()),
             (*self.animation_speed).clone().unwrap_or("200ms".to_string()),
             (*self.border_radius).clone().unwrap_or("0.3em".to_string()),
+            (*self.own_post_color).clone().unwrap_or("#282a2e".to_string()),
+            (*self.own_post_border_color).clone().unwrap_or("#242424".to_string()),
         )
     }
     pub fn reset_dark(&self) {
@@ -374,6 +409,8 @@ impl ThemeData {
         self.edge_padding.set("2%".to_string());
         self.animation_speed.set("200ms".to_string());
         self.border_radius.set("0.3em".to_string());
+        self.own_post_color.set("#282a2e".to_string());
+        self.own_post_border_color.set("#242424".to_string());
     }
     pub fn reset_light(&self) {
         self.primary_color.set("#f0e0d6".to_string());
@@ -394,6 +431,8 @@ impl ThemeData {
         self.edge_padding.set("2%".to_string());
         self.animation_speed.set("200ms".to_string());
         self.border_radius.set("0.3em".to_string());
+        self.own_post_color.set("#f0e0d6".to_string());
+        self.own_post_border_color.set("#d9bfb7".to_string());
     }
     pub fn ensure_set(&self) {
         if (*self.primary_color).is_none() {
@@ -449,6 +488,12 @@ impl ThemeData {
         }
         if (*self.border_radius).is_none() {
             self.border_radius.set("0.3em".to_string());
+        }
+        if (*self.own_post_color).is_none() {
+            self.own_post_color.set("#282a2e".to_string());
+        }
+        if (*self.own_post_border_color).is_none() {
+            self.own_post_border_color.set("#242424".to_string());
         }
     }
 }

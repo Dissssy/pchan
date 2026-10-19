@@ -807,6 +807,12 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 }
             }
             let moderates_any_board = viewer.role.can_moderate_site() || !moderated.is_empty();
+            let reply_push = match crate::POOL.get().await {
+                Ok(mut conn) => database::reply_push_enabled(&mut conn, &viewer.id)
+                    .await
+                    .unwrap_or(false),
+                Err(_) => false,
+            };
 
             Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
                 &common::structs::MeInfo {
@@ -814,8 +820,77 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     banned: viewer.ban != database::Ban::None,
                     moderates_any_board,
                     moderated_boards: moderated,
+                    cache_key: viewer.authored_cache_key(),
+                    reply_push,
                 },
             ))
+        });
+
+    // GET /replies?since={post id} - replies made since a position, for a browser that was
+    // away. The same for everyone; the browser decides which ones are to its member.
+    let replies = warp::path!("api" / "v1" / "replies")
+        .and(warp::get())
+        .and(warp::query::<RepliesQuery>())
+        .and(viewer())
+        .and_then(|query: RepliesQuery, viewer: database::Viewer| async move {
+            let mut conn = crate::POOL
+                .get()
+                .await
+                .map_err(|_| warp::reject::reject())?;
+            match crate::database_bindings::Database::replies_since(&mut conn, &viewer, query.since).await {
+                Ok(page) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&page)),
+                Err(e) => {
+                    log::error!("could not list replies: {e:#}");
+                    Err(warp::reject::reject())
+                }
+            }
+        });
+
+    // POST /authored - which of these posts did the viewer write?
+    //
+    // Answers only for the viewer, using the same check as deleting a post, so it tells a
+    // member nothing they could not already prove about themselves. Nothing about the request
+    // is logged: the list of posts asked about is as revealing as the answer.
+    let authored = warp::path!("api" / "v1" / "authored")
+        .and(warp::post())
+        .and(warp::body::content_length_limit(32 * 1024))
+        .and(warp::body::json::<common::structs::AuthoredRequest>())
+        .and(viewer())
+        .and_then(|req: common::structs::AuthoredRequest, viewer: database::Viewer| async move {
+            let mut conn = crate::POOL
+                .get()
+                .await
+                .map_err(|_| warp::reject::reject())?;
+            match crate::database_bindings::Database::authored_posts(&mut conn, &viewer, req.posts).await {
+                Ok(mine) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&mine)),
+                Err(e) => {
+                    log::warn!("authorship check refused: {e}");
+                    Err(warp::reject::reject())
+                }
+            }
+        });
+
+    // PUT /me/reply_push - opt in or out of being pushed when someone replies to your posts.
+    //
+    // Choosing yes lets the server work out, in memory at send time, that you wrote the post
+    // being replied to. It is off unless asked for, and the page explains what a push service
+    // can infer from it.
+    let set_reply_push = warp::path!("api" / "v1" / "me" / "reply_push")
+        .and(warp::put())
+        .and(warp::body::json::<bool>())
+        .and(viewer())
+        .and_then(|enabled: bool, viewer: database::Viewer| async move {
+            let mut conn = crate::POOL
+                .get()
+                .await
+                .map_err(|_| warp::reject::reject())?;
+            match database::set_reply_push(&mut conn, &viewer.id, enabled).await {
+                Ok(()) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&enabled)),
+                Err(e) => {
+                    log::error!("could not change reply push: {e:#}");
+                    Err(warp::reject::reject())
+                }
+            }
         });
 
     // POST /me/rotate_author_seed - sever yourself from your own posting history.
@@ -1602,6 +1677,28 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
+    // POST /client_errors - an error the web client hit, to be folded into the error log.
+    //
+    // Behind the same sign-in and rate limit as everything else, so it cannot be used to fill
+    // the disk, but this handler never looks at who is asking: nothing about the sender is
+    // read, logged or stored. The client sends no cookies it does not need to.
+    let client_error = warp::path!("api" / "v1" / "client_errors")
+        .and(warp::post())
+        .and(warp::body::content_length_limit(16 * 1024))
+        .and(warp::body::json::<crate::client_log::ClientErrorReport>())
+        .and_then(|report: crate::client_log::ClientErrorReport| async move {
+            let current = crate::endpoints::served_frontend_build().await;
+            if let Err(e) = crate::CLIENT_LOG
+                .lock()
+                .await
+                .record(report, current.as_deref())
+                .await
+            {
+                log::error!("could not record a client error: {e:#}");
+            }
+            Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&"ok"))
+        });
+
     crate::filters::ratelimit()
         .and(
             getpost
@@ -1641,6 +1738,10 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 .or(list_assets)
                 .or(edit_asset)
                 .or(delete_asset)
+                .or(client_error)
+                .or(authored)
+                .or(replies)
+                .or(set_reply_push)
                 .or(notifications()),
         )
         .recover(|err: Rejection| async move {
@@ -1671,6 +1772,22 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         })
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct RepliesQuery {
+    since: Option<i64>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct EventsQuery {
+    thread: Option<String>,
+    last: Option<String>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct UnsubscribeRequest {
+    endpoint: String,
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct InviteCodeHolder {
     pub info: String,
@@ -1678,48 +1795,66 @@ pub struct InviteCodeHolder {
 
 pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
 {
-    // GET /notifications - SSE endpoint to listen for generic push notifications
+    // GET /events?thread={board}/{number}&last={event id} - the one live stream a tab keeps open.
+    //
+    // It carries events for every thread the member watches, plus the thread named in `thread`
+    // if the tab is showing one. `last` (or the Last-Event-ID header, which the browser sends
+    // by itself when it reconnects, and which wins) says where to resume from.
 
-    let pushnotifs = warp::path!("api" / "v1" / "notifications")
+    let events = warp::path!("api" / "v1" / "events")
+        .and(warp::query::<EventsQuery>())
+        .and(warp::header::optional::<String>("last-event-id"))
+        .and(warp::cookie::optional(crate::session::COOKIE_NAME))
         .and(viewer())
-        .and_then(|viewer: database::Viewer| async move {
-            Ok::<_, warp::reject::Rejection>(warp::sse::reply(warp::sse::keep_alive().stream({
-                // Per-member channel, keyed on the member id to match the dispatcher.
-                crate::PUSH_NOTIFS
-                    .lock()
+        .and_then(
+            |query: EventsQuery,
+             header_last: Option<String>,
+             cookie: Option<String>,
+             viewer: database::Viewer| async move {
+                let mut thread = None;
+                if let Some(raw) = query.thread.as_deref() {
+                    let key = crate::push::ThreadKey::parse(raw)
+                        .ok_or_else(warp::reject::reject)?;
+                    let mut conn = crate::POOL
+                        .get()
+                        .await
+                        .map_err(|_| warp::reject::reject())?;
+                    // get_board performs the private-board access check. Without it this
+                    // stream is readable by any member, on any board they were never invited
+                    // to. Rejecting rather than returning a status also avoids confirming
+                    // that a private board exists.
+                    let board = crate::database_bindings::Database::get_board(
+                        &mut conn, &key.board, &viewer,
+                    )
                     .await
-                    .subscribe(&viewer.id.to_string())
+                    .map_err(|_| warp::reject::reject())?;
+                    // A stream for a thread that does not exist would sit in the hub forever.
+                    crate::database_bindings::Database::get_raw_thread(
+                        &mut conn, &key.board, key.number,
+                    )
                     .await
-            })))
-        });
+                    .map_err(|_| warp::reject::reject())?;
+                    thread = Some(crate::push::ThreadKey {
+                        board: board.discriminator,
+                        number: key.number,
+                    });
+                }
 
-    // GET /push/thread/{number} - temporary SSE endpoint to listen for specific thread updates
-
-    let threadnotifs = warp::path!(
-        "api" / "v1" / "board" / String / "thread" / i64 / "notifications"
-    )
-    .and(viewer())
-    .and_then(|board: String, thread: i64, viewer: database::Viewer| async move {
-        let mut conn = crate::POOL
-            .get()
-            .await
-            .map_err(|_| warp::reject::reject())?;
-
-        // get_board performs the private-board access check. Without it this stream is
-        // readable by any member, on any board they were never invited to. Rejecting rather
-        // than returning a status also avoids confirming that a private board exists.
-        crate::database_bindings::Database::get_board(&mut conn, &board, &viewer)
-            .await
-            .map_err(|_| warp::reject::reject())?;
-
-        Ok::<_, warp::reject::Rejection>(warp::sse::reply(warp::sse::keep_alive().stream({
-            crate::PUSH_NOTIFS
-                .lock()
-                .await
-                .subscribe(&format!("board: {} | thread: {}", board, thread))
-                .await
-        })))
-    });
+                let session = cookie
+                    .map(|c| database::keys::session_token_hash(&c))
+                    .unwrap_or_default();
+                let last = header_last.or(query.last);
+                Ok::<_, warp::reject::Rejection>(warp::sse::reply(
+                    warp::sse::keep_alive().stream(crate::push::connect(
+                        &crate::PUSH_NOTIFS,
+                        viewer.id,
+                        session,
+                        thread,
+                        last.as_deref(),
+                    )),
+                ))
+            },
+        );
 
     // POST /subscribe - sets the user's push notification url
 
@@ -1754,8 +1889,137 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             }
         });
 
-    pushnotifs
-        .or(threadnotifs)
+    // GET /notifications - the viewer's unread notifications, one entry per watched thread.
+    let list_notifications = warp::path!("api" / "v1" / "notifications")
+        .and(warp::get())
+        .and(viewer())
+        .and_then(|viewer: database::Viewer| async move {
+            let mut conn = crate::POOL
+                .get()
+                .await
+                .map_err(|_| warp::reject::reject())?;
+            match crate::database_bindings::Database::get_notifications(&mut conn, &viewer).await {
+                Ok(list) => Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&list)),
+                Err(e) => {
+                    log::error!("could not list notifications: {e:#}");
+                    Err(warp::reject::reject())
+                }
+            }
+        });
+
+    // PUT /board/{b}/thread/{n}/read - the viewer has read this thread through a post.
+    let mark_thread_read = warp::path!("api" / "v1" / "board" / String / "thread" / i64 / "read")
+        .and(warp::put())
+        .and(warp::body::json::<common::structs::ReadMark>())
+        .and(viewer())
+        .and_then(
+            |disc: String, thread: i64, mark: common::structs::ReadMark, viewer: database::Viewer| async move {
+                let mut conn = crate::POOL
+                    .get()
+                    .await
+                    .map_err(|_| warp::reject::reject())?;
+                let reply = match crate::database_bindings::Database::mark_thread_read(
+                    &mut conn, &disc, thread, &viewer, mark.through,
+                )
+                .await
+                {
+                    Ok(()) => {
+                        inbox_changed(viewer.id);
+                        "ok".to_owned()
+                    }
+                    Err(e) => e.to_string(),
+                };
+                Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&reply))
+            },
+        );
+
+    // PUT /notifications/read - mark everything the viewer watches as read.
+    let mark_all_read = warp::path!("api" / "v1" / "notifications" / "read")
+        .and(warp::put())
+        .and(viewer())
+        .and_then(|viewer: database::Viewer| async move {
+            let mut conn = crate::POOL
+                .get()
+                .await
+                .map_err(|_| warp::reject::reject())?;
+            let reply = match crate::database_bindings::Database::mark_all_read(&mut conn, &viewer).await {
+                Ok(()) => {
+                    inbox_changed(viewer.id);
+                    "ok".to_owned()
+                }
+                Err(e) => e.to_string(),
+            };
+            Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&reply))
+        });
+
+    // PUT /presence - what one of the viewer's tabs is doing: using the site, and whether it is
+    // reading a particular full thread view.
+    //
+    // Sent as it changes and repeated while it stays true; it lapses by itself. Only held in
+    // memory, and only used to decide how loudly a new post reaches this member.
+    // PUT from the page; POST because `sendBeacon`, which is how a closing tab gets its last
+    // word in, cannot do anything else.
+    let presence = warp::path!("api" / "v1" / "presence")
+        .and(warp::put().or(warp::post()).unify())
+        .and(warp::body::content_length_limit(1024))
+        .and(warp::body::json::<common::structs::Presence>())
+        .and(viewer())
+        .and_then(|report: common::structs::Presence, viewer: database::Viewer| async move {
+            if report.tab.is_empty() || report.tab.len() > 64 {
+                return Err(warp::reject::reject());
+            }
+            let reading = match report.reading.as_deref() {
+                Some(raw) => Some(crate::push::ThreadKey::parse(raw).ok_or_else(warp::reject::reject)?),
+                None => None,
+            };
+            crate::push::lock(&crate::PUSH_NOTIFS).set_presence(
+                viewer.id,
+                report.tab,
+                report.visible,
+                reading,
+                std::time::Duration::from_secs(u64::from(report.quiet_secs)),
+                std::time::Instant::now(),
+            );
+            Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&"ok"))
+        });
+
+    // GET /push_key - the public key a browser subscribes to push with. Public by nature; it
+    // is worked out from the configured private key, so the two always belong together.
+    let push_key = warp::path!("api" / "v1" / "push_key")
+        .and(warp::get())
+        .and(viewer())
+        .map(|_: database::Viewer| {
+            warp::reply::json(&crate::config::get().vapid.public_key)
+        });
+
+    // POST /unsubscribe - forgets this browser's push subscription for the caller. Sent by the
+    // page just before logging out, while the session that identifies the member still exists.
+
+    let unsubscribble = warp::path!("api" / "v1" / "unsubscribe")
+        .and(warp::post())
+        .and(warp::body::json::<UnsubscribeRequest>())
+        .and(viewer())
+        .and_then(|req: UnsubscribeRequest, viewer: database::Viewer| async move {
+            let reply = match crate::POOL.get().await {
+                Ok(mut conn) => {
+                    match database::remove_push_endpoint(&mut conn, &viewer.id, &req.endpoint).await
+                    {
+                        Ok(()) => "ok".to_owned(),
+                        Err(e) => {
+                            log::error!("could not remove push subscription: {e}");
+                            "could not remove subscription".to_owned()
+                        }
+                    }
+                }
+                Err(e) => {
+                    log::error!("error connecting to backend: {}", e);
+                    "error connecting to backend".to_owned()
+                }
+            };
+            Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(&reply))
+        });
+
+    events
         .map(|reply| {
             warp::reply::with_header(
                 warp::reply::with_header(
@@ -1768,6 +2032,21 @@ pub fn notifications() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             )
         })
         .or(subscribble)
+        .or(unsubscribble)
+        .or(push_key)
+        .or(list_notifications)
+        .or(mark_thread_read)
+        .or(mark_all_read)
+        .or(presence)
+}
+
+/// Tell every tab and device of `member` that their notifications changed.
+fn inbox_changed(member: uuid::Uuid) {
+    crate::push::lock(&crate::PUSH_NOTIFS).publish(
+        common::structs::PushMessage::InboxChanged,
+        None,
+        [member].into(),
+    );
 }
 
 // {

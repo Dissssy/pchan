@@ -32,8 +32,14 @@ pub fn WatchButton(props: &Props) -> Html {
                             {
                                 Ok(v) => {
                                     state.set(ApiState::Loaded(v));
-                                    if let Err(e) = web_sys::Notification::request_permission() {
-                                        gloo::console::warn!("Notification permission error: ", e);
+                                    // Starting to watch is the moment notifications become
+                                    // useful, so it is when the browser is asked (it only
+                                    // prompts if it has not been decided before). Stopping
+                                    // asks for nothing.
+                                    if v {
+                                        wasm_bindgen_futures::spawn_local(async {
+                                            crate::push_client::enable().await;
+                                        });
                                     }
                                 }
                                 Err(e) => {

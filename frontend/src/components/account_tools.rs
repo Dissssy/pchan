@@ -36,7 +36,11 @@ pub fn AccountTools() -> Html {
             rotate_state.set(RotateState::Working);
             wasm_bindgen_futures::spawn_local(async move {
                 match api.rotate_author_seed().await {
-                    Ok(_) => rotate_state.set(RotateState::Done),
+                    Ok(_) => {
+                        // Those posts are no longer the member's, so forget they ever were.
+                        crate::authored::clear();
+                        rotate_state.set(RotateState::Done)
+                    }
                     Err(e) => rotate_state.set(RotateState::Failed(AttrValue::from(e.to_string()))),
                 }
             });

@@ -69,6 +69,13 @@ diesel::table! {
         id -> Uuid,
         member_id -> Uuid,
         data -> Bytea,
+        endpoint_hash -> Nullable<Text>,
+    }
+}
+
+diesel::table! {
+    member_reply_push (member_id) {
+        member_id -> Uuid,
     }
 }
 
@@ -76,6 +83,7 @@ diesel::table! {
     member_watching (member_id, thread_id) {
         member_id -> Uuid,
         thread_id -> Int8,
+        last_read -> Int8,
     }
 }
 
@@ -177,6 +185,7 @@ diesel::joinable!(bans -> boards (board_id));
 diesel::joinable!(files -> posts (id));
 diesel::joinable!(identities -> members (member_id));
 diesel::joinable!(member_push -> members (member_id));
+diesel::joinable!(member_reply_push -> members (member_id));
 diesel::joinable!(member_watching -> members (member_id));
 diesel::joinable!(member_watching -> threads (thread_id));
 diesel::joinable!(moderation_log -> boards (board_id));
@@ -199,6 +208,7 @@ diesel::allow_tables_to_appear_in_same_query!(
     identities,
     join_requests,
     member_push,
+    member_reply_push,
     member_watching,
     members,
     moderation_log,

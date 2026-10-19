@@ -15,6 +15,14 @@ Long term goals:
     - Dockerize the whole thing including the database, initializing the DB with all the relevant functions and tables based on environment variables
     - Learn how to use the github issue tracker LOOOL
 
+Notifications (planned, in rough order; push no longer subscribes on every page load, and the VAPID key is runtime config, both done):
+    - Dismissing a toast marks the thread read (done). A plain OS swipe-away stays "not now": the system also clears notifications on its own, and the two cannot be told apart reliably.
+    - Reply notifications. The browser knows which posts are the member's (authored.rs: batch check against /api/v1/authored, kept in localStorage, tied to MeInfo::cache_key, cleared on log out / new identity) and flags a notification whose post replies to one. Today that only covers threads that are watched or open, because the server only sends those. Once that is solid, watching can default to off.
+    - LIMIT to settle before building reply *push*: the server sends pushes, and it can only send one to the right person if it knows who wrote the post being replied to. Doing that in memory at send time is possible (the same check as deleting) but is the server acting on authorship; sending every post to every device for the service worker to filter is not acceptable. Decide which before building.
+    - Own-post styling uses .post.mine / .parent-post.mine plus the theme's "own post" colors (--own-post-color, --own-post-border-color). Still a copy of normal posts; pick colors and add more theme entries as wanted.
+    - The settings page may need tabs as options accumulate (deferred).
+    - TRIM LATER: the notification/presence/authorship system has grown quickly. Review what can be simplified: the console trace lines in events.rs and pages/thread.rs, the two idle thresholds, the BroadcastChannel peer check now that the server picks the most recently used tab, and the per-card reply lookup.
+
 Complete:
     - Seperate login code out into its own function to simplify the OAuth flow readability @done
     - Way to watch threads and know you are watching them (maybe some eye icon and two api endpoints, one that tells you if you're watching a thread, and one that sets watching the thread @done

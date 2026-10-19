@@ -595,6 +595,75 @@ impl Api {
         .await
     }
 
+    /// Replies made since `since` (a post id), for a browser that was away.
+    pub async fn get_replies(
+        &self,
+        since: Option<i64>,
+    ) -> Result<common::structs::RepliesPage, ApiError> {
+        // GET /api/v1/replies?since=
+        standard_get(&match since {
+            Some(since) => format!("/api/v1/replies?since={since}"),
+            None => "/api/v1/replies".to_owned(),
+        })
+        .await
+    }
+
+    /// Opt in or out of being pushed when someone replies to one of the member's posts.
+    pub async fn set_reply_push(&self, enabled: bool) -> Result<bool, ApiError> {
+        // PUT /api/v1/me/reply_push
+        standard_put("/api/v1/me/reply_push", &enabled).await
+    }
+
+    /// Which of `posts` the member wrote.
+    pub async fn authored(
+        &self,
+        posts: Vec<common::structs::PostRef>,
+    ) -> Result<Vec<common::structs::PostRef>, ApiError> {
+        // POST /api/v1/authored
+        standard_post(
+            "/api/v1/authored",
+            &common::structs::AuthoredRequest { posts },
+        )
+        .await
+    }
+
+    /// Watched threads with posts above the member's read mark.
+    pub async fn get_notifications(
+        &self,
+    ) -> Result<Vec<common::structs::ThreadNotification>, ApiError> {
+        // GET /api/v1/notifications
+        standard_get("/api/v1/notifications").await
+    }
+
+    /// The member has read a watched thread through post `through`.
+    pub async fn mark_thread_read(
+        &self,
+        board: &str,
+        thread: i64,
+        through: i64,
+    ) -> Result<String, ApiError> {
+        // PUT /api/v1/board/{board}/thread/{thread}/read
+        standard_put(
+            &format!("/api/v1/board/{}/thread/{}/read", board, thread),
+            &common::structs::ReadMark { through },
+        )
+        .await
+    }
+
+    pub async fn mark_all_read(&self) -> Result<String, ApiError> {
+        // PUT /api/v1/notifications/read
+        standard_put("/api/v1/notifications/read", &()).await
+    }
+
+    /// Say which full thread view, if any, this tab is looking at.
+    pub async fn report_presence(
+        &self,
+        presence: &common::structs::Presence,
+    ) -> Result<String, ApiError> {
+        // PUT /api/v1/presence
+        standard_put("/api/v1/presence", presence).await
+    }
+
     pub async fn get_watching(
         &self,
         board: impl Display + ToString + Copy,
