@@ -184,27 +184,29 @@
 .moderation-meta { font-size: 0.85em; opacity: 0.7; }
 .moderation-actions { display: flex; gap: 0.5rem; }
 
-/* Matches the other settings sections: bordered box, title row, full-width children. */
+/* One tab's worth of account controls. */
 .account-tools {
     display: flex;
     flex-direction: column;
-    margin: 0.4rem;
-    border: var(--border-width) var(--border-type) var(--border-color);
-    border-radius: var(--border-radius);
+    gap: 0.4rem;
+    max-width: 60ch;
 }
 
-.account-tools > * {
-    max-width: calc(100% - 0.8rem);
-    margin-block: 0.2rem;
-    margin-inline: 0.4rem;
+.account-confirm-title {
+    margin: 0;
 }
 
-.account-tools-title {
+.account-confirm p {
+    margin: 0;
+}
+
+.account-confirm-buttons {
     display: flex;
-    justify-content: space-between;
-    align-items: baseline;
     gap: 0.5rem;
-    border-bottom: var(--border-width) var(--border-type) var(--border-color);
+}
+
+.account-confirm-buttons .account-button {
+    flex: 1;
 }
 
 .account-role {
@@ -234,8 +236,6 @@
 
 .account-note { color: var(--secondary-text-color); }
 
-/* The form wrapper must not reintroduce the gap the siblings already have. */
-.account-logout { margin: 0.2rem 0.4rem; }
 
 /* Admin panel */
 .admin-page {

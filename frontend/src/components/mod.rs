@@ -23,6 +23,7 @@ mod settings;
 mod sign_in;
 mod spinner;
 mod thread;
+mod toggle;
 mod watch_button;
 
 pub use account_tools::AccountTools;
@@ -56,6 +57,7 @@ pub use richtext::RichText;
 pub use settings::SettingsButton;
 pub use spinner::Spinner;
 pub use thread::Thread;
+pub use toggle::Toggle;
 pub use watch_button::WatchButton;
 use yew::AttrValue;
 

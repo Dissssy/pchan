@@ -1,6 +1,9 @@
 use yew::prelude::*;
 
-use crate::push_client::{self, PushState};
+use crate::{
+    components::Toggle,
+    push_client::{self, PushState},
+};
 
 /// Turn push notifications on or off for this device.
 #[function_component]
@@ -16,17 +19,22 @@ pub fn PushEditor() -> Html {
         });
     }
 
+    let busy = use_state(|| false);
+
     let onchange = {
         let state = state.clone();
-        Callback::from(move |_: Event| {
+        let busy = busy.clone();
+        Callback::from(move |turning_on: bool| {
             let state = state.clone();
-            let turning_on = *state != Some(PushState::On);
+            let busy = busy.clone();
+            busy.set(true);
             wasm_bindgen_futures::spawn_local(async move {
                 state.set(Some(if turning_on {
                     push_client::enable().await
                 } else {
                     push_client::disable().await
                 }));
+                busy.set(false);
             });
         })
     };
@@ -45,12 +53,8 @@ pub fn PushEditor() -> Html {
     };
 
     html! {
-        <div class="push-editor">
-            <label>
-                <input type="checkbox" checked={checked} disabled={!usable} {onchange} />
-                {" Push notifications on this device"}
-            </label>
-            <p class="push-note">{ note }</p>
-        </div>
+        <Toggle {checked} {onchange} disabled={!usable} pending={*busy} label="Push notifications on this device">
+            { note }
+        </Toggle>
     }
 }
