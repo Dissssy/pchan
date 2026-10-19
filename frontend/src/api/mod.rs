@@ -96,11 +96,13 @@ impl Api {
         sitewide: bool,
         reason: Option<String>,
     ) -> Result<String, ApiError> {
-        standard_post::<String, _>(
-            &format!("/api/v1/board/{board}/post/{post_number}/ban_author"),
-            &common::structs::BanRequest { sitewide, reason },
+        outcome(
+            standard_post::<common::structs::ActionOutcome, _>(
+                &format!("/api/v1/board/{board}/post/{post_number}/ban_author"),
+                &common::structs::BanRequest { sitewide, reason },
+            )
+            .await,
         )
-        .await
     }
 
     /// Flag a post for moderator attention. No reporter identity is recorded.
@@ -110,11 +112,13 @@ impl Api {
         post_number: i64,
         reason: String,
     ) -> Result<String, ApiError> {
-        standard_post::<String, _>(
-            &format!("/api/v1/board/{board}/post/{post_number}/report"),
-            &common::structs::ReportRequest { reason },
+        outcome(
+            standard_post::<common::structs::ActionOutcome, _>(
+                &format!("/api/v1/board/{board}/post/{post_number}/report"),
+                &common::structs::ReportRequest { reason },
+            )
+            .await,
         )
-        .await
     }
 
     /// Open reports, already scoped by the server to boards this viewer moderates.
@@ -936,6 +940,16 @@ pub struct AssetLists {
 /// The status has to be checked *before* parsing: the backend's 401 body is a bare JSON
 /// string, which deserializes cleanly into `String`-shaped targets and would otherwise be
 /// mistaken for a successful result.
+/// A refusal comes back as a normal 200, so it is turned into an error here.
+fn outcome(res: Result<common::structs::ActionOutcome, ApiError>) -> Result<String, ApiError> {
+    let o = res?;
+    if o.ok {
+        Ok(o.message)
+    } else {
+        Err(ApiError::Api(AttrValue::from(o.message)))
+    }
+}
+
 async fn handle_response<T>(res: gloo_net::http::Response) -> Result<T, ApiError>
 where
     T: DeserializeOwned,

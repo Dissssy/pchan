@@ -107,6 +107,11 @@ pub fn WatchButton(props: &Props) -> Html {
         })
     }
 
+    // Until the answer arrives, hold the cell's place so the header does not shift.
+    if matches!(*state, ApiState::Pending | ApiState::Loading) {
+        return html! { <crate::components::HeaderPlaceholder class="post-watch-button" /> };
+    }
+
     match state.standard_html("WatchButton", |v| {
         html! {
             <div class="post-watch-button">

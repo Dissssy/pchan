@@ -310,13 +310,10 @@ pub struct MeInfo {
     /// "member", "site_mod" or "admin".
     pub role: String,
     pub banned: bool,
-    /// Whether this viewer moderates at least one board. Site roles imply it. Without this
-    /// the UI cannot tell a board moderator from an ordinary member, and they would never be
-    /// shown their own report inbox.
-    pub moderates_any_board: bool,
-    /// Boards this viewer moderates directly, by discriminator. Empty for site roles, which
-    /// are not scoped to particular boards — check `can_moderate_site` first.
-    pub moderated_boards: Vec<String>,
+    /// Where this viewer can moderate: `"site"` for site roles, otherwise the discriminators
+    /// of the boards they moderate (empty for an ordinary member). Without this the UI cannot
+    /// tell a board moderator from an ordinary member, or know which boards to offer actions on.
+    pub moderates: ModScope,
     /// A label for what this browser may remember about the member's own posts. It changes
     /// when someone else signs in or the member starts a new posting identity, and the browser
     /// drops what it remembered when it does. Meaningless to anyone else, and sent to no one
@@ -351,13 +348,60 @@ pub struct AuthoredRequest {
     pub posts: Vec<PostRef>,
 }
 
+/// The only value `ModScope::Site` is written as, so that on the wire the scope is either the
+/// text `"site"` or a list of board discriminators.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub enum SiteTag {
+    #[serde(rename = "site")]
+    Site,
+}
+
+/// Where someone can moderate. Serialized as `"site"` or `["a", "b"]`.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(untagged)]
+pub enum ModScope {
+    Site(SiteTag),
+    Boards(Vec<String>),
+}
+
+impl ModScope {
+    pub fn site() -> Self {
+        Self::Site(SiteTag::Site)
+    }
+    pub fn is_site(&self) -> bool {
+        matches!(self, Self::Site(_))
+    }
+    pub fn any(&self) -> bool {
+        match self {
+            Self::Site(_) => true,
+            Self::Boards(b) => !b.is_empty(),
+        }
+    }
+    pub fn covers(&self, board: &str) -> bool {
+        match self {
+            Self::Site(_) => true,
+            Self::Boards(b) => b.iter().any(|d| d == board),
+        }
+    }
+    /// The boards moderated directly. Empty for site scope, which is not board-by-board.
+    pub fn boards(&self) -> &[String] {
+        match self {
+            Self::Site(_) => &[],
+            Self::Boards(b) => b,
+        }
+    }
+}
+
 impl MeInfo {
     pub fn can_moderate_site(&self) -> bool {
-        self.role == "site_mod" || self.role == "admin"
+        self.moderates.is_site()
     }
     /// Anything moderation-related to show at all.
     pub fn can_moderate_anything(&self) -> bool {
-        self.can_moderate_site() || self.moderates_any_board
+        self.moderates.any()
+    }
+    pub fn can_moderate_board(&self, board: &str) -> bool {
+        self.moderates.covers(board)
     }
     pub fn is_admin(&self) -> bool {
         self.role == "admin"
@@ -390,6 +434,14 @@ pub struct AccessRequest {
 pub struct BanRequest {
     pub sitewide: bool,
     pub reason: Option<String>,
+}
+
+/// What came of an action that may be refused (a report, a ban). `message` is for the person
+/// who acted, and names no one.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ActionOutcome {
+    pub ok: bool,
+    pub message: String,
 }
 
 /// Body of a report submission.
@@ -467,3 +519,27 @@ pub struct AssetUpdate {
 /// mis-sized image.
 pub const SPOILER_SIZE: (u32, u32) = (80, 80);
 pub const BANNER_SIZE: (u32, u32) = (1200, 200);
+
+#[cfg(test)]
+mod mod_scope_tests {
+    use super::ModScope;
+
+    #[test]
+    fn scope_is_site_text_or_a_list() {
+        assert_eq!(serde_json::to_string(&ModScope::site()).unwrap(), "\"site\"");
+        assert_eq!(
+            serde_json::to_string(&ModScope::Boards(vec!["a".into(), "b".into()])).unwrap(),
+            "[\"a\",\"b\"]"
+        );
+        assert_eq!(serde_json::from_str::<ModScope>("\"site\"").unwrap(), ModScope::site());
+        assert_eq!(
+            serde_json::from_str::<ModScope>("[\"a\"]").unwrap(),
+            ModScope::Boards(vec!["a".into()])
+        );
+        assert!(serde_json::from_str::<ModScope>("\"admin\"").is_err());
+        assert!(!ModScope::Boards(vec![]).any());
+        assert!(ModScope::Boards(vec!["a".into()]).covers("a"));
+        assert!(!ModScope::Boards(vec!["a".into()]).covers("b"));
+        assert!(ModScope::site().covers("anything"));
+    }
+}

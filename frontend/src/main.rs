@@ -33,7 +33,7 @@ pub mod events;
 pub mod inbox;
 pub mod push_client;
 
-use crate::components::{NotificationBox, SettingsButton, UpdateBanner};
+use crate::components::{NotificationBox, PostActionsProvider, SettingsButton, UpdateBanner};
 
 #[derive(Clone, Routable, PartialEq, Debug)]
 pub enum BaseRoute {
@@ -223,11 +223,13 @@ fn Root() -> Html {
                                         <authored::AuthoredProvider>
                                         <events::EventsProvider>
                                             <inbox::InboxProvider>
+                                            <PostActionsProvider>
                                                 <SettingsButton/>
                                                 // <FeedbackButton/>
                                                 <NotificationBox/>
                                                 <UpdateBanner/>
                                                 <Switch<BaseRoute> render={switch} />
+                                            </PostActionsProvider>
                                             </inbox::InboxProvider>
                                         </events::EventsProvider>
                                         </authored::AuthoredProvider>
@@ -271,7 +273,7 @@ impl MeContext {
     }
     /// Boards moderated directly. Empty for site roles, which are not board-scoped.
     pub fn moderated_boards(&self) -> Vec<String> {
-        self.me.as_ref().map(|m| m.moderated_boards.clone()).unwrap_or_default()
+        self.me.as_ref().map(|m| m.moderates.boards().to_vec()).unwrap_or_default()
     }
 }
 

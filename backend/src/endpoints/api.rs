@@ -38,6 +38,15 @@ pub fn retired_bot_endpoints(
     )
 }
 
+/// The answer to an action that can be refused. These endpoints answer 200 either way, so
+/// success has to be in the body or the page cannot tell a ban from a refusal.
+fn outcome(ok: bool, message: impl Into<String>) -> warp::reply::Json {
+    warp::reply::json(&common::structs::ActionOutcome {
+        ok,
+        message: message.into(),
+    })
+}
+
 pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejection> + Clone
 {
     // GET /board - returns a list of all boards
@@ -806,7 +815,11 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                     }
                 }
             }
-            let moderates_any_board = viewer.role.can_moderate_site() || !moderated.is_empty();
+            let moderates = if viewer.role.can_moderate_site() {
+                common::structs::ModScope::site()
+            } else {
+                common::structs::ModScope::Boards(moderated)
+            };
             let reply_push = match crate::POOL.get().await {
                 Ok(mut conn) => database::reply_push_enabled(&mut conn, &viewer.id)
                     .await
@@ -818,8 +831,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 &common::structs::MeInfo {
                     role: viewer.role.as_str().to_owned(),
                     banned: viewer.ban != database::Ban::None,
-                    moderates_any_board,
-                    moderated_boards: moderated,
+                    moderates,
                     cache_key: viewer.authored_cache_key(),
                     reply_push,
                 },
@@ -995,9 +1007,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
                 Ok(c) => c,
                 Err(e) => {
                     log::error!("error connecting to backend: {}", e);
-                    return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                        &"error connecting to backend",
-                    ));
+                    return Ok::<warp::reply::Json, warp::reject::Rejection>(outcome(false, "error connecting to backend"));
                 }
             };
             match crate::auth::ban_post_author(
@@ -1010,13 +1020,13 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             )
             .await
             {
-                Ok(true) => Ok(warp::reply::json(&"Author banned")),
-                Ok(false) => Ok(warp::reply::json(&"No current author for that post")),
+                Ok(true) => Ok(outcome(true, "Author banned")),
+                Ok(false) => Ok(outcome(false, "No current author for that post")),
                 Err(e) => {
                     // The message distinguishes "not allowed" from "went wrong" without
                     // naming anyone.
                     log::warn!("ban refused or failed: {e}");
-                    Ok(warp::reply::json(&format!("{e}")))
+                    Ok(outcome(false, format!("{e}")))
                 }
             }
         });
@@ -1084,19 +1094,20 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
         .and_then(|disc: String, post_number: i64, req: common::structs::ReportRequest, viewer: database::Viewer| async move {
             let reason = req.reason.trim().to_owned();
             if reason.is_empty() {
-                return Ok::<warp::reply::Json, warp::reject::Rejection>(warp::reply::json(
-                    &"Say what is wrong with it.",
+                return Ok::<warp::reply::Json, warp::reject::Rejection>(outcome(
+                    false,
+                    "Say what is wrong with it.",
                 ));
             }
             if reason.len() > 1000 {
-                return Ok(warp::reply::json(&"That reason is too long."));
+                return Ok(outcome(false, "That reason is too long."));
             }
 
             let mut conn = match crate::POOL.get().await {
                 Ok(c) => c,
                 Err(e) => {
                     log::error!("error connecting to backend: {}", e);
-                    return Ok(warp::reply::json(&"error connecting to backend"));
+                    return Ok(outcome(false, "error connecting to backend"));
                 }
             };
 
@@ -1104,7 +1115,7 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             // reported — and the existence of such a board is not revealed.
             let board = match crate::database_bindings::Database::get_board(&mut conn, &disc, &viewer).await {
                 Ok(b) => b,
-                Err(e) => return Ok(warp::reply::json(&e.to_string())),
+                Err(e) => return Ok(outcome(false, e.to_string())),
             };
 
             let post = {
@@ -1121,14 +1132,14 @@ pub fn api_endpoints() -> impl Filter<Extract = (impl warp::Reply,), Error = war
             };
 
             let Some(post) = post else {
-                return Ok(warp::reply::json(&"No such post"));
+                return Ok(outcome(false, "No such post"));
             };
 
             match database::create_report(&mut conn, post, board.id, &reason).await {
-                Ok(()) => Ok(warp::reply::json(&"Reported. A moderator will look.")),
+                Ok(()) => Ok(outcome(true, "Reported. A moderator will look.")),
                 Err(e) => {
                     log::error!("could not record a report: {e}");
-                    Ok(warp::reply::json(&"Could not file that report"))
+                    Ok(outcome(false, "Could not file that report"))
                 }
             }
         });

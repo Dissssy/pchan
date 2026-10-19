@@ -36,6 +36,11 @@ web-sys = { version = "0.3.69", features = [
     "DataTransferItem",
     "DataTransferItemList",
     "BroadcastChannel",
+    "Element",
+    "HtmlElement",
+    "HtmlTextAreaElement",
+    "DomRect",
+    "KeyboardEvent",
 ] }
 yew = { version = "0.21.0", features = ["csr"] }
 yew-router = "0.18.0"
