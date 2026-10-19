@@ -3,7 +3,7 @@ use yew::prelude::*;
 use yew_hooks::use_local_storage;
 use yew_router::hooks::{use_location, use_navigator, use_route};
 
-use crate::{api::ApiState, helpers::on_input_to_string, ApiContext, BaseRoute};
+use crate::{api::{ApiError, ApiState}, helpers::on_input_to_string, ApiContext, BaseRoute};
 
 // get the current board and if we're on one present a button to generate an invite link that will copy it to the clipboard
 // also present two text boxes, one surrounded by a / on either side, the other with an input box for a code (placeholder: "Code")
@@ -245,6 +245,11 @@ pub fn InviteTools(props: &Props) -> Html {
                                                         "Invite accepted"
                                                     }
                                                 }</span>
+                                            }
+                                        }
+                                        ApiState::Error(ApiError::Unauthenticated(_)) => {
+                                            html! {
+                                                <a class="invite-tools-button glowing-text" href={crate::components::sign_in_href()}>{"Sign in to accept"}</a>
                                             }
                                         }
                                         ApiState::Error(e) => {

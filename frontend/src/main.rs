@@ -29,7 +29,7 @@ use yew_hooks::{use_local_storage, UseLocalStorageHandle};
 use yew_router::prelude::*;
 pub mod hooks;
 
-use crate::components::{NotificationBox, SettingsButton};
+use crate::components::{NotificationBox, SettingsButton, UpdateBanner};
 
 #[derive(Clone, Routable, PartialEq, Debug)]
 pub enum BaseRoute {
@@ -39,6 +39,15 @@ pub enum BaseRoute {
     Settings,
     #[at("/redeem")]
     Redeem,
+    /// Signed in with Auth0 but not yet a member.
+    #[at("/request-access")]
+    RequestAccess,
+    /// Request was declined.
+    #[at("/declined")]
+    Declined,
+    /// Moderation panel. Which tabs appear depends on the viewer's scope.
+    #[at("/admin")]
+    Admin,
     #[at("/:board_discriminator/")]
     BoardPage { board_discriminator: String },
     #[at("/:board_discriminator/thread/:thread_id")]
@@ -92,6 +101,8 @@ fn main() {
 fn Root() -> Html {
     let api_ctx = use_state(|| None);
     let dispatched = use_state(|| false);
+    // Role of the current viewer, resolved once. None while loading or signed out.
+    let me = use_state(|| None::<common::structs::MeInfo>);
 
     let token = use_local_storage::<String>("token".to_owned());
 
@@ -122,12 +133,25 @@ fn Root() -> Html {
 
     {
         let api_ctx = api_ctx.clone();
+        let me_setter = me.clone();
         use_effect(move || {
             if !*dispatched {
-                wasm_bindgen_futures::spawn_local(async move {
-                    let api = api::Api::new(token).await.map(Arc::new);
-                    api_ctx.set(Some(ApiContext { api }));
-                });
+                // Evict the credential the old build cached here. Without this, anyone who
+                // loaded the previous frontend keeps a stale bearer token in web storage
+                // forever — and in the broken interim state, the literal string
+                // "Not authenticated", which is what a 401 body deserialized to.
+                token.delete();
+
+                let api = Arc::new(api::Api::new());
+                {
+                    let me = me_setter.clone();
+                    let api = Arc::clone(&api);
+                    wasm_bindgen_futures::spawn_local(async move {
+                        // An error here just means signed out; the UI renders accordingly.
+                        me.set(api.get_me().await.ok());
+                    });
+                }
+                api_ctx.set(Some(ApiContext { api: Ok(api) }));
                 dispatched.set(true);
             }
         });
@@ -168,6 +192,7 @@ fn Root() -> Html {
                 <div class="everything" onmousemove={reset_favicon}>
                     <ContextProvider<UseStateHandle<chrono_tz::Tz>> context={timezone.clone()}>
                         <ContextProvider<Option<ApiContext>> context={api_ctx.clone()}>
+                        <ContextProvider<MeContext> context={MeContext { me: (*me).clone() }}>
                             <ContextProvider<ThemeData> context={theme_data}>
                                 <ContextProvider<Favicon> context={Favicon { favicon: favicon.clone(), } }>
                                     <link rel="icon" type="image/x-icon" href={(*favicon).clone()} />
@@ -175,10 +200,12 @@ fn Root() -> Html {
                                         <SettingsButton/>
                                         // <FeedbackButton/>
                                         <NotificationBox/>
+                                        <UpdateBanner/>
                                         <Switch<BaseRoute> render={switch} />
                                     </BrowserRouter>
                                 </ContextProvider<Favicon>>
                             </ContextProvider<ThemeData>>
+                        </ContextProvider<MeContext>>
                         </ContextProvider<Option<ApiContext>>>
                     </ContextProvider<UseStateHandle<chrono_tz::Tz>>>
                 </div>
@@ -193,6 +220,29 @@ fn Root() -> Html {
             //    </div>
             //</div>
         },
+    }
+}
+
+/// The current viewer's role, resolved once at startup and shared.
+#[derive(Clone, PartialEq, Default)]
+pub struct MeContext {
+    pub me: Option<common::structs::MeInfo>,
+}
+
+impl MeContext {
+    pub fn can_moderate_site(&self) -> bool {
+        self.me.as_ref().map(|m| m.can_moderate_site()).unwrap_or(false)
+    }
+    /// Site role or a board grant — anything that should surface moderation UI.
+    pub fn can_moderate_anything(&self) -> bool {
+        self.me.as_ref().map(|m| m.can_moderate_anything()).unwrap_or(false)
+    }
+    pub fn is_admin(&self) -> bool {
+        self.me.as_ref().map(|m| m.is_admin()).unwrap_or(false)
+    }
+    /// Boards moderated directly. Empty for site roles, which are not board-scoped.
+    pub fn moderated_boards(&self) -> Vec<String> {
+        self.me.as_ref().map(|m| m.moderated_boards.clone()).unwrap_or_default()
     }
 }
 
@@ -216,6 +266,21 @@ fn switch(routes: BaseRoute) -> Html {
         BaseRoute::Redeem => {
             html! {
                 <pages::Redeem/>
+            }
+        }
+        BaseRoute::RequestAccess => {
+            html! {
+                <pages::RequestAccess/>
+            }
+        }
+        BaseRoute::Declined => {
+            html! {
+                <pages::Declined/>
+            }
+        }
+        BaseRoute::Admin => {
+            html! {
+                <pages::Admin/>
             }
         }
         BaseRoute::BoardPage {

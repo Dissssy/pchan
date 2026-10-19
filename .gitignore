@@ -7,7 +7,6 @@ frontend/olddist
 frontend/newolddist
 frontend/res-bak
 Cargo.lock
-backend/migrations
 backend/auth.bin.gz
 backend/profanity_en.csv
 backend/quotes.txt

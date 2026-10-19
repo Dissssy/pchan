@@ -16,8 +16,6 @@ use uuid::Uuid;
 use diesel_async::RunQueryDsl;
 use diesel_async::{pooled_connection::AsyncDieselConnectionManager, AsyncPgConnection};
 
-use common::structs::SubscriptionData;
-
 #[derive(Queryable, Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Board {
     pub id: i64,
@@ -31,7 +29,7 @@ impl Board {
     pub async fn with_threads(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: &str,
+        viewer: &Viewer,
     ) -> Result<BoardWithThreads> {
         use crate::threads::dsl::*;
         let mut bthreads = Vec::new();
@@ -42,7 +40,7 @@ impl Board {
             .await?
             .iter()
         {
-            bthreads.push(thread.with_lazy_posts(conn, token).await?);
+            bthreads.push(thread.with_lazy_posts(conn, viewer).await?);
         }
         Ok(BoardWithThreads {
             info: SafeBoard {
@@ -76,7 +74,7 @@ impl Thread {
     pub async fn with_posts(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: &str,
+        viewer: &Viewer,
     ) -> Result<ThreadWithPosts> {
         use crate::posts::dsl::*;
         let tposts = posts
@@ -87,7 +85,7 @@ impl Thread {
             .await?;
         let mut safeposts = Vec::new();
         for post in tposts.iter() {
-            safeposts.push(post.safe(conn, token).await?);
+            safeposts.push(post.safe(conn, viewer).await?);
         }
         let post_count = posts
             .select(count(id))
@@ -103,14 +101,14 @@ impl Thread {
             board: self.board,
             post_count,
             topic: self.topic.clone(),
-            thread_post: tpost.safe(conn, token).await?,
+            thread_post: tpost.safe(conn, viewer).await?,
             posts: safeposts,
         })
     }
     pub async fn with_lazy_posts(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: &str,
+        viewer: &Viewer,
     ) -> Result<ThreadWithLazyPosts> {
         use crate::posts::dsl::*;
         let tposts: Vec<Post> = posts
@@ -128,7 +126,7 @@ impl Thread {
             .await?;
         let mut safeposts = Vec::new();
         for post in tposts.iter() {
-            safeposts.push(post.safe(conn, token).await?);
+            safeposts.push(post.safe(conn, viewer).await?);
         }
         safeposts.reverse();
         let tpost = posts
@@ -139,7 +137,7 @@ impl Thread {
             board: self.board,
             post_count,
             topic: self.topic.clone(),
-            thread_post: tpost.safe(conn, token).await?,
+            thread_post: tpost.safe(conn, viewer).await?,
             posts: safeposts,
         })
     }
@@ -148,24 +146,26 @@ impl Thread {
 #[derive(Queryable, Selectable, Debug, Clone, PartialEq, Eq, Hash)]
 #[diesel(table_name = crate::posts)]
 #[diesel(check_for_backend(diesel::pg::Pg))]
+// Field order must match the column order in the generated schema: Queryable maps
+// positionally, not by name.
 pub struct Post {
     pub id: i64,
-    pub moderator: bool,
     pub post_number: i64,
     pub thread: i64,
     pub board: i64,
     pub author: Option<String>,
-    pub actual_author: String,
     pub content: String,
     pub timestamp: chrono::NaiveDateTime,
     pub replies_to: Vec<i64>,
+    pub actual_author: String,
+    pub moderator: bool,
 }
 
 impl Post {
     pub async fn safe(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: &str,
+        viewer: &Viewer,
     ) -> Result<SafePost> {
         use crate::posts::dsl::*;
         let replies = posts
@@ -181,7 +181,7 @@ impl Post {
             newreplies.push(get_reply_info(reply, self.board, conn).await?);
         }
 
-        let t = get_file(conn, Some(token.to_owned()), self.id).await;
+        let t = get_file(conn, Some(viewer), self.id).await;
 
         let board_discrim = get_board_discrim(self.board, conn).await?;
 
@@ -249,7 +249,7 @@ pub async fn post_number(
 
 pub async fn get_file(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    token: Option<String>,
+    viewer: Option<&Viewer>,
     tid: i64,
 ) -> Result<Option<FileInfo>> {
     use crate::files::dsl::*;
@@ -261,7 +261,7 @@ pub async fn get_file(
         .await
         .optional()?
     {
-        Some(f) => Some(f.info(conn, token).await?),
+        Some(f) => Some(f.info(conn, viewer).await?),
         None => None,
     };
     Ok(file)
@@ -269,7 +269,7 @@ pub async fn get_file(
 
 pub async fn get_file_from_path(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    token: Option<String>,
+    viewer: Option<&Viewer>,
     path: &str,
 ) -> Result<Option<FileInfo>> {
     use crate::files::dsl::*;
@@ -281,7 +281,7 @@ pub async fn get_file_from_path(
         .await
         .optional()?
     {
-        Some(f) => Some(f.info(conn, token).await?),
+        Some(f) => Some(f.info(conn, viewer).await?),
         None => None,
     };
     Ok(file)
@@ -299,7 +299,7 @@ impl File {
     pub async fn info(
         &self,
         conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-        token: Option<String>,
+        viewer: Option<&Viewer>,
     ) -> Result<FileInfo> {
         // file id is shared with the post id, so we can work our way up the chain to find whether the board is private
         let post = crate::posts::dsl::posts
@@ -314,13 +314,11 @@ impl File {
 
         if board.private {
             // ensure the user has access to this board
-            if !match token {
-                Some(t) => check_access(conn, &t, board.id).await?,
-                None => {
-                    log::trace!("No token provided");
-                    false
-                }
-            } {
+            let permitted = match viewer {
+                Some(v) => check_access(conn, v, board.id).await?,
+                None => false,
+            };
+            if !permitted {
                 return Err(anyhow::anyhow!("Not authorized to view this file"));
             }
         }
@@ -335,7 +333,6 @@ impl File {
             claimed: ClaimedFileInfo {
                 path: self.filepath.clone(),
                 thumbnail,
-                hash: self.hash.clone(),
                 spoiler: self.spoiler,
             },
             board: MicroBoardInfo {
@@ -381,19 +378,159 @@ pub struct Spoiler {
     pub boards: Vec<i64>,
 }
 
+/// A member row. Carries nothing identifying by design — no name, no email, no created_at.
 #[derive(Queryable, Debug, Clone, PartialEq, Eq)]
 pub struct Member {
-    pub id: i64,
-    pub token_hash: String,
-    pub push_data: serde_json::Value,
-    pub watching: Vec<i64>,
-    pub admin: bool,
+    pub id: Uuid,
+    /// Preimage for post authorship. Rotatable: changing it severs the member from everything
+    /// they have already posted.
+    pub author_seed: String,
+    pub role: String,
 }
 
 impl Member {
-    pub fn parse_push_data(&self) -> Result<Vec<SubscriptionData>> {
-        let data = serde_json::from_value(self.push_data.clone())?;
-        Ok(data)
+    pub fn role(&self) -> Role {
+        Role::from_str(&self.role)
+    }
+
+    /// Bans live in their own table, so they have to be resolved separately.
+    pub fn viewer_with(&self, ban: Ban) -> Viewer {
+        Viewer {
+            id: self.id,
+            author_seed: self.author_seed.clone(),
+            role: self.role(),
+            ban,
+        }
+    }
+}
+
+/// How far a ban reaches.
+///
+/// Deliberately not constructible from a bare `Vec`: an accidentally empty list must not become
+/// a sitewide ban, so [`Ban::boards`] rejects that case and `Sitewide` has to be named out loud.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum Ban {
+    None,
+    Sitewide,
+    Boards(Vec<i64>),
+}
+
+impl Ban {
+    /// Board-scoped ban. An empty list is refused rather than silently escalating.
+    pub fn boards(ids: Vec<i64>) -> Result<Self> {
+        if ids.is_empty() {
+            anyhow::bail!("a board-scoped ban needs at least one board");
+        }
+        Ok(Self::Boards(ids))
+    }
+
+    pub fn is_sitewide(&self) -> bool {
+        matches!(self, Self::Sitewide)
+    }
+
+    pub fn covers(&self, board: i64) -> bool {
+        match self {
+            Self::None => false,
+            Self::Sitewide => true,
+            Self::Boards(ids) => ids.contains(&board),
+        }
+    }
+}
+
+/// Active bans for a member, collapsed into a scope. Expired rows are ignored.
+pub async fn resolve_ban(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    member: &Uuid,
+) -> Result<Ban> {
+    use crate::bans::dsl::*;
+
+    let rows = bans
+        .filter(member_id.eq(member))
+        .filter(expires_at.is_null().or(expires_at.gt(chrono::Utc::now())))
+        .select(board_id)
+        .load::<Option<i64>>(conn)
+        .await?;
+
+    // A single sitewide row outranks everything else.
+    if rows.iter().any(|b| b.is_none()) {
+        return Ok(Ban::Sitewide);
+    }
+    let boards: Vec<i64> = rows.into_iter().flatten().collect();
+    if boards.is_empty() {
+        Ok(Ban::None)
+    } else {
+        Ok(Ban::Boards(boards))
+    }
+}
+
+/// Site-wide role. Per-board moderation is separate — see [`PermissionLevel`].
+///
+/// Deliberately stored here rather than in Auth0: a mod with the Auth0 dashboard could
+/// correlate login timestamps against post timestamps and deanonymise a small population.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Role {
+    Member,
+    SiteMod,
+    Admin,
+}
+
+impl Role {
+    pub fn as_str(self) -> &'static str {
+        match self {
+            Self::Member => "member",
+            Self::SiteMod => "site_mod",
+            Self::Admin => "admin",
+        }
+    }
+    /// Unknown values degrade to the least privileged role rather than failing a request.
+    pub fn from_str(s: &str) -> Self {
+        match s {
+            "admin" => Self::Admin,
+            "site_mod" => Self::SiteMod,
+            _ => Self::Member,
+        }
+    }
+    pub fn is_admin(self) -> bool {
+        matches!(self, Self::Admin)
+    }
+    /// May review the join queue and act on reported posts.
+    pub fn can_moderate_site(self) -> bool {
+        matches!(self, Self::SiteMod | Self::Admin)
+    }
+}
+
+/// The authenticated member behind a request, resolved once per request from the session.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct Viewer {
+    pub id: Uuid,
+    pub author_seed: String,
+    pub role: Role,
+    pub ban: Ban,
+}
+
+impl Viewer {
+    /// An internal caller that is not a real member — file trimming, scheduled maintenance,
+    /// link-embed rendering. Sees every board, the way an admin does.
+    ///
+    /// This replaces the old `SUPER_SECRET_CODE` constant, which did the same job by
+    /// comparing an attacker-supplied string against a value compiled into the binary.
+    /// Construct it only in internal call paths, never from anything in a request.
+    pub fn system() -> Self {
+        Self {
+            id: Uuid::nil(),
+            author_seed: String::new(),
+            role: Role::Admin,
+            ban: Ban::None,
+        }
+    }
+
+    /// Authorship tag for one of this member's posts.
+    pub fn post_author_hash(&self, post_id: i64) -> String {
+        crate::keys::post_author_hash(&self.author_seed, post_id)
+    }
+    /// This member's access-grant hash for one board.
+    pub fn invite_hash(&self, board_id: i64) -> String {
+        crate::keys::invite_hash(&self.id, board_id)
     }
 }
 
@@ -405,9 +542,12 @@ pub async fn get_random_spoiler(
 
     // let spoiler = spoilers.select(img).load::<String>(conn).await?;
 
+    // An empty board list means the spoiler applies everywhere. The previous schema expressed
+    // that with NULL, but the column is NOT NULL now, and `is_null()` on a non-nullable
+    // column always evaluates false — which silently disabled every global spoiler.
     let spoiler = spoilers
         .or_filter(boards.contains(vec![board]))
-        .or_filter(boards.is_null())
+        .or_filter(boards.eq(Vec::<i64>::new()))
         .select(img_path)
         .load::<String>(conn)
         .await?;
@@ -433,35 +573,37 @@ pub struct BoardAccess {
     generated_by: String,
 }
 
+/// Whether `viewer` may see `board`.
+///
+/// The previous version began with `if token == env!("SUPER_SECRET_CODE")`, a compile-time
+/// constant that granted read access to every private board. That is deliberately gone.
 pub async fn check_access(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    token: &str,
+    viewer: &Viewer,
     board: i64,
 ) -> Result<bool> {
-    if token == env!("SUPER_SECRET_CODE") {
-        return Ok(true);
-    }
-    log::trace!("{}, {}", board, token);
-
     let board = {
         use crate::boards::dsl::*;
         boards.filter(id.eq(board)).first::<Board>(conn).await?
     };
 
-    use crate::user_tags::dsl::*;
+    // A sitewide ban blocks everything; a board ban blocks only that board.
+    if viewer.ban.covers(board.id) {
+        return Ok(false);
+    }
+
     if !board.private {
         return Ok(true);
     }
 
-    // let permission_level = Self::is_admin(conn, token.clone(), board.id).await?;
-    let permission_level = permission_level(conn, board.id, token).await?;
-    if !permission_level.is_none() {
+    if !permission_level(conn, board.id, viewer).await?.is_none() {
         return Ok(true);
     }
 
-    let hash = common::hash_invitation(token, board.id);
-
+    use crate::user_tags::dsl::*;
     use diesel::dsl::{exists, select};
+
+    let hash = viewer.invite_hash(board.id);
 
     let exists = select(exists(
         user_tags.filter(
@@ -480,10 +622,10 @@ pub async fn check_access(
 pub async fn create_access(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     name: &str,
-    token: &str,
+    viewer: &Viewer,
     board: i64,
 ) -> Result<String> {
-    let permission_level = permission_level(conn, board, token).await?;
+    let permission_level = permission_level(conn, board, viewer).await?;
     let generated_by_val = match permission_level {
         PermissionLevel::None => {
             return Err(anyhow::anyhow!("Not authorized to generate access code"));
@@ -528,11 +670,12 @@ pub async fn create_access(
 pub async fn create_moderation(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     name: &str,
-    token: &str,
+    viewer: &Viewer,
     board: i64,
 ) -> Result<String> {
-    let permission_level = permission_level(conn, board, token).await?;
-    if !permission_level.is_admin() {
+    // Site-level only. A board moderator cannot mint more moderators for their own board,
+    // which would let a single grant quietly multiply itself.
+    if !viewer.role.can_moderate_site() {
         return Err(anyhow::anyhow!("Not authorized to generate moderator code"));
     }
 
@@ -572,16 +715,20 @@ pub async fn create_moderation(
 pub async fn permission_level(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     board: i64,
-    token: &str,
+    viewer: &Viewer,
 ) -> Result<PermissionLevel> {
-    if check_admin(conn, token).await? {
+    if viewer.ban.covers(board) {
+        return Ok(PermissionLevel::None);
+    }
+    // The role is already on the viewer, so this no longer costs a query per call.
+    if viewer.role.is_admin() {
         return Ok(PermissionLevel::Admin);
     }
 
     use crate::user_tags::dsl::*;
     use diesel::dsl::{exists, select};
 
-    let hash = common::hash_invitation(token, board);
+    let hash = viewer.invite_hash(board);
 
     let exists = select(exists(
         user_tags.filter(
@@ -619,20 +766,97 @@ impl PermissionLevel {
     }
 }
 
-pub async fn check_admin(
+/// One stored push subscription, still encrypted.
+#[derive(Queryable, Debug, Clone)]
+pub struct StoredPush {
+    pub id: Uuid,
+    pub member_id: Uuid,
+    pub data: Vec<u8>,
+}
+
+/// A member's push subscriptions, decrypted. The row id comes back too so a subscription that
+/// the push service rejects can be deleted.
+///
+/// Rows that fail to decrypt are skipped rather than failing the whole call: a single corrupt
+/// row should not stop notifications for every other device.
+pub async fn get_push_subscriptions(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
-    token: &str,
-) -> Result<bool> {
+    member: &Uuid,
+) -> Result<Vec<(Uuid, SubscriptionData)>> {
+    use crate::member_push::dsl::*;
+
+    let rows = member_push
+        .filter(member_id.eq(member))
+        .load::<StoredPush>(conn)
+        .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let plain = match crate::keys::open_push(&row.data) {
+            Ok(p) => p,
+            Err(e) => {
+                log::warn!("skipping undecryptable push subscription {}: {e}", row.id);
+                continue;
+            }
+        };
+        match serde_json::from_slice::<SubscriptionData>(&plain) {
+            Ok(sub) => out.push((row.id, sub)),
+            Err(e) => log::warn!("skipping malformed push subscription {}: {e}", row.id),
+        }
+    }
+    Ok(out)
+}
+
+/// Store a push subscription, ignoring one this member already has.
+pub async fn add_push_subscription(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    member: &Uuid,
+    sub: &SubscriptionData,
+) -> Result<()> {
+    // Ciphertext differs every time (fresh nonce), so duplicates have to be detected by
+    // comparing decrypted values rather than by a unique index.
+    if get_push_subscriptions(conn, member)
+        .await?
+        .iter()
+        .any(|(_, existing)| existing == sub)
+    {
+        return Ok(());
+    }
+
+    use crate::member_push::dsl::*;
+    let sealed = crate::keys::seal_push(&serde_json::to_vec(sub)?)?;
+    diesel::insert_into(member_push)
+        .values((member_id.eq(member), data.eq(sealed)))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Drop a subscription the push service has rejected.
+pub async fn remove_push_subscription(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    row_id: &Uuid,
+) -> Result<()> {
+    use crate::member_push::dsl::*;
+    diesel::delete(member_push.filter(id.eq(row_id)))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Look up a member by id. Returns `None` if the row is gone.
+pub async fn get_member(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    member_id: &Uuid,
+) -> Result<Option<Member>> {
     use crate::members::dsl::*;
-    use diesel::dsl::{exists, select};
+    use diesel::result::OptionalExtension as _;
 
-    let res = select(exists(
-        members.filter(token_hash.eq(token)).filter(admin.eq(true)),
-    ))
-    .get_result(conn)
-    .await?;
-
-    Ok(res)
+    Ok(members
+        .filter(id.eq(member_id))
+        .first::<Member>(conn)
+        .await
+        .optional()?)
 }
 
 pub enum UserTag {
@@ -659,7 +883,7 @@ impl UserTag {
 pub async fn grant_access(
     conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
     code: &str,
-    token: &str,
+    viewer: &Viewer,
 ) -> Result<()> {
     use crate::user_tags::dsl::*;
     use diesel::dsl::{exists, select};
@@ -698,7 +922,7 @@ pub async fn grant_access(
     //     return Err(anyhow::anyhow!("Invite already accepted"));
     // }
 
-    let hash = common::hash_invitation(token, conf.board);
+    let hash = viewer.invite_hash(conf.board);
 
     // get an existing user_tag with the same invite_hash
     let existing = user_tags
@@ -790,4 +1014,396 @@ impl BoardAccessConfirmation {
         }
         Ok(Self { id, board })
     }
+}
+
+/// A report row.
+#[derive(Queryable, Debug, Clone)]
+pub struct Report {
+    pub id: Uuid,
+    pub post_id: i64,
+    pub board_id: i64,
+    pub reason: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+    pub resolved_at: Option<chrono::DateTime<chrono::Utc>>,
+    pub resolved_by: Option<Uuid>,
+}
+
+/// File a report against a post.
+///
+/// No reporter is recorded. Re-reporting a post that already has an open report is a no-op
+/// rather than an error, so a pile-on neither fails loudly nor accumulates rows.
+pub async fn create_report(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    post: i64,
+    board: i64,
+    text: &str,
+) -> Result<()> {
+    use crate::reports::dsl::*;
+    diesel::insert_into(reports)
+        .values((post_id.eq(post), board_id.eq(board), reason.eq(text)))
+        .on_conflict_do_nothing()
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Open reports, oldest first. `boards` limits the inbox to a moderator's own boards; an empty
+/// slice means no restriction (site-level).
+pub async fn open_reports(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    boards: Option<&[i64]>,
+) -> Result<Vec<(Report, String, i64)>> {
+    use crate::reports::dsl as r;
+
+    let mut query = r::reports.filter(r::resolved_at.is_null()).into_boxed();
+    if let Some(ids) = boards {
+        query = query.filter(r::board_id.eq_any(ids.to_vec()));
+    }
+    let rows = query.order(r::created_at.asc()).load::<Report>(conn).await?;
+
+    // Resolve each post to something a moderator can navigate to. Reports are few, so a
+    // lookup per row is fine; if the inbox ever grows this wants a join.
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let post = {
+            use crate::posts::dsl as p;
+            p::posts
+                .filter(p::id.eq(row.post_id))
+                .select(p::post_number)
+                .first::<i64>(conn)
+                .await
+                .optional()?
+        };
+        let discriminator = get_board_discrim(row.board_id, conn).await?;
+        if let Some(number) = post {
+            out.push((row, discriminator, number));
+        }
+    }
+    Ok(out)
+}
+
+/// Mark a report handled.
+pub async fn resolve_report(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    report_id: &Uuid,
+    by: &Uuid,
+) -> Result<Option<i64>> {
+    use crate::reports::dsl::*;
+    let board = reports
+        .filter(id.eq(report_id))
+        .filter(resolved_at.is_null())
+        .select(board_id)
+        .first::<i64>(conn)
+        .await
+        .optional()?;
+
+    if board.is_some() {
+        diesel::update(reports.filter(id.eq(report_id)))
+            .set((resolved_at.eq(chrono::Utc::now()), resolved_by.eq(by)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(board)
+}
+
+/// Board ids this viewer moderates. Site-level roles return `None`, meaning "all boards".
+///
+/// Two queries regardless of how many boards exist: the per-board grant hashes are computed
+/// locally and matched in one `IN`, rather than asking the database once per board.
+pub async fn moderated_boards(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    viewer: &Viewer,
+) -> Result<Option<Vec<i64>>> {
+    if viewer.role.can_moderate_site() {
+        return Ok(None);
+    }
+
+    let all = {
+        use crate::boards::dsl as b;
+        b::boards.select(b::id).load::<i64>(conn).await?
+    };
+
+    // Each board has a distinct grant hash for this member, so the lookup is by value.
+    let hashes: Vec<String> = all.iter().map(|b| viewer.invite_hash(*b)).collect();
+
+    let found = {
+        use crate::user_tags::dsl as t;
+        t::user_tags
+            .filter(t::tag_kind.eq(UserTag::Moderator.to_string()))
+            .filter(t::invite_hash.eq_any(&hashes))
+            .select((t::board_id, t::invite_hash))
+            .load::<(i64, Option<String>)>(conn)
+            .await?
+    };
+
+    // Match the grant back to the board it was computed for, so a hash cannot be credited to
+    // the wrong board.
+    let mine = found
+        .into_iter()
+        .filter(|(board, hash)| hash.as_deref() == Some(viewer.invite_hash(*board).as_str()))
+        .map(|(board, _)| board)
+        .collect();
+
+    Ok(Some(mine))
+}
+
+/// Change a board's display name and privacy.
+///
+/// The discriminator is deliberately not editable: it is in every URL and in
+/// `user_tags.board_id`-derived grants, so renaming it would orphan links rather than move
+/// them.
+pub async fn update_board(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    board: i64,
+    new_name: Option<&str>,
+    new_private: Option<bool>,
+) -> Result<()> {
+    use crate::boards::dsl::*;
+    if let Some(n) = new_name {
+        if n.trim().is_empty() {
+            anyhow::bail!("a board needs a name");
+        }
+        diesel::update(boards.filter(id.eq(board)))
+            .set(name.eq(n.trim()))
+            .execute(conn)
+            .await?;
+    }
+    if let Some(p) = new_private {
+        diesel::update(boards.filter(id.eq(board)))
+            .set(private.eq(p))
+            .execute(conn)
+            .await?;
+    }
+    Ok(())
+}
+
+/// Delete a board and everything on it.
+pub async fn delete_board(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    board: i64,
+) -> Result<()> {
+    use crate::boards::dsl::*;
+    diesel::delete(boards.filter(id.eq(board)))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Moderator grants, per board.
+///
+/// Returns the grant rows, never a member roster: `user_name` is a label typed by whoever
+/// issued the code and `invite_hash` is only ever shown as redeemed-or-not. There is
+/// deliberately no way to go from a grant to the member holding it.
+pub async fn moderator_grants(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<Vec<(Uuid, String, String, bool)>> {
+    use crate::user_tags::dsl as t;
+
+    let rows = t::user_tags
+        .filter(t::tag_kind.eq(UserTag::Moderator.to_string()))
+        .select((t::id, t::board_id, t::user_name, t::invite_hash))
+        .load::<(Uuid, i64, String, Option<String>)>(conn)
+        .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for (grant_id, board, label, hash) in rows {
+        let discriminator = get_board_discrim(board, conn).await?;
+        out.push((grant_id, discriminator, label, hash.is_some()));
+    }
+    Ok(out)
+}
+
+/// Revoke a moderator grant. The cascade trigger removes any invites descended from it.
+pub async fn revoke_grant(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    grant_id: &Uuid,
+) -> Result<Option<i64>> {
+    use crate::user_tags::dsl::*;
+    let board = user_tags
+        .filter(id.eq(grant_id))
+        .select(board_id)
+        .first::<i64>(conn)
+        .await
+        .optional()?;
+
+    if board.is_some() {
+        diesel::delete(user_tags.filter(id.eq(grant_id)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(board)
+}
+
+/// Recent moderation actions. `actor_filter` limits the view to one moderator's own entries.
+pub async fn moderation_entries(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    actor_filter: Option<&Uuid>,
+    limit: i64,
+) -> Result<Vec<(String, Option<String>, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>>
+{
+    use crate::moderation_log::dsl as l;
+
+    let mut query = l::moderation_log.into_boxed();
+    if let Some(a) = actor_filter {
+        query = query.filter(l::actor.eq(a));
+    }
+    let rows = query
+        .order(l::created_at.desc())
+        .limit(limit)
+        .select((l::action, l::board_id, l::target, l::detail, l::created_at))
+        .load::<(String, Option<i64>, Option<String>, Option<String>, chrono::DateTime<chrono::Utc>)>(conn)
+        .await?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for (action, board, target, detail, at) in rows {
+        let discriminator = match board {
+            Some(b) => get_board_discrim(b, conn).await.ok(),
+            None => None,
+        };
+        out.push((action, discriminator, target, detail, at));
+    }
+    Ok(out)
+}
+
+// ---------------------------------------------------------------- site assets
+
+/// Banners and spoilers share a shape: an image, the boards it applies to, and for banners an
+/// optional link. Empty board list means every board.
+///
+/// Legacy rows express "every board" as NULL (banners) — both are accepted on read, and
+/// everything written from now on uses an empty array.
+pub async fn list_banners(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<Vec<(i64, String, Option<String>, Vec<i64>)>> {
+    use crate::banners::dsl::*;
+    Ok(banners
+        .order(id.asc())
+        .load::<Banner>(conn)
+        .await?
+        .into_iter()
+        .map(|b| (b.id, b.img_path, b.href, b.boards.unwrap_or_default()))
+        .collect())
+}
+
+pub async fn list_spoilers(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+) -> Result<Vec<(i64, String, Vec<i64>)>> {
+    use crate::spoilers::dsl::*;
+    Ok(spoilers
+        .order(id.asc())
+        .load::<Spoiler>(conn)
+        .await?
+        .into_iter()
+        .map(|s| (s.id, s.img_path, s.boards))
+        .collect())
+}
+
+pub async fn create_banner(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    path: &str,
+) -> Result<i64> {
+    use crate::banners::dsl::*;
+    Ok(diesel::insert_into(banners)
+        .values((img_path.eq(path), boards.eq(Vec::<i64>::new())))
+        .returning(id)
+        .get_result(conn)
+        .await?)
+}
+
+pub async fn create_spoiler(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    path: &str,
+) -> Result<i64> {
+    use crate::spoilers::dsl::*;
+    Ok(diesel::insert_into(spoilers)
+        .values((img_path.eq(path), boards.eq(Vec::<i64>::new())))
+        .returning(id)
+        .get_result(conn)
+        .await?)
+}
+
+pub async fn update_banner(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    banner_id: i64,
+    new_href: Option<&str>,
+    new_boards: Vec<i64>,
+) -> Result<()> {
+    use crate::banners::dsl::*;
+    diesel::update(banners.filter(id.eq(banner_id)))
+        .set((href.eq(new_href), boards.eq(Some(new_boards))))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+pub async fn update_spoiler(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    spoiler_id: i64,
+    new_boards: Vec<i64>,
+) -> Result<()> {
+    use crate::spoilers::dsl::*;
+    diesel::update(spoilers.filter(id.eq(spoiler_id)))
+        .set(boards.eq(new_boards))
+        .execute(conn)
+        .await?;
+    Ok(())
+}
+
+/// Delete an asset, returning the image path so the file can be removed too.
+pub async fn delete_banner(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    banner_id: i64,
+) -> Result<Option<String>> {
+    use crate::banners::dsl::*;
+    use diesel::result::OptionalExtension as _;
+    let path = banners
+        .filter(id.eq(banner_id))
+        .select(img_path)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if path.is_some() {
+        diesel::delete(banners.filter(id.eq(banner_id)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(path)
+}
+
+pub async fn delete_spoiler(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    spoiler_id: i64,
+) -> Result<Option<String>> {
+    use crate::spoilers::dsl::*;
+    use diesel::result::OptionalExtension as _;
+    let path = spoilers
+        .filter(id.eq(spoiler_id))
+        .select(img_path)
+        .first::<String>(conn)
+        .await
+        .optional()?;
+    if path.is_some() {
+        diesel::delete(spoilers.filter(id.eq(spoiler_id)))
+            .execute(conn)
+            .await?;
+    }
+    Ok(path)
+}
+
+/// Map board discriminators to ids, rejecting unknown ones rather than silently dropping them.
+pub async fn board_ids_for(
+    conn: &mut Object<AsyncDieselConnectionManager<AsyncPgConnection>>,
+    discriminators: &[String],
+) -> Result<Vec<i64>> {
+    use crate::boards::dsl::*;
+    let found = boards
+        .filter(discriminator.eq_any(discriminators))
+        .select((id, discriminator))
+        .load::<(i64, String)>(conn)
+        .await?;
+
+    if found.len() != discriminators.len() {
+        anyhow::bail!("one or more boards do not exist");
+    }
+    Ok(found.into_iter().map(|(i, _)| i).collect())
 }

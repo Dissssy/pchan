@@ -74,3 +74,330 @@
     color: var(--primary-color);
     background-color: var(--link-color);
 }
+/* Shown wherever the API reports the viewer is not signed in. */
+.sign-in {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 2rem 1.5rem;
+    margin: 2rem auto;
+    max-width: 28rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    text-align: center;
+}
+
+.sign-in h1 {
+    margin: 0;
+}
+
+.sign-in p {
+    margin: 0;
+    color: var(--secondary-text-color);
+}
+
+.sign-in-button {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    color: var(--link-color);
+    text-decoration: none;
+}
+
+.sign-in-button:hover {
+    color: var(--primary-color);
+    background-color: var(--link-color);
+}
+
+/* Join flow: request-access, pending, declined, and the review queue. */
+.join-page {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 1rem;
+    padding: 2rem 1.5rem;
+    margin: 2rem auto;
+    max-width: 40rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    text-align: center;
+}
+
+.join-page h1 { margin: 0; }
+.join-page p { margin: 0; color: var(--secondary-text-color); }
+
+.join-disclosure {
+    width: 100%;
+    max-width: 32rem;
+    padding: 0.5rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    font-family: inherit;
+    resize: vertical;
+}
+
+.join-button {
+    display: inline-block;
+    padding: 0.5rem 1.25rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+    color: var(--link-color);
+    text-decoration: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.join-button:hover { color: var(--primary-color); background-color: var(--link-color); }
+.join-button:disabled { opacity: 0.6; cursor: default; }
+.join-button-danger { color: var(--error-color); }
+.join-button-danger:hover { color: var(--primary-color); background-color: var(--error-color); }
+
+.join-error { color: var(--error-color) !important; }
+
+.moderation-page { max-width: 48rem; }
+.moderation-note { font-style: italic; }
+.moderation-empty { opacity: 0.7; }
+
+.moderation-list {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    width: 100%;
+}
+
+.moderation-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    padding: 1rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    text-align: left;
+}
+
+.moderation-disclosure { white-space: pre-wrap; color: var(--text-color) !important; }
+.moderation-meta { font-size: 0.85em; opacity: 0.7; }
+.moderation-actions { display: flex; gap: 0.5rem; }
+
+/* Matches the other settings sections: bordered box, title row, full-width children. */
+.account-tools {
+    display: flex;
+    flex-direction: column;
+    margin: 0.4rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.account-tools > * {
+    max-width: calc(100% - 0.8rem);
+    margin-block: 0.2rem;
+    margin-inline: 0.4rem;
+}
+
+.account-tools-title {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 0.5rem;
+    border-bottom: var(--border-width) var(--border-type) var(--border-color);
+}
+
+.account-role {
+    color: var(--secondary-text-color);
+    font-size: 0.85em;
+}
+
+.account-button {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    text-align: center;
+    white-space: nowrap;
+    padding-block: 0.25rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--secondary-color);
+    color: var(--link-color);
+    text-decoration: none;
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.account-button:hover { color: var(--primary-color); background-color: var(--link-color); }
+.account-button-danger { color: var(--error-color); }
+.account-button-danger:hover { color: var(--primary-color); background-color: var(--error-color); }
+
+.account-note { color: var(--secondary-text-color); }
+
+/* The form wrapper must not reintroduce the gap the siblings already have. */
+.account-logout { margin: 0.2rem 0.4rem; }
+
+.post-header-ban-button { display: inline-block; padding-inline: 0.25rem; cursor: pointer; }
+.post-header-ban-button a { color: var(--error-color); text-decoration: none; }
+.post-header-ban-button a:hover { opacity: 0.7; }
+
+.post-header-report-button { display: inline-block; padding-inline: 0.25rem; cursor: pointer; }
+.post-header-report-button a { color: var(--secondary-text-color); text-decoration: none; }
+.post-header-report-button a:hover { color: var(--error-color); }
+
+/* Admin panel */
+.admin-page {
+    max-width: 52rem;
+    margin: 2rem auto;
+    padding: 1.5rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+}
+
+.admin-page > h1 { margin: 0 0 1rem; }
+
+.admin-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1rem;
+    border-bottom: var(--border-width) var(--border-type) var(--border-color);
+    padding-bottom: 0.75rem;
+}
+
+.admin-tab {
+    padding: 0.4rem 0.9rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+    color: var(--link-color);
+    cursor: pointer;
+    font-family: inherit;
+}
+
+.admin-tab:hover { color: var(--primary-color); background-color: var(--link-color); }
+.admin-tab-active { color: var(--primary-color); background-color: var(--link-color); }
+
+.admin-body { display: flex; flex-direction: column; gap: 1rem; }
+
+.admin-create-board { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+
+.admin-input {
+    flex: 1 1 10rem;
+    padding: 0.45rem 0.6rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    font-family: inherit;
+}
+
+.admin-input-short { flex: 0 0 6rem; }
+
+.log-item { gap: 0.25rem; }
+
+/* Assets tab */
+.admin-section-title {
+    display: block;
+    padding-bottom: 0.35rem;
+    margin-top: 0.5rem;
+    border-bottom: var(--border-width) var(--border-type) var(--border-color);
+    color: var(--secondary-text-color);
+}
+
+.asset-upload {
+    flex: none;
+    align-self: flex-start;
+    max-width: 100%;
+    padding: 0.4rem;
+    border: var(--border-width) dashed var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--secondary-color);
+    color: var(--secondary-text-color);
+    font-family: inherit;
+}
+
+.asset-upload::file-selector-button {
+    margin-right: 0.75rem;
+    padding: 0.4rem 1rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+    color: var(--link-color);
+    font-family: inherit;
+    cursor: pointer;
+}
+
+.asset-upload::file-selector-button:hover { color: var(--primary-color); background-color: var(--link-color); }
+
+.asset-list { display: flex; flex-direction: column; gap: 0.75rem; }
+
+.asset-card {
+    display: flex;
+    gap: 1rem;
+    padding: 0.75rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--secondary-color);
+    text-align: left;
+}
+
+/* Spoilers are small squares, so the preview sits beside the controls; banners are wide
+   strips and get the full row to themselves. */
+.asset-card-spoilers { flex-direction: row; align-items: flex-start; }
+.asset-card-banners { flex-direction: column; }
+.asset-card-banners .asset-preview { width: 100%; max-width: 600px; height: auto; }
+
+.asset-link {
+    flex: none;
+    box-sizing: border-box;
+    width: 100%;
+    padding: 0.45rem 0.6rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+    color: var(--text-color);
+    font-family: inherit;
+}
+
+.asset-scope { margin: 0; font-size: 0.85em; opacity: 0.7; }
+.asset-actions { display: flex; gap: 0.5rem; }
+
+.asset-preview {
+    flex: 0 0 auto;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+}
+
+.asset-controls {
+    display: flex;
+    flex-direction: column;
+    gap: 0.6rem;
+    flex: 1 1 auto;
+    min-width: 0;
+}
+
+.asset-boards { display: flex; flex-wrap: wrap; gap: 0.25rem; }
+
+.asset-board {
+    flex: none;
+    padding: 0.15rem 0.5rem;
+    border: var(--border-width) var(--border-type) var(--border-color);
+    border-radius: var(--border-radius);
+    background-color: var(--primary-color);
+    color: var(--secondary-text-color);
+    cursor: pointer;
+    font-family: inherit;
+    font-size: 0.85em;
+}
+
+.asset-board:hover { color: var(--link-color); }
+.asset-board-on { color: var(--primary-color); background-color: var(--link-color); }
+
+.asset-message { color: var(--link-color) !important; }
+
+/* Narrow screens: stack the preview above its controls. */
+@media (max-width: 40rem) {
+    .asset-card-spoilers { flex-direction: column; }
+}

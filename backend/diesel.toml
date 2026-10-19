@@ -2,7 +2,13 @@
 # see https://diesel.rs/guides/configuring-diesel-cli
 
 [print_schema]
-file = "src/schema/raw.rs"
+# The database crate is what the code actually imports; generating anywhere else leaves an
+# orphaned copy that silently drifts from the real schema.
+file = "../database/src/raw.rs"
+# Postgres cannot express "array of non-null elements", so print-schema emits
+# Array<Nullable<Int8>> for every BIGINT[]. The code has always modelled these as Vec<i64>.
+# The patch re-applies that automatically, so regenerating stays correct.
+patch_file = "src/schema.patch"
 
 [migrations_directory]
 dir = "migrations"

@@ -5,12 +5,11 @@ use gloo_net::http::Request;
 use serde::{de::DeserializeOwned, Serialize};
 use std::fmt::Display;
 use yew::prelude::*;
-use yew_hooks::UseLocalStorageHandle;
 
-mod token;
-
+/// The browser session cookie is the credential now, so `Api` holds none. It used to carry a
+/// bearer token fetched from `/api/v1/token` and cached in localStorage, which meant an XSS
+/// could read a permanently valid credential.
 pub struct Api {
-    pub token: AttrValue,
     #[cfg(feature = "cache-base")]
     pub cache: std::rc::Rc<async_lock::Mutex<typemap_ors::TypeMap>>,
 }
@@ -18,43 +17,207 @@ pub struct Api {
 impl std::fmt::Debug for Api {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("Api")
-            .field("token", &self.token)
             .field("cache", &"Mutex<TypeMap>")
             .finish()
     }
 }
 
 impl PartialEq for Api {
-    fn eq(&self, other: &Self) -> bool {
-        self.token == other.token
+    // All instances are equivalent now that there is no per-instance credential.
+    fn eq(&self, _other: &Self) -> bool {
+        true
+    }
+}
+
+impl Default for Api {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
 impl Api {
-    pub async fn new(token: UseLocalStorageHandle<String>) -> Result<Self, ApiError> {
-        let token = if let Some(token) = &*token {
-            AttrValue::from(token.clone())
-        } else {
-            let t = Self::get_token().await?;
-            token.set(t.to_string());
-            t
-        };
-
-        Ok(Self {
-            token,
+    pub fn new() -> Self {
+        Self {
             #[cfg(feature = "cache-base")]
             cache: std::rc::Rc::new(async_lock::Mutex::new(typemap_ors::TypeMap::new())),
-        })
+        }
     }
 
-    async fn get_token() -> Result<AttrValue, ApiError> {
-        let token = token::get_token().await?;
-        //
-        Ok(token)
+    // ------------------------------------------------------------ membership
+
+    /// Role and ban state for the current viewer. Never cached: a ban or a role change has
+    /// to take effect on the next page load, not whenever a cache happens to expire.
+    pub async fn get_me(&self) -> Result<common::structs::MeInfo, ApiError> {
+        standard_get::<common::structs::MeInfo>("/api/v1/me").await
     }
 
-    fn formatted_token(&self) -> String {
-        format!("Bearer {}", self.token)
+    /// What this applicant has already written, if anything. `None` means no request on file.
+    pub async fn get_access_request(&self) -> Result<Option<String>, ApiError> {
+        standard_get::<Option<String>>("/api/v1/access_request").await
+    }
+
+    /// Submit or update a join request. Authorised by the join ticket cookie, not a session —
+    /// the applicant does not have one yet.
+    pub async fn submit_access_request(&self, disclosure: String) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            "/api/v1/access_request",
+            &common::structs::AccessRequest { disclosure },
+        )
+        .await
+    }
+
+    pub async fn list_access_requests(
+        &self,
+    ) -> Result<Vec<common::structs::JoinRequestSummary>, ApiError> {
+        standard_get::<Vec<common::structs::JoinRequestSummary>>("/api/v1/access_requests").await
+    }
+
+    /// `action` is "approve" or "decline".
+    pub async fn decide_access_request(
+        &self,
+        id: &str,
+        action: &str,
+    ) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            &format!("/api/v1/access_requests/{id}/{action}"),
+            &serde_json::Value::Null,
+        )
+        .await
+    }
+
+    /// Ban whoever wrote this post. The server resolves them; the response names nobody.
+    ///
+    /// `sitewide` is validated against the caller's authority server-side — a board moderator
+    /// asking for a sitewide ban is refused rather than quietly downgraded.
+    pub async fn ban_post_author(
+        &self,
+        board: &str,
+        post_number: i64,
+        sitewide: bool,
+        reason: Option<String>,
+    ) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            &format!("/api/v1/board/{board}/post/{post_number}/ban_author"),
+            &common::structs::BanRequest { sitewide, reason },
+        )
+        .await
+    }
+
+    /// Flag a post for moderator attention. No reporter identity is recorded.
+    pub async fn report_post(
+        &self,
+        board: &str,
+        post_number: i64,
+        reason: String,
+    ) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            &format!("/api/v1/board/{board}/post/{post_number}/report"),
+            &common::structs::ReportRequest { reason },
+        )
+        .await
+    }
+
+    /// Open reports, already scoped by the server to boards this viewer moderates.
+    pub async fn list_reports(&self) -> Result<Vec<common::structs::ReportSummary>, ApiError> {
+        standard_get::<Vec<common::structs::ReportSummary>>("/api/v1/admin/reports").await
+    }
+
+    pub async fn resolve_report(&self, id: &str) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            &format!("/api/v1/admin/reports/{id}/resolve"),
+            &serde_json::Value::Null,
+        )
+        .await
+    }
+
+    pub async fn list_moderators(&self) -> Result<Vec<common::structs::ModeratorGrant>, ApiError> {
+        standard_get::<Vec<common::structs::ModeratorGrant>>("/api/v1/admin/moderators").await
+    }
+
+    pub async fn revoke_moderator(&self, id: &str) -> Result<String, ApiError> {
+        standard_delete::<String>(&format!("/api/v1/admin/moderators/{id}")).await
+    }
+
+    /// Banners and spoilers together, since the panel shows them side by side.
+    pub async fn list_assets(&self) -> Result<AssetLists, ApiError> {
+        standard_get::<AssetLists>("/api/v1/admin/assets").await
+    }
+
+    /// Upload an asset. `kind` is "banners" or "spoilers". Dimensions are enforced server-side.
+    pub async fn upload_asset(
+        &self,
+        kind: &str,
+        filename: String,
+        data: Vec<u8>,
+        mime: String,
+    ) -> Result<String, ApiError> {
+        let form = web_sys::FormData::new()
+            .map_err(|_| ApiError::Other(AttrValue::Static("Could not build the upload")))?;
+        let array = js_sys::Uint8Array::from(data.as_slice());
+        let parts = js_sys::Array::new();
+        parts.push(&array.buffer());
+        let opts = web_sys::BlobPropertyBag::new();
+        opts.set_type(&mime);
+        let blob = web_sys::Blob::new_with_u8_array_sequence_and_options(&parts, &opts)
+            .map_err(|_| ApiError::Other(AttrValue::Static("Could not read that file")))?;
+        form.append_with_blob_and_filename("file", &blob, &filename)
+            .map_err(|_| ApiError::Other(AttrValue::Static("Could not attach that file")))?;
+
+        let res = Request::post(&format!("/api/v1/admin/{kind}"))
+            .credentials(web_sys::RequestCredentials::SameOrigin)
+            .body(form)
+            .map_err(|e| ApiError::Other(AttrValue::from(e.to_string())))?
+            .send()
+            .await
+            .map_err(send_error)?;
+        handle_response(res).await
+    }
+
+    pub async fn update_asset(
+        &self,
+        kind: &str,
+        id: i64,
+        update: common::structs::AssetUpdate,
+    ) -> Result<String, ApiError> {
+        standard_patch::<String, _>(&format!("/api/v1/admin/{kind}/{id}"), &update).await
+    }
+
+    pub async fn delete_asset(&self, kind: &str, id: i64) -> Result<String, ApiError> {
+        standard_delete::<String>(&format!("/api/v1/admin/{kind}/{id}")).await
+    }
+
+    pub async fn audit_log(&self) -> Result<Vec<common::structs::LogEntry>, ApiError> {
+        standard_get::<Vec<common::structs::LogEntry>>("/api/v1/admin/log").await
+    }
+
+    pub async fn create_board(&self, name: String, discriminator: String) -> Result<String, ApiError> {
+        standard_post::<String, _>(
+            "/api/v1/admin/boards",
+            &common::structs::CreateBoard { name, discriminator },
+        )
+        .await
+    }
+
+    pub async fn update_board(
+        &self,
+        discriminator: &str,
+        update: common::structs::BoardUpdate,
+    ) -> Result<String, ApiError> {
+        standard_patch::<String, _>(&format!("/api/v1/admin/boards/{discriminator}"), &update).await
+    }
+
+    pub async fn delete_board(&self, discriminator: &str) -> Result<String, ApiError> {
+        standard_delete::<String>(&format!("/api/v1/admin/boards/{discriminator}")).await
+    }
+
+    /// Lift a ban.
+    pub async fn unban(&self, ban_id: &str) -> Result<String, ApiError> {
+        standard_delete::<String>(&format!("/api/v1/admin/bans/{ban_id}")).await
+    }
+
+    /// Replace your own author seed, orphaning everything you have posted.
+    pub async fn rotate_author_seed(&self) -> Result<String, ApiError> {
+        standard_post::<String, _>("/api/v1/me/rotate_author_seed", &serde_json::Value::Null).await
     }
 
     #[allow(unused_variables)]
@@ -84,8 +247,7 @@ impl Api {
         } else {
             //
             // GET /api/v1/board -> Vec<Board>
-            let token = self.formatted_token();
-            match standard_get::<Vec<SafeBoard>>("/api/v1/board", &token).await {
+            match standard_get::<Vec<SafeBoard>>("/api/v1/board").await {
                 Ok(res) => {
                     #[cfg(feature = "cache-boards")]
                     {
@@ -140,8 +302,7 @@ impl Api {
         } else {
             //
             // GET /api/v1/{} -> Board
-            let token = self.formatted_token();
-            match standard_get::<BoardWithThreads>(&format!("/api/v1/board/{}", board), &token)
+            match standard_get::<BoardWithThreads>(&format!("/api/v1/board/{}", board))
                 .await
             {
                 Ok(res) => {
@@ -219,10 +380,8 @@ impl Api {
         } else {
             //
             // GET /api/v1/{}/{} -> Thread
-            let token = self.formatted_token();
             match standard_get::<ThreadWithPosts>(
                 &format!("/api/v1/board/{}/thread/{}", board, thread),
-                &token,
             )
             .await
             {
@@ -297,10 +456,8 @@ impl Api {
         if let Some(v) = v {
             Ok(v)
         } else {
-            let token = self.formatted_token();
             match standard_get::<SafePost>(
                 &format!("/api/v1/board/{}/post/{}", board, post),
-                &token,
             )
             .await
             {
@@ -328,7 +485,6 @@ impl Api {
     }
 
     pub async fn create_file(&self, file: web_sys::File) -> Result<AttrValue, ApiError> {
-        let token = self.formatted_token();
         let form_data = web_sys::FormData::new()
             .map_err(|e| ApiError::Other(AttrValue::from(format!("{e:?}"))))?;
 
@@ -337,7 +493,6 @@ impl Api {
             .map_err(|e| ApiError::Other(AttrValue::from(format!("{e:?}"))))?;
 
         let raw_res = gloo_net::http::Request::post("/api/v1/file")
-            .header("authorization", &token)
             .body(&form_data)
             .map_err(|e| ApiError::Gloo(AttrValue::from(format!("{e:?}"))))?
             .send()
@@ -366,8 +521,7 @@ impl Api {
         file: &str, // /files/mimetype/id.ext
     ) -> Result<String, ApiError> {
         // PUT /api/v1/share/files/mimetype/id.ext
-        let token = self.formatted_token();
-        standard_put::<String, ()>(&format!("/api/v1/share{}", file), &token, &()).await
+        standard_put::<String, ()>(&format!("/api/v1/share{}", file), &()).await
     }
 
     pub async fn create_thread(
@@ -375,11 +529,9 @@ impl Api {
         board: impl Display + ToString + Copy,
         thread: CreateThread,
     ) -> Result<SafePost, ApiError> {
-        let token = self.formatted_token();
-        // let res = thread::create_thread(&token, board, thread).await;
+        // let res = thread::create_thread( board, thread).await;
         let res = standard_post::<SafePost, CreateThread>(
             &format!("/api/v1/board/{}/thread", board),
-            &token,
             &thread,
         )
         .await;
@@ -398,11 +550,9 @@ impl Api {
         thread: impl Display + ToString + Copy,
         post: CreatePost,
     ) -> Result<SafePost, ApiError> {
-        let token = self.formatted_token();
-        // let res = post::create_post(&token, board, thread, post).await;
+        // let res = post::create_post( board, thread, post).await;
         let res = standard_post::<SafePost, CreatePost>(
             &format!("/api/v1/board/{}/thread/{}", board, thread),
-            &token,
             &post,
         )
         .await;
@@ -418,11 +568,10 @@ impl Api {
         board: impl Display + ToString + Copy,
         post: impl Display + ToString + Copy,
     ) -> Result<i64, ApiError> {
-        let token = self.formatted_token();
         let full_post = self.get_post(board, post, true).await?;
-        // let res = post::delete_post(&token, board, post).await;
+        // let res = post::delete_post( board, post).await;
         let res =
-            standard_delete::<i64>(&format!("/api/v1/board/{}/post/{}", board, post), &token).await;
+            standard_delete::<i64>(&format!("/api/v1/board/{}/post/{}", board, post)).await;
         if res.is_ok() {
             let _ = self.get_board(board, true).await;
             let _ = self
@@ -438,11 +587,9 @@ impl Api {
         post: impl Display + ToString + Copy,
         watching: bool,
     ) -> Result<bool, ApiError> {
-        let token = self.formatted_token();
         // PUT /api/v1/board/{board_discriminator}/post/{post_number}/watching
         standard_put(
             &format!("/api/v1/board/{}/post/{}/watching", board, post),
-            &token,
             &watching,
         )
         .await
@@ -453,20 +600,17 @@ impl Api {
         board: impl Display + ToString + Copy,
         post: impl Display + ToString + Copy,
     ) -> Result<bool, ApiError> {
-        let token = self.formatted_token();
         // GET /api/v1/board/{board_discriminator}/post/{post_number}/watching
         standard_get(
             &format!("/api/v1/board/{}/post/{}/watching", board, post),
-            &token,
         )
         .await
     }
 
     pub async fn get_banner(&self, board: impl Display + ToString) -> Result<Banner, ApiError> {
-        let token = self.formatted_token();
 
-        // board::get_banner(&token, board).await
-        standard_get(&format!("/api/v1/board/{}/banner", board), &token).await
+        // board::get_banner( board).await
+        standard_get(&format!("/api/v1/board/{}/banner", board)).await
     }
 
     pub async fn generate_board_invite_link(
@@ -474,11 +618,9 @@ impl Api {
         board: impl Display + ToString,
         invite_name: impl Display + ToString,
     ) -> Result<String, ApiError> {
-        let token = self.formatted_token();
-        // board::generate_invite_link(&token, board, invite_name).await
+        // board::generate_invite_link( board, invite_name).await
         let res: String = standard_put(
             &format!("/api/v1/board/{}/invite?info={}", board, invite_name),
-            &token,
             &(),
         )
         .await?;
@@ -495,11 +637,9 @@ impl Api {
         board: impl Display + ToString,
         invite_name: impl Display + ToString,
     ) -> Result<String, ApiError> {
-        let token = self.formatted_token();
-        // board::generate_moderator_invite_link(&token, board, invite_name).await
+        // board::generate_moderator_invite_link( board, invite_name).await
         let res: String = standard_put(
             &format!("/api/v1/board/{}/moderator?info={}", board, invite_name),
-            &token,
             &(),
         )
         .await?;
@@ -512,11 +652,9 @@ impl Api {
     }
 
     pub async fn consume_code(&self, invite_code: impl Display + ToString) -> Result<(), ApiError> {
-        let token = self.formatted_token();
-        // board::consume_code(&token, board, invite_code).await
+        // board::consume_code( board, invite_code).await
         let res: String = standard_patch(
             &format!("/api/v1/consume_code?info={}", invite_code),
-            &token,
             &(),
         )
         .await?;
@@ -569,6 +707,12 @@ pub enum ApiError {
     Serde(AttrValue),
     Api(AttrValue),
     Other(AttrValue),
+    /// The server said 401. Distinct from the other variants because the UI reacts to it by
+    /// showing the login prompt rather than an error.
+    ///
+    /// Previously there was no such signal: the backend's 401 body is a bare JSON string, so
+    /// it deserialized cleanly into whatever the caller expected and the failure was silent.
+    Unauthenticated(AttrValue),
     // TODO: add error types :(
 }
 
@@ -581,6 +725,7 @@ impl std::ops::Deref for ApiError {
             Self::Serde(v) => v,
             Self::Api(v) => v,
             Self::Other(v) => v,
+            Self::Unauthenticated(v) => v,
         }
     }
 }
@@ -606,6 +751,12 @@ impl<T> ApiState<T> {
             }),
             Self::ContextError(s) => Ok(html! {
                 <crate::components::ContextError cause={s} source={source} />
+            }),
+            // Handled here rather than handed back as an error: callers treat Err as "this
+            // page is broken" and navigate to /404, which is the wrong response to simply
+            // not being signed in.
+            Self::Error(ApiError::Unauthenticated(_)) => Ok(html! {
+                <crate::components::SignIn />
             }),
             Self::Error(e) => Err(e.clone()),
             Self::Loaded(data) => Ok(then(data)),
@@ -704,136 +855,119 @@ impl<T> CachedValue<T> {
     }
 }
 
-pub async fn standard_get<T>(path: &str, token: &str) -> Result<T, ApiError>
+/// The two asset lists as the panel receives them.
+#[derive(Debug, Clone, PartialEq, serde::Deserialize)]
+pub struct AssetLists {
+    pub banners: Vec<common::structs::AssetSummary>,
+    pub spoilers: Vec<common::structs::AssetSummary>,
+}
+
+/// Turn a response into a value, mapping a 401 to [`ApiError::Unauthenticated`].
+///
+/// The status has to be checked *before* parsing: the backend's 401 body is a bare JSON
+/// string, which deserializes cleanly into `String`-shaped targets and would otherwise be
+/// mistaken for a successful result.
+async fn handle_response<T>(res: gloo_net::http::Response) -> Result<T, ApiError>
+where
+    T: DeserializeOwned,
+{
+    if res.status() == 401 {
+        return Err(ApiError::Unauthenticated(AttrValue::Static("Not signed in")));
+    }
+
+    let body = res.text().await.map_err(|e| match e {
+        gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
+        v => ApiError::Other(AttrValue::from(v.to_string())),
+    })?;
+
+    serde_json::from_str(&body).map_err(|e| match serde_json::from_str::<String>(&body) {
+        Ok(v) => ApiError::Api(AttrValue::from(v)),
+        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {body}"))),
+    })
+}
+
+fn send_error(e: gloo_net::Error) -> ApiError {
+    match e {
+        gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
+        v => ApiError::Other(AttrValue::from(v.to_string())),
+    }
+}
+
+pub async fn standard_get<T>(path: &str) -> Result<T, ApiError>
 where
     T: DeserializeOwned,
 {
     let res = Request::get(path)
-        .header("authorization", token)
+        .credentials(web_sys::RequestCredentials::SameOrigin)
         .send()
         .await
-        .map_err(|e| match e {
-            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?
-        .text()
-        .await
-        .map_err(|e| match e {
-            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?;
+        .map_err(send_error)?
+        ;
 
-    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
-        Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
-    })
+    handle_response(res).await
 }
 
-pub async fn standard_delete<T>(path: &str, token: &str) -> Result<T, ApiError>
+pub async fn standard_delete<T>(path: &str) -> Result<T, ApiError>
 where
     T: DeserializeOwned,
 {
     let res = Request::delete(path)
-        .header("authorization", token)
+        .credentials(web_sys::RequestCredentials::SameOrigin)
         .send()
         .await
-        .map_err(|e| match e {
-            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?
-        .text()
-        .await
-        .map_err(|e| match e {
-            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?;
+        .map_err(send_error)?
+        ;
 
-    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
-        Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
-    })
+    handle_response(res).await
 }
 
-pub async fn standard_post<T, E>(path: &str, token: &str, data: &E) -> Result<T, ApiError>
+pub async fn standard_post<T, E>(path: &str, data: &E) -> Result<T, ApiError>
 where
     T: DeserializeOwned,
     E: Serialize,
 {
     let res = Request::post(path)
-        .header("authorization", token)
+        .credentials(web_sys::RequestCredentials::SameOrigin)
         .json(data)
         .map_err(|e| ApiError::Serde(AttrValue::from(e.to_string())))?
         .send()
         .await
-        .map_err(|e| match e {
-            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?
-        .text()
-        .await
-        .map_err(|e| match e {
-            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?;
+        .map_err(send_error)?
+        ;
 
-    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
-        Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
-    })
+    handle_response(res).await
 }
 
-pub async fn standard_put<T, E>(path: &str, token: &str, data: &E) -> Result<T, ApiError>
+pub async fn standard_put<T, E>(path: &str, data: &E) -> Result<T, ApiError>
 where
     T: DeserializeOwned,
     E: Serialize,
 {
     let res = Request::put(path)
-        .header("authorization", token)
+        .credentials(web_sys::RequestCredentials::SameOrigin)
         .json(data)
         .map_err(|e| ApiError::Serde(AttrValue::from(e.to_string())))?
         .send()
         .await
-        .map_err(|e| match e {
-            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?
-        .text()
-        .await
-        .map_err(|e| match e {
-            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?;
+        .map_err(send_error)?
+        ;
 
-    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
-        Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
-    })
+    handle_response(res).await
 }
 
-pub async fn standard_patch<T, E>(path: &str, token: &str, data: &E) -> Result<T, ApiError>
+pub async fn standard_patch<T, E>(path: &str, data: &E) -> Result<T, ApiError>
 where
     T: DeserializeOwned,
     E: Serialize,
 {
     let res = Request::patch(path)
-        .header("authorization", token)
+        .credentials(web_sys::RequestCredentials::SameOrigin)
         .json(data)
         .map_err(|e| ApiError::Serde(AttrValue::from(e.to_string())))?
         .send()
         .await
-        .map_err(|e| match e {
-            gloo_net::Error::GlooError(e) => ApiError::Gloo(AttrValue::from(e)),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?
-        .text()
-        .await
-        .map_err(|e| match e {
-            gloo_net::Error::SerdeError(e) => ApiError::Serde(AttrValue::from(e.to_string())),
-            v => ApiError::Other(AttrValue::from(v.to_string())),
-        })?;
+        .map_err(send_error)?
+        ;
 
-    serde_json::from_str(&res).map_err(|e| match serde_json::from_str::<String>(&res) {
-        Ok(v) => ApiError::Api(AttrValue::from(v)),
-        Err(_) => ApiError::Serde(AttrValue::from(format!("{e} SERDE ERROR FROM {res}"))),
-    })
+    handle_response(res).await
 }

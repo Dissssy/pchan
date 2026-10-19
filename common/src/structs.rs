@@ -102,9 +102,13 @@ pub struct FileInfo {
 pub struct ClaimedFileInfo {
     pub path: String,
     pub thumbnail: String,
-    pub hash: String,
     pub spoiler: bool,
 }
+
+// `hash` used to be here. It is sha256 of the raw bytes and was sent to every client, so
+// anyone holding a copy of a file obtained elsewhere could hash it and find the exact post it
+// was uploaded to. The server still stores it for duplicate detection; it is simply no longer
+// published.
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct MicroBoardInfo {
@@ -238,3 +242,138 @@ pub struct SubscriptionKeys {
     pub auth: String,
     pub p256dh: String,
 }
+
+/// What the frontend is told about the current viewer.
+///
+/// Carries no identity — not a name, not an email, not an Auth0 subject. Enough to decide
+/// which controls to render and nothing more.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct MeInfo {
+    /// "member", "site_mod" or "admin".
+    pub role: String,
+    pub banned: bool,
+    /// Whether this viewer moderates at least one board. Site roles imply it. Without this
+    /// the UI cannot tell a board moderator from an ordinary member, and they would never be
+    /// shown their own report inbox.
+    pub moderates_any_board: bool,
+    /// Boards this viewer moderates directly, by discriminator. Empty for site roles, which
+    /// are not scoped to particular boards — check `can_moderate_site` first.
+    pub moderated_boards: Vec<String>,
+}
+
+impl MeInfo {
+    pub fn can_moderate_site(&self) -> bool {
+        self.role == "site_mod" || self.role == "admin"
+    }
+    /// Anything moderation-related to show at all.
+    pub fn can_moderate_anything(&self) -> bool {
+        self.can_moderate_site() || self.moderates_any_board
+    }
+    pub fn is_admin(&self) -> bool {
+        self.role == "admin"
+    }
+}
+
+/// A pending join request as shown to a reviewer.
+///
+/// Deliberately minimal: the id to act on, whatever the applicant chose to say about
+/// themselves, and when. No hash, no subject, nothing that could later be correlated with a
+/// member row.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct JoinRequestSummary {
+    pub id: String,
+    pub disclosure: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Body of a join request submission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AccessRequest {
+    pub disclosure: String,
+}
+
+/// Body of a ban request.
+///
+/// `sitewide` is validated against the actor's own authority server-side, never trusted: a
+/// board moderator may only ban from the board they moderate.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BanRequest {
+    pub sitewide: bool,
+    pub reason: Option<String>,
+}
+
+/// Body of a report submission.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportRequest {
+    pub reason: String,
+}
+
+/// An open report as shown to a moderator.
+///
+/// Identifies the post by board and post number — what a moderator can actually navigate to —
+/// and carries no reporter, because none is stored.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ReportSummary {
+    pub id: String,
+    pub board_discriminator: String,
+    pub post_number: i64,
+    pub reason: String,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// A moderator grant, as shown in the panel.
+///
+/// `label` is free text typed by whoever issued the code, and `redeemed` says only whether
+/// somebody has claimed it. There is deliberately no way to go from a grant to the member
+/// holding it — the panel manages grants, never a roster of people.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct ModeratorGrant {
+    pub id: String,
+    pub board_discriminator: String,
+    pub label: String,
+    pub redeemed: bool,
+}
+
+/// One entry from the moderation log.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct LogEntry {
+    pub action: String,
+    pub board_discriminator: Option<String>,
+    pub target: Option<String>,
+    pub detail: Option<String>,
+    pub created_at: chrono::DateTime<chrono::Utc>,
+}
+
+/// Board settings a panel can change. The discriminator is not editable: it appears in every
+/// URL and in derived access grants, so changing it would orphan them.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct BoardUpdate {
+    pub name: Option<String>,
+    pub private: Option<bool>,
+}
+
+/// A banner or spoiler image as shown in the admin panel.
+///
+/// `boards` is a list of discriminators. Empty means the asset applies to every board.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssetSummary {
+    pub id: i64,
+    pub img_path: String,
+    /// Banners only. `None` means the banner is not a link.
+    pub href: Option<String>,
+    pub boards: Vec<String>,
+}
+
+/// Full replacement of an asset's settings; a form submits all of it at once.
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+pub struct AssetUpdate {
+    /// `None` clears the link.
+    pub href: Option<String>,
+    /// Empty means every board.
+    pub boards: Vec<String>,
+}
+
+/// Exact dimensions assets must have, enforced on upload so the layout cannot be broken by a
+/// mis-sized image.
+pub const SPOILER_SIZE: (u32, u32) = (80, 80);
+pub const BANNER_SIZE: (u32, u32) = (1200, 200);

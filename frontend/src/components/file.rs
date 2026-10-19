@@ -189,9 +189,6 @@ pub fn File(props: &Props) -> Html {
                         }
                     </a>
                 </span>
-                <span class="post-hash" title={format!("Hash: {}", props.file.claimed.hash.clone())}>
-                    { if emojis { "" } else { "Hash" }}
-                </span>
                 if props.file.claimed.path.contains("/audio/") || props.file.claimed.path.contains("/video/") {
                     <span class="might-have-sound-indicator" >
                         {

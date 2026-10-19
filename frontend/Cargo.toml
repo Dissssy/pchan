@@ -24,6 +24,17 @@ web-sys = { version = "0.3.69", features = [
     "Screen",
     "Clipboard",
     "Notification",
+    "RequestCredentials",
+    "FormData",
+    "Blob",
+    "BlobPropertyBag",
+    "File",
+    "FileList",
+    "HtmlInputElement",
+    "ClipboardEvent",
+    "DataTransfer",
+    "DataTransferItem",
+    "DataTransferItemList",
 ] }
 yew = { version = "0.21.0", features = ["csr"] }
 yew-router = "0.18.0"

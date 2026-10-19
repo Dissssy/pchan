@@ -1,12 +1,8 @@
 use base64::Engine as _;
-use common::hash_with_salt;
 use lazy_static::lazy_static;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::{
     collections::{hash_map::Entry, HashMap},
-    fmt::Display,
-    hash::{Hash, Hasher},
-    str::FromStr,
     sync::Arc,
 };
 use tokio::{sync::Mutex, time::Instant};
@@ -16,145 +12,127 @@ use warp::{path::FullPath, Filter};
 use warp::http::Method;
 
 lazy_static! {
-    pub static ref TOKENCACHE: Arc<Mutex<HashMap<Token, Instant>>> =
+    /// Short-lived cache of resolved sessions, keyed on the hashed cookie so the raw
+    /// credential is not a key in process memory.
+    static ref SESSION_CACHE: Arc<Mutex<HashMap<String, (Instant, database::Viewer)>>> =
         Arc::new(Mutex::new(HashMap::new()));
 }
 
-pub fn valid_token() -> impl Filter<Extract = (Token,), Error = warp::Rejection> + Clone {
-    // warp::any()
-    //     .and(warp::header::optional::<Bearer>("authorization"))
-    //     .and(warp::cookie::optional("token"))
-    //     .and_then(
-    //         |header: Option<Bearer>, cookie: Option<String>| async move {
-    //             let mut conn = crate::POOL
-    //                 .get()
-    //                 .await
-    //                 .map_err(|_| warp::reject::reject())?;
-    //             if let Some(header) = header {
-    //                 let mut t = Token::new(header.token);
-    //                 let mut cache = TOKENCACHE.lock().await;
-    //                 if let Entry::Occupied(e) = cache.entry(t.clone()) {
-    //                     if e.get().elapsed().as_secs() < 60 {
-    //                         return Ok(t);
-    //                     } else {
-    //                         e.remove();
-    //                     }
-    //                 } else if crate::database_bindings::Database::is_valid_token(
-    //                     &mut conn,
-    //                     t.member_hash(),
-    //                 )
-    //                 .await
-    //                 .map_err(|_| warp::reject::reject())?
-    //                 {
-    //                     cache.insert(t.clone(), Instant::now());
-    //                     return Ok(t);
-    //                 }
-    //             };
-    //             if let Some(cookie) = cookie {
-    //                 let mut t = Token::new(cookie);
-    //                 let mut cache = TOKENCACHE.lock().await;
-    //                 if let Entry::Occupied(e) = cache.entry(t.clone()) {
-    //                     if e.get().elapsed().as_secs() < 60 {
-    //                         return Ok(t);
-    //                     } else {
-    //                         e.remove();
-    //                     }
-    //                 } else if crate::database_bindings::Database::is_valid_token(
-    //                     &mut conn,
-    //                     t.member_hash(),
-    //                 )
-    //                 .await
-    //                 .map_err(|_| warp::reject::reject())?
-    //                 {
-    //                     cache.insert(t.clone(), Instant::now());
-    //                     return Ok(t);
-    //                 }
-    //             };
-    //             Err(warp::reject::reject())
-    //         },
-    //     )
+/// How long a resolved session is reused before being re-read from the database. This is the
+/// window in which a logout or ban has not taken effect yet, so it is deliberately short.
+const SESSION_CACHE_TTL: std::time::Duration = std::time::Duration::from_secs(5);
+
+/// The authenticated member, or a rejection.
+pub fn viewer() -> impl Filter<Extract = (database::Viewer,), Error = warp::Rejection> + Clone {
     warp::any()
-        .and(optional_token())
-        .and_then(|token: Option<Token>| async move {
-            match token {
-                Some(token) => Ok(token),
+        .and(optional_viewer())
+        .and_then(|v: Option<database::Viewer>| async move {
+            match v {
+                Some(v) => Ok(v),
                 None => Err(warp::reject::reject()),
             }
         })
 }
 
-pub fn valid_token_always_allow_res(
-) -> impl Filter<Extract = ((),), Error = warp::Rejection> + Clone {
-    warp::any()
-        .and(optional_token())
-        .and(warp::path::full())
-        .and_then(|token: Option<Token>, path: FullPath| async move {
-            let path = path.as_str();
-            if token.is_none() {
-                if path.starts_with("/res/") {
-                    return Ok(());
-                }
-            } else {
-                return Ok(());
-            }
+/// A viewer with site-admin authority: boards, moderator grants, the audit log.
+pub fn site_admin() -> impl Filter<Extract = (database::Viewer,), Error = warp::Rejection> + Clone {
+    viewer().and_then(|v: database::Viewer| async move {
+        if v.role.is_admin() {
+            Ok(v)
+        } else {
             Err(warp::reject::reject())
+        }
+    })
+}
+
+/// A viewer who may review the join queue and act on reported posts.
+///
+/// The role lives in Postgres, never in Auth0: a mod with the Auth0 dashboard could correlate
+/// login timestamps against post timestamps and deanonymise a small population.
+pub fn site_mod() -> impl Filter<Extract = (database::Viewer,), Error = warp::Rejection> + Clone {
+    viewer().and_then(|v: database::Viewer| async move {
+        if v.role.can_moderate_site() {
+            Ok(v)
+        } else {
+            Err(warp::reject::reject())
+        }
+    })
+}
+
+/// Serves the frontend shell to everyone, so a logged-out visitor can reach the login and
+/// request-access pages. Static assets under /res/ stay open for the same reason.
+pub fn allow_public_shell() -> impl Filter<Extract = ((),), Error = warp::Rejection> + Clone {
+    warp::any().and_then(|| async { Ok::<_, warp::Rejection>(()) })
+}
+
+/// Resolve the session cookie to a member, if there is one.
+///
+/// Unlike the old filter there is no `Authorization` fallback: the browser is the only client,
+/// and `GET /api/v1/token` no longer exists to hand a credential to JavaScript.
+pub fn optional_viewer(
+) -> impl Filter<Extract = (Option<database::Viewer>,), Error = warp::Rejection> + Clone {
+    warp::any()
+        .and(warp::cookie::optional(crate::session::COOKIE_NAME))
+        .and_then(|cookie: Option<String>| async move {
+            let Some(token) = cookie else {
+                return Ok(None);
+            };
+
+            let cache_key = database::keys::session_token_hash(&token);
+
+            {
+                let mut cache = SESSION_CACHE.lock().await;
+                if let Entry::Occupied(e) = cache.entry(cache_key.clone()) {
+                    if e.get().0.elapsed() < SESSION_CACHE_TTL {
+                        return Ok(Some(e.get().1.clone()));
+                    }
+                    e.remove();
+                }
+            }
+
+            // Lock released before the query: holding it across the round trip serialised
+            // every authenticated request behind one database call.
+            let mut conn = crate::POOL.get().await.map_err(|e| {
+                log::error!("could not get a connection to resolve a session: {e}");
+                warp::reject::reject()
+            })?;
+
+            let resolved = crate::session::resolve(&mut conn, &token)
+                .await
+                .map_err(|e| {
+                    // Logged rather than swallowed: a schema or query fault here is
+                    // indistinguishable from "not logged in" to the caller, which is
+                    // miserable to debug.
+                    log::error!("error resolving session: {e}");
+                    warp::reject::reject()
+                })?;
+
+            if let Some(v) = &resolved {
+                // Only on a cache miss, so this is at most one write per cache TTL per
+                // session rather than one per request.
+                crate::session::touch(&mut conn, &token).await;
+                SESSION_CACHE
+                    .lock()
+                    .await
+                    .insert(cache_key, (Instant::now(), v.clone()));
+            }
+
+            Ok::<_, warp::reject::Rejection>(resolved)
         })
 }
 
-pub fn optional_token() -> impl Filter<Extract = (Option<Token>,), Error = warp::Rejection> + Clone
-{
-    warp::any()
-        .and(warp::header::optional::<Bearer>("authorization"))
-        .and(warp::cookie::optional("token"))
-        .and_then(
-            |header: Option<Bearer>, cookie: Option<String>| async move {
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-                if let Some(header) = header {
-                    let mut t = Token::new(header.token);
-                    let mut cache = TOKENCACHE.lock().await;
-                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
-                        if e.get().elapsed().as_secs() < 60 {
-                            return Ok(Some(t));
-                        } else {
-                            e.remove();
-                        }
-                    } else if crate::database_bindings::Database::is_valid_token(
-                        &mut conn,
-                        t.member_hash(),
-                    )
-                    .await
-                    .map_err(|_| warp::reject::reject())?
-                    {
-                        cache.insert(t.clone(), Instant::now());
-                        return Ok::<_, warp::reject::Rejection>(Some(t));
-                    }
-                };
-                if let Some(cookie) = cookie {
-                    let mut t = Token::new(cookie);
-                    let mut cache = TOKENCACHE.lock().await;
-                    if let Entry::Occupied(e) = cache.entry(t.clone()) {
-                        if e.get().elapsed().as_secs() < 60 {
-                            return Ok(Some(t));
-                        } else {
-                            e.remove();
-                        }
-                    } else if crate::database_bindings::Database::is_valid_token(
-                        &mut conn,
-                        t.member_hash(),
-                    )
-                    .await
-                    .map_err(|_| warp::reject::reject())?
-                    {
-                        cache.insert(t.clone(), Instant::now());
-                        return Ok(Some(t));
-                    }
-                };
-                Ok(None)
-            },
-        )
+/// Drop a session from the resolve cache so a logout or ban takes effect immediately rather
+/// than at the end of the TTL.
+pub async fn forget_cached_session(token: &str) {
+    SESSION_CACHE
+        .lock()
+        .await
+        .remove(&database::keys::session_token_hash(token));
+}
+
+/// Drop every cached session for one member. Used when banning.
+pub async fn forget_cached_member(member: &uuid::Uuid) {
+    SESSION_CACHE.lock().await.retain(|_, (_, v)| &v.id != member);
 }
 
 pub fn optional_file_sig(
@@ -251,18 +229,8 @@ pub struct MaybeFileSig {
     pub sig: Option<String>,
 }
 
-pub fn priveleged_endpoint() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
-    warp::header::header::<Bearer>("authorization")
-        .and_then(|header: Bearer| async move {
-            if header.token != *crate::statics::TOKEN {
-                Err(warp::reject::reject())
-            } else {
-                Ok(())
-            }
-        })
-        .and(warp::any())
-        .untuple_one()
-}
+// priveleged_endpoint is gone with the shared static TOKEN it compared, in non-constant
+// time, against an Authorization header. Admin actions are gated by the admin role.
 
 pub fn user_agent_is_scraper() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
     warp::header::header::<String>("user-agent")
@@ -281,9 +249,9 @@ pub fn user_agent_is_scraper() -> impl Filter<Extract = (), Error = warp::Reject
 #[cfg_attr(feature = "no_ratelimit", allow(unused_variables))]
 pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone {
     warp::path::full()
-        .and(valid_token())
+        .and(viewer())
         .and(warp::method())
-        .and_then(|path: FullPath, mut token: Token, method| async move {
+        .and_then(|path: FullPath, viewer: database::Viewer, method| async move {
             #[cfg(feature = "no_ratelimit")]
             {
                 Ok::<(), warp::Rejection>(())
@@ -294,22 +262,22 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                     return Ok(());
                 }
 
-                let mut conn = crate::POOL
-                    .get()
-                    .await
-                    .map_err(|_| warp::reject::reject())?;
-
-                if database::check_admin(&mut conn, &token.member_hash().database_hash())
-                    .await
-                    .map_err(|_| warp::reject::reject())?
-                {
+                // The role rides on the viewer now, so this no longer costs a query on
+                // every mutating request.
+                if viewer.role.is_admin() {
                     return Ok(());
                 }
 
                 // is formatted as after the url
                 let rawpath = path.as_str();
                 let mut path = rawpath.split('/').skip(3);
-                let path = [path.next(), path.next(), path.next(), path.next()];
+                let path = [
+                    path.next(),
+                    path.next(),
+                    path.next(),
+                    path.next(),
+                    path.next(),
+                ];
 
                 // POST /board/?/thread/?
                 // DELETE /board/?/post/?
@@ -325,13 +293,14 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                         .unwrap_or_default();
 
                 let (seconds, ident): (u64, Arc<str>) =
-                    match (method, path[0], path[1], path[2], path[3]) {
+                    match (method, path[0], path[1], path[2], path[3], path[4]) {
                         (
                             Method::POST,
                             Some("board"),
                             Some(discrim),
                             Some("thread"),
                             Some(thread),
+                            _,
                         ) => (
                             5,
                             format!(
@@ -355,6 +324,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                             Some(discrim),
                             Some("post"),
                             Some(post),
+                            _,
                         ) => (
                             5,
                             format!(
@@ -372,7 +342,7 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                             )
                             .into(),
                         ),
-                        (Method::POST, Some("board"), Some(discrim), Some("thread"), None) => (
+                        (Method::POST, Some("board"), Some(discrim), Some("thread"), None, _) => (
                             10,
                             format!(
                                 "make thread{}",
@@ -384,19 +354,28 @@ pub fn ratelimit() -> impl Filter<Extract = (), Error = warp::Rejection> + Clone
                             )
                             .into(),
                         ),
-                        (Method::POST, Some("subscribe"), _, _, _) => (3, "subscribe".into()),
-                        (Method::POST, Some("file"), _, _, _) => (15, "file upload".into()),
-                        (Method::PUT, _, _, _, _) => (0, "PUT".into()),
-                        (Method::PATCH, Some("consume_code"), None, None, None) => {
+                        (Method::POST, Some("subscribe"), _, _, _, _) => (3, "subscribe".into()),
+                        (Method::POST, Some("file"), _, _, _, _) => (15, "file upload".into()),
+                        // Reporting is cheap to do and easy to weaponise, so it gets the longest
+                        // cooldown of anything here.
+                        (Method::POST, Some("board"), _, Some("post"), _, Some("report")) => {
+                            (120, "report".into())
+                        }
+                        (Method::PUT, _, _, _, _, _) => (0, "PUT".into()),
+                        (Method::PATCH, Some("consume_code"), None, None, None, _) => {
                             (60, "consume code".into())
                         }
                         path => {
-                            log::info!("path: {:?}", path);
+                            // Logged at trace, not info: this prints board and post for every
+                            // unmatched mutating request, which is noise at best.
+                            log::trace!("unbucketed path: {:?}", path);
                             (5, rawpath.into())
                         }
                     };
 
-                let total_string = format!("{}|{}", ident, token);
+                // Keyed on the member hash, not the raw credential, so the bearer token is
+                // not sitting in process memory as a map key.
+                let total_string = format!("{}|{}", ident, viewer.id);
                 let mut ratelimit = crate::RATELIMIT.lock().await;
                 match ratelimit.entry(total_string) {
                     Entry::Occupied(mut entry) => {
@@ -448,100 +427,7 @@ impl warp::reject::Reject for Ratelimited {}
 //         .untuple_one()
 // }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct Bearer {
-    pub token: String,
-}
 
-impl FromStr for Bearer {
-    type Err = anyhow::Error;
+// Token and MemberToken are gone: credentials are no longer values the app derives and
+// passes around. A session cookie resolves to a database::Viewer (see crate::session).
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let s = s
-            .split("Bearer ")
-            .nth(1)
-            .ok_or_else(|| anyhow::anyhow!("Invalid Bearer token"))?;
-        Ok(Self {
-            token: s.to_string(),
-        })
-    }
-}
-
-impl Display for Bearer {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "Bearer {}", self.token)
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Token {
-    token: Arc<String>,
-    cached_member_hash: Option<MemberToken>,
-}
-
-impl PartialEq for Token {
-    fn eq(&self, other: &Self) -> bool {
-        self.token == other.token
-    }
-}
-
-impl Eq for Token {}
-
-impl Hash for Token {
-    fn hash<H: Hasher>(&self, state: &mut H) {
-        self.token.hash(state);
-    }
-}
-
-impl Display for Token {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{}", self.token)
-    }
-}
-
-impl Token {
-    pub fn new(token: String) -> Self {
-        Self {
-            token: Arc::new(token),
-            cached_member_hash: None,
-        }
-    }
-    pub fn member_hash(&mut self) -> MemberToken {
-        if let Some(member_hash) = &self.cached_member_hash {
-            return member_hash.clone();
-        }
-        let m = MemberToken::new(
-            Arc::clone(&self.token),
-            Arc::new(hash_with_salt(&self.token, &crate::statics::TOKEN_SALT)),
-        );
-        self.cached_member_hash = Some(m.clone());
-        m
-    }
-    pub fn from_id(id: &str) -> Self {
-        Self::new(hash_with_salt(id, &crate::statics::HASH_SALT))
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct MemberToken {
-    original: Arc<String>,
-    token: Arc<String>,
-}
-
-impl Display for MemberToken {
-    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        write!(f, "{} ({})", self.token, self.original)
-    }
-}
-
-impl MemberToken {
-    pub fn new(original: Arc<String>, token: Arc<String>) -> Self {
-        Self { original, token }
-    }
-    pub fn post_hash(&self, id: &str) -> String {
-        hash_with_salt(&self.token, id)
-    }
-    pub fn database_hash(&self) -> Arc<String> {
-        Arc::clone(&self.token)
-    }
-}
