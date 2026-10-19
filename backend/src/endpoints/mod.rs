@@ -458,8 +458,17 @@ fn logout() -> impl Filter<Extract = (impl warp::Reply,), Error = warp::Rejectio
                 }
             }
 
+            // Our session is gone either way; this also ends the Auth0 one, so signing in
+            // again asks for credentials instead of silently succeeding. Auth0 returns the
+            // browser here, and the flag stops the frontend from signing straight back in.
+            let cfg = crate::config::get();
+            let auth0_logout = cfg.auth0.logout_url(
+                &format!("{}/?logged_out=1", cfg.public_url),
+                urlencode,
+            );
+
             warp::reply::with_header(
-                redirect_to("/"),
+                redirect_to(&auth0_logout),
                 "set-cookie",
                 crate::session::clear_cookie_header(),
             )

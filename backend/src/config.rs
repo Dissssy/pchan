@@ -45,6 +45,16 @@ impl Auth0 {
     pub fn issuer(&self) -> String {
         format!("https://{}/", self.domain)
     }
+    /// Ends the Auth0 session itself, then sends the browser to `return_to`, which must be
+    /// listed under the application's Allowed Logout URLs or Auth0 shows an error page.
+    pub fn logout_url(&self, return_to: &str, encode: impl Fn(&str) -> String) -> String {
+        format!(
+            "https://{}/v2/logout?client_id={}&returnTo={}",
+            self.domain,
+            encode(&self.client_id),
+            encode(return_to),
+        )
+    }
     pub fn redirect_uri(&self, public_url: &str) -> String {
         format!("{public_url}/login/callback")
     }
